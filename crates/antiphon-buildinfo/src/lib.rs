@@ -1,9 +1,5 @@
-//! Build-time helpers shared by the antiphon binaries.
-
 use std::process::Command;
 
-/// Emit the git-derived version as the `ANTIPHON_VERSION`
-/// environment variable for the compiled binary.
 pub fn emit_version() {
     println!("cargo:rustc-env=ANTIPHON_VERSION={}", version());
     println!("cargo:rerun-if-changed=../.git/HEAD");

@@ -1,7 +1,3 @@
-# The whole CI surface lives in this one file, as one job per
-# concern: formatting, lints, tests per OS, and the MSRV floor.
-# A release workflow joins it as a separate file only when
-# there are releases to build.
 name: CI
 
 on:

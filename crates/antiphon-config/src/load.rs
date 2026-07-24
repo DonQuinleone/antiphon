@@ -10,22 +10,18 @@ use crate::xdg::Dirs;
 
 const SUGGESTION_FLOOR: f64 = 0.7;
 
-/// Everything read from the configuration directory.
 #[derive(Debug)]
 pub struct Loaded {
     pub config: Config,
     pub accounts: Vec<NamedAccount>,
 }
 
-/// An account file, keyed by its file stem.
 #[derive(Debug)]
 pub struct NamedAccount {
     pub file_stem: String,
     pub account: AccountFile,
 }
 
-/// Load `config.toml`, apply `local.toml` overrides, and read
-/// every account under `accounts/`.
 pub fn load(dirs: &Dirs) -> Result<Loaded, ConfigError> {
     let config = load_config(&dirs.config)?;
     let accounts = load_accounts(&dirs.config.join("accounts"))?;

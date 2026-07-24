@@ -2,8 +2,6 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-/// Global settings from `config.toml`, after any `local.toml`
-/// overrides.
 #[derive(Debug, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct Config {

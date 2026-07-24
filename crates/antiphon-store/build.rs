@@ -1,11 +1,8 @@
 use std::env;
 use std::path::Path;
 
-// The notmuch bindings link `libnotmuch` without a search
-// path; Homebrew's lib dir is not on the default macOS linker
-// path, so add it here when the dylib is actually there.
-// Linux distro installs resolve from the default path and get
-// no extra flags.
+// Homebrew's lib dir is not on the default macOS linker path;
+// Linux resolves libnotmuch without help and gets no flags.
 const MACOS_LIB_DIRS: [&str; 2] =
     ["/opt/homebrew/lib", "/usr/local/lib"];
 

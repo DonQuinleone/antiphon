@@ -1,11 +1,3 @@
-//! The notmuch read path.
-//!
-//! A thin wrapper over the notmuch bindings: open the index
-//! read-only from the store layout and run queries returning
-//! plain message summaries. Query scoping and everything else
-//! UI-shaped lives upstream (DESIGN.md section 6); writes to
-//! the index belong to antiphond, never here.
-
 use std::borrow::Cow;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -16,16 +8,13 @@ use crate::layout::StoreLayout;
 
 const UNREAD_TAG: &str = "unread";
 
-/// One message as a search result: enough to draw a list row,
-/// nothing more.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MessageSummary {
     pub id: String,
     pub thread_id: String,
     pub subject: String,
     pub from: String,
-    /// Unix timestamp from the Date header.
-    pub date: i64,
+    pub date_unix: i64,
     pub tags: Vec<String>,
     pub unread: bool,
 }
@@ -66,20 +55,19 @@ impl std::error::Error for SearchError {
     }
 }
 
-/// A read-only handle on the store's notmuch index.
 pub struct SearchIndex {
     db: Database,
 }
 
 impl SearchIndex {
-    /// Open the index at the layout's notmuch directory. The
-    /// explicit empty config path stops libnotmuch consulting
-    /// any user configuration; the store is self-contained.
     pub fn open(layout: &StoreLayout) -> Result<Self, SearchError> {
         let path = layout.notmuch_dir();
         let db = Database::open_with_config(
             Some(&path),
             DatabaseMode::ReadOnly,
+            // An empty config path stops libnotmuch reading the
+            // user's own configuration; None would go looking
+            // for it.
             Some(Path::new("")),
             None,
         )
@@ -87,7 +75,6 @@ impl SearchIndex {
         Ok(Self { db })
     }
 
-    /// Run a notmuch query, newest first.
     pub fn query(
         &self,
         query: &str,
@@ -116,7 +103,7 @@ fn summarise(
         thread_id: message.thread_id().into_owned(),
         subject: header_or_empty(message, "subject")?,
         from: header_or_empty(message, "from")?,
-        date: message.date(),
+        date_unix: message.date(),
         tags,
         unread,
     })

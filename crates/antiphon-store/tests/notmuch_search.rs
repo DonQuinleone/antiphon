@@ -1,8 +1,3 @@
-//! End-to-end read path: a hand-written Maildir fixture,
-//! indexed by the real `notmuch new`, then queried through
-//! the crate's wrapper. Skips (rather than fails) when the
-//! notmuch CLI is not installed.
-
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -144,5 +139,5 @@ fn wrapper_reads_an_index_built_by_notmuch_new() {
         .query(&format!("path:{ACCOUNT}/** and tag:unread"))
         .unwrap();
     assert_eq!(scoped.len(), 2);
-    assert!(scoped[0].date > scoped[1].date, "newest first");
+    assert!(scoped[0].date_unix > scoped[1].date_unix, "newest first");
 }

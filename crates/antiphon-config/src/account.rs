@@ -1,6 +1,5 @@
 use serde::Deserialize;
 
-/// One file from `accounts/`, describing a single account.
 #[derive(Debug, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AccountFile {

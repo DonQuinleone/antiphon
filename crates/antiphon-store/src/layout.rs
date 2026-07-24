@@ -1,25 +1,9 @@
-//! The store directory layout inside the vault mount.
-//!
-//! Everything lives under one root (DESIGN.md section 5):
-//!
-//! ```text
-//! <root>/
-//!   maildir/<account>/...   Maildir++ per account
-//!   notmuch/                the index
-//!   oplog/                  append-only operation log
-//!   outbox/
-//!   tokens/                 OAuth tokens, sealed with the vault
-//!   contacts/               harvested addresses
-//! ```
-
 use std::io;
 use std::path::{Path, PathBuf};
 
 #[cfg(unix)]
 const PRIVATE_DIR_MODE: u32 = 0o700;
 
-/// Typed paths under a store root; the single source of truth
-/// for where each part of the store lives.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StoreLayout {
     root: PathBuf,
@@ -62,9 +46,7 @@ impl StoreLayout {
         self.root.join("contacts")
     }
 
-    /// Create every store directory, owner-only on Unix.
-    /// Idempotent: re-running on an existing store succeeds
-    /// and re-asserts the permissions.
+    /// Idempotent; re-runs also repair drifted permissions.
     pub fn init(&self) -> io::Result<()> {
         let dirs = [
             self.root.clone(),

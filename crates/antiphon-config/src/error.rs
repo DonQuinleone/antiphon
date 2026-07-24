@@ -1,9 +1,6 @@
 use std::fmt;
 use std::path::PathBuf;
 
-/// A configuration failure, attributed to a file and where
-/// possible a line, with the nearest valid key when the
-/// problem is an unknown key.
 #[derive(Debug)]
 pub struct ConfigError {
     pub file: PathBuf,

@@ -1,5 +1,3 @@
-//! Preflight checks for the local antiphon setup: doctor v0.
-
 use std::ffi::OsString;
 use std::process::{Command, ExitCode};
 

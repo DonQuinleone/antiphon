@@ -3,8 +3,6 @@ use std::path::{Path, PathBuf};
 
 const APP: &str = "antiphon";
 
-/// The application's base directories, XDG-resolved the same
-/// way on every platform.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dirs {
     pub config: PathBuf,

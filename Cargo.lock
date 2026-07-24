@@ -75,40 +75,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "antiphon-core"
-version = "0.0.0"
-
-[[package]]
-name = "antiphon-ipc"
-version = "0.0.0"
-
-[[package]]
-name = "antiphon-pgp"
-version = "0.0.0"
-
-[[package]]
-name = "antiphon-render"
-version = "0.0.0"
-
-[[package]]
 name = "antiphon-store"
 version = "0.0.0"
 dependencies = [
  "notmuch",
  "tempfile",
 ]
-
-[[package]]
-name = "antiphon-sync"
-version = "0.0.0"
-
-[[package]]
-name = "antiphon-ui"
-version = "0.0.0"
-
-[[package]]
-name = "antiphon-vault"
-version = "0.0.0"
 
 [[package]]
 name = "antiphond"
