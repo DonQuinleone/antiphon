@@ -33,6 +33,9 @@ backend = "auto"           # auto | luks2 | apfs | gocryptfs
 idle_lock_minutes = 0      # 0 = open until logout/suspend
 unlock = ["touchid", "yubikey", "passphrase"]
 
+[sync]
+interval_minutes = 5       # periodic daemon sync; 0 disables
+
 [notifications]
 enabled = true
 
