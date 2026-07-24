@@ -1,13 +1,16 @@
 pub mod apfs;
 pub mod gocryptfs;
+pub mod luks2;
 pub mod select;
 pub mod system;
 pub mod vault;
 
 pub use apfs::ApfsVault;
 pub use gocryptfs::GocryptfsVault;
+pub use luks2::Luks2Vault;
 pub use select::select_backend;
 pub use system::{Invocation, RunOutput, System, SystemRunner};
 pub use vault::{
-    Auth, CreateOptions, Mounted, Vault, VaultError, VaultStatus,
+    Auth, CreateOptions, DEFAULT_VAULT_BYTES, Mounted, Vault,
+    VaultError, VaultStatus,
 };

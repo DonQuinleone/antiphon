@@ -47,7 +47,7 @@ fn round_trip(
     assert_eq!(vault.status(), VaultStatus::Absent);
 
     let started = Instant::now();
-    vault.create(&CreateOptions { auth: auth.clone() }).unwrap();
+    vault.create(&CreateOptions::new(auth.clone())).unwrap();
     println!("{label} create: {:?}", started.elapsed());
     assert_eq!(vault.status(), VaultStatus::Sealed);
 

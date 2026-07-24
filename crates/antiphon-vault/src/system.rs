@@ -75,6 +75,17 @@ pub trait System {
     fn ensure_dir(&self, path: &Path) -> io::Result<()>;
     fn path_exists(&self, path: &Path) -> bool;
     fn is_mount_point(&self, path: &Path) -> bool;
+
+    /// Allocate a fresh sparse container of the given size,
+    /// failing if it already exists. The default does the real
+    /// filesystem work; test doubles record the request.
+    fn allocate(&self, path: &Path, size_bytes: u64) -> io::Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let file = std::fs::File::create_new(path)?;
+        file.set_len(size_bytes)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -211,6 +222,7 @@ pub(crate) mod fake {
         pub scripted: RefCell<VecDeque<RunOutput>>,
         pub calls: RefCell<Vec<Invocation>>,
         pub ensured: RefCell<Vec<PathBuf>>,
+        pub allocated: RefCell<Vec<(PathBuf, u64)>>,
     }
 
     impl FakeSystem {
@@ -266,6 +278,17 @@ pub(crate) mod fake {
 
         fn is_mount_point(&self, path: &Path) -> bool {
             self.mounted.contains(path)
+        }
+
+        fn allocate(
+            &self,
+            path: &Path,
+            size_bytes: u64,
+        ) -> io::Result<()> {
+            self.allocated
+                .borrow_mut()
+                .push((path.to_path_buf(), size_bytes));
+            Ok(())
         }
     }
 }

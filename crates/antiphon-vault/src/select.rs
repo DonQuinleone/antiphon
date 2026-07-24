@@ -6,10 +6,13 @@ use antiphon_store::StoreLayout;
 
 use crate::apfs::ApfsVault;
 use crate::gocryptfs::GocryptfsVault;
+use crate::luks2::Luks2Vault;
 use crate::vault::{Vault, VaultError};
 
 const GOCRYPTFS_DIR: &str = "vault.gocryptfs";
 const APFS_IMAGE: &str = "vault.sparseimage";
+const LUKS_CONTAINER: &str = "vault.luks";
+const MAPPER_PREFIX: &str = "antiphon";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Resolved {
@@ -56,13 +59,28 @@ fn build(
             home.join(GOCRYPTFS_DIR),
             mount,
         ))),
-        // The luks2 backend lands from the wt/luks branch;
-        // until it merges, selecting it reports itself
-        // unsupported rather than pretending to seal anything.
-        Resolved::Luks2 => {
-            Err(VaultError::UnsupportedOnThisBuild("luks2"))
-        }
+        Resolved::Luks2 => Ok(Box::new(Luks2Vault::new(
+            home.join(LUKS_CONTAINER),
+            mapper_name(layout),
+            mount,
+            current_user(),
+        ))),
     }
+}
+
+/// A device-mapper name unique to this store, so two stores on
+/// one machine never collide on /dev/mapper.
+fn mapper_name(layout: &StoreLayout) -> String {
+    let mut hash: u64 = 1469598103934665603;
+    for byte in layout.root().as_os_str().as_encoded_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(1099511628211);
+    }
+    format!("{MAPPER_PREFIX}-{hash:016x}")
+}
+
+fn current_user() -> String {
+    std::env::var("USER").unwrap_or_else(|_| "root".to_owned())
 }
 
 /// The ciphertext container lives beside the store root, so it
@@ -108,6 +126,15 @@ mod tests {
     }
 
     #[test]
+    fn mapper_names_are_stable_and_store_specific() {
+        let one = StoreLayout::new("/data/a/store");
+        let two = StoreLayout::new("/data/b/store");
+        assert_eq!(mapper_name(&one), mapper_name(&one));
+        assert_ne!(mapper_name(&one), mapper_name(&two));
+        assert!(mapper_name(&one).starts_with("antiphon-"));
+    }
+
+    #[test]
     fn containers_sit_beside_the_store_root() {
         let layout = StoreLayout::new("/data/antiphon/store");
         let home = vault_home(&layout).unwrap();
@@ -119,18 +146,6 @@ mod tests {
         let layout = StoreLayout::new("/");
         let err = vault_home(&layout).unwrap_err();
         assert!(matches!(err, VaultError::Io(_)));
-    }
-
-    #[test]
-    fn luks2_reports_unsupported_on_this_build() {
-        let layout = StoreLayout::new("/data/antiphon/store");
-        let Err(err) = build(Resolved::Luks2, &layout) else {
-            panic!("luks2 built despite being unsupported");
-        };
-        assert!(matches!(
-            err,
-            VaultError::UnsupportedOnThisBuild("luks2")
-        ));
     }
 
     #[test]

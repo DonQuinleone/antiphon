@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn create_builds_an_encrypted_sparse_image() {
         let vault = vault(FakeSystem::default());
-        vault.create(&CreateOptions { auth: auth() }).unwrap();
+        vault.create(&CreateOptions::new(auth())).unwrap();
         let calls = vault.system.calls.borrow();
         assert_eq!(calls.len(), 1);
         let create = &calls[0];
@@ -213,7 +213,7 @@ mod tests {
         let system = FakeSystem::with_paths(&[&image()], &[]);
         let vault = vault(system);
         let err =
-            vault.create(&CreateOptions { auth: auth() }).unwrap_err();
+            vault.create(&CreateOptions::new(auth())).unwrap_err();
         assert!(matches!(err, VaultError::AlreadyExists(_)));
     }
 

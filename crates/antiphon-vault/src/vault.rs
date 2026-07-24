@@ -38,9 +38,23 @@ impl Mounted {
     }
 }
 
+/// A default that comfortably holds a large mailbox while a
+/// sparse container keeps the on-disk cost to what is used.
+pub const DEFAULT_VAULT_BYTES: u64 = 32 * 1024 * 1024 * 1024;
+
 #[derive(Debug, Clone)]
 pub struct CreateOptions {
     pub auth: Auth,
+    pub size_bytes: u64,
+}
+
+impl CreateOptions {
+    pub fn new(auth: Auth) -> CreateOptions {
+        CreateOptions {
+            auth,
+            size_bytes: DEFAULT_VAULT_BYTES,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +95,10 @@ pub enum VaultError {
     },
     Io(io::Error),
     UnsupportedOnThisBuild(&'static str),
+    SudoNeedsPassword {
+        command: String,
+    },
+    NotYet(&'static str),
 }
 
 impl fmt::Display for VaultError {
@@ -129,6 +147,17 @@ impl fmt::Display for VaultError {
                     "vault backend `{backend}` is not supported \
                      on this build"
                 )
+            }
+            VaultError::SudoNeedsPassword { command } => {
+                write!(
+                    out,
+                    "`{command}` needs a password for sudo; add \
+                     a passwordless sudoers rule for antiphond \
+                     or run it as a user that has one"
+                )
+            }
+            VaultError::NotYet(what) => {
+                write!(out, "{what} is not implemented yet")
             }
         }
     }

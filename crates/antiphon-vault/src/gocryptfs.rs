@@ -212,14 +212,14 @@ mod tests {
         let system = FakeSystem::with_paths(&[&config()], &[]);
         let vault = vault(system);
         let err =
-            vault.create(&CreateOptions { auth: auth() }).unwrap_err();
+            vault.create(&CreateOptions::new(auth())).unwrap_err();
         assert!(matches!(err, VaultError::AlreadyExists(_)));
     }
 
     #[test]
     fn create_inits_with_the_passphrase_off_argv() {
         let vault = vault(FakeSystem::default());
-        vault.create(&CreateOptions { auth: auth() }).unwrap();
+        vault.create(&CreateOptions::new(auth())).unwrap();
         let calls = vault.system.calls.borrow();
         assert_eq!(calls.len(), 1);
         let init = &calls[0];

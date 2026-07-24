@@ -1,0 +1,19 @@
+image: archlinux
+packages:
+  - cryptsetup
+  - e2fsprogs
+  - rust
+  - notmuch
+sources:
+  - https://git.sr.ht/~donquinleone/antiphon
+tasks:
+  - build: |
+      cd antiphon
+      cargo build --workspace --locked
+  - luks-cycle: |
+      cd antiphon
+      ./scripts/ci-luks-test.sh
+triggers:
+  - action: email
+    condition: failure
+    to: ~donquinleone/antiphon-devel@lists.sr.ht
