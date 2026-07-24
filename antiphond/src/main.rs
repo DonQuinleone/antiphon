@@ -1,4 +1,7 @@
+mod accounts;
 mod daemon;
+mod ipc;
+mod mailflow;
 mod notify;
 mod vaultctl;
 
