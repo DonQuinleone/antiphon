@@ -8,9 +8,10 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
     Block, Borders, List, ListItem, Paragraph, Row, Table, TableState,
+    Wrap,
 };
 
-use super::app::App;
+use super::app::{App, View};
 
 const SIDEBAR_WIDTH: u16 = 20;
 const DATE_WIDTH: u16 = 13;
@@ -27,6 +28,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
         area,
     );
     let (content, status) = split_status(area);
+    if app.view == View::Pager {
+        draw_pager(frame, app, content);
+        draw_status(frame, app, status);
+        return;
+    }
     let (sidebar, main) = split_sidebar(content, app.sidebar);
     if let Some(sidebar) = sidebar {
         draw_sidebar(frame, app, sidebar);
@@ -218,13 +224,54 @@ fn header_line(
     ])
 }
 
+fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
+    let theme = app.theme;
+    let Some(message) = app.selected_message() else {
+        return;
+    };
+    let mut lines = vec![
+        header_line(theme, "From:", message.from.clone()),
+        header_line(
+            theme,
+            "Date:",
+            format_date(message.date_unix, &app.date_format),
+        ),
+        header_line(theme, "Subject:", message.subject.clone()),
+        header_line(theme, "Tags:", message.tags.join(", ")),
+        Line::default(),
+    ];
+    lines.extend(app.pager_body.lines().map(|body_line| {
+        Line::from(Span::styled(
+            body_line.to_string(),
+            Style::new().fg(pager_line_colour(theme, body_line)),
+        ))
+    }));
+    let paragraph = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .scroll((app.pager_scroll, 0));
+    frame.render_widget(paragraph, area);
+}
+
+fn pager_line_colour(
+    theme: &Theme,
+    line: &str,
+) -> ratatui::style::Color {
+    if line.trim_start().starts_with('>') {
+        theme.text_muted
+    } else {
+        theme.text_primary
+    }
+}
+
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     let theme = app.theme;
     let text = match app.notice {
         Some(notice) => notice.to_string(),
         None => format!(
-            "{} messages \u{b7} {} unread \u{b7} theme {}",
+            "{} of {} messages \u{b7} {} unread shown \u{b7} \
+             theme {}",
             app.messages.len(),
+            app.total_messages,
             app.unread_count(),
             app.theme.name,
         ),

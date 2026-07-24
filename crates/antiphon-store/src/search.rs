@@ -17,6 +17,7 @@ pub struct MessageSummary {
     pub date_unix: i64,
     pub tags: Vec<String>,
     pub unread: bool,
+    pub path: PathBuf,
 }
 
 #[derive(Debug)]
@@ -75,6 +76,15 @@ impl SearchIndex {
         Ok(Self { db })
     }
 
+    pub fn count(&self, query: &str) -> Result<u32, SearchError> {
+        let wrap = |source| SearchError::Query {
+            query: query.to_owned(),
+            source,
+        };
+        let parsed = self.db.create_query(query).map_err(wrap)?;
+        parsed.count_messages().map_err(wrap)
+    }
+
     pub fn query(
         &self,
         query: &str,
@@ -108,6 +118,7 @@ fn summarise(
         date_unix: message.date(),
         tags,
         unread,
+        path: message.filename().to_path_buf(),
     })
 }
 

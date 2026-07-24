@@ -4,11 +4,23 @@ use antiphon_store::MessageSummary;
 use antiphon_ui::{Theme, VESPERS};
 
 const HALF_PAGE_ROWS: usize = 10;
+const PAGER_SCROLL_ROWS: u16 = 1;
+const PAGER_HALF_PAGE_ROWS: u16 = 10;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum View {
+    List,
+    Pager,
+}
 
 pub struct App {
     pub accounts: Vec<String>,
     pub messages: Vec<MessageSummary>,
+    pub total_messages: u32,
     pub selected: usize,
+    pub view: View,
+    pub pager_body: String,
+    pub pager_scroll: u16,
     pub reading_pane: ReadingPane,
     pub sidebar: bool,
     pub theme: &'static Theme,
@@ -18,7 +30,11 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(loaded: &Loaded, messages: Vec<MessageSummary>) -> App {
+    pub fn new(
+        loaded: &Loaded,
+        messages: Vec<MessageSummary>,
+        total_messages: u32,
+    ) -> App {
         let accounts = loaded
             .accounts
             .iter()
@@ -29,7 +45,11 @@ impl App {
         App {
             accounts,
             messages,
+            total_messages,
             selected: 0,
+            view: View::List,
+            pager_body: String::new(),
+            pager_scroll: 0,
             reading_pane: loaded.config.ui.reading_pane,
             sidebar: true,
             theme,
@@ -37,6 +57,12 @@ impl App {
             notice: None,
             quit: false,
         }
+    }
+
+    pub fn open_pager(&mut self, body: String) {
+        self.pager_body = body;
+        self.pager_scroll = 0;
+        self.view = View::Pager;
     }
 
     pub fn selected_message(&self) -> Option<&MessageSummary> {
@@ -52,6 +78,13 @@ impl App {
 
     pub fn apply(&mut self, action: Action) {
         self.notice = None;
+        match self.view {
+            View::List => self.apply_in_list(action),
+            View::Pager => self.apply_in_pager(action),
+        }
+    }
+
+    fn apply_in_list(&mut self, action: Action) {
         match action {
             Action::MoveDown => self.select_forward(1),
             Action::MoveUp => self.select_back(1),
@@ -64,6 +97,36 @@ impl App {
             Action::Quit => self.quit = true,
             _ => self.notice = Some("arrives later in M2"),
         }
+    }
+
+    fn apply_in_pager(&mut self, action: Action) {
+        match action {
+            Action::MoveDown => {
+                self.scroll_pager(PAGER_SCROLL_ROWS as i32)
+            }
+            Action::MoveUp => {
+                self.scroll_pager(-(PAGER_SCROLL_ROWS as i32))
+            }
+            Action::HalfPageDown => {
+                self.scroll_pager(PAGER_HALF_PAGE_ROWS as i32)
+            }
+            Action::HalfPageUp => {
+                self.scroll_pager(-(PAGER_HALF_PAGE_ROWS as i32))
+            }
+            Action::Top => self.pager_scroll = 0,
+            Action::Back | Action::Quit => self.view = View::List,
+            _ => self.notice = Some("arrives later in M2"),
+        }
+    }
+
+    fn scroll_pager(&mut self, rows: i32) {
+        let scrolled = i32::from(self.pager_scroll) + rows;
+        let ceiling = self.pager_line_count();
+        self.pager_scroll = scrolled.clamp(0, ceiling) as u16;
+    }
+
+    fn pager_line_count(&self) -> i32 {
+        self.pager_body.lines().count() as i32
     }
 
     fn select_forward(&mut self, rows: usize) {
@@ -101,12 +164,17 @@ mod tests {
                 date_unix: index as i64,
                 tags: Vec::new(),
                 unread: index % 2 == 0,
+                path: std::path::PathBuf::new(),
             })
             .collect();
         App {
             accounts: Vec::new(),
             messages,
+            total_messages: count as u32,
             selected: 0,
+            view: View::List,
+            pager_body: String::new(),
+            pager_scroll: 0,
             reading_pane: ReadingPane::Below,
             sidebar: true,
             theme: &VESPERS,
@@ -154,6 +222,22 @@ mod tests {
         assert!(app.notice.is_some());
         app.apply(Action::Quit);
         assert!(app.quit);
+    }
+
+    #[test]
+    fn pager_scrolls_clamped_and_returns_to_the_list() {
+        let mut app = app_with_messages(1);
+        app.open_pager("one\ntwo\nthree\n".to_string());
+        assert_eq!(app.view, View::Pager);
+        app.apply(Action::MoveUp);
+        assert_eq!(app.pager_scroll, 0);
+        app.apply(Action::HalfPageDown);
+        assert_eq!(app.pager_scroll, 3);
+        app.apply(Action::Top);
+        assert_eq!(app.pager_scroll, 0);
+        app.apply(Action::Quit);
+        assert_eq!(app.view, View::List);
+        assert!(!app.quit);
     }
 
     #[test]
