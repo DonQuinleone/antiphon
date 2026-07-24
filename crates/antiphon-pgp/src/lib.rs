@@ -6,5 +6,6 @@ mod testkit;
 mod verify;
 
 pub use keyring::Keyring;
+pub use sequoia_openpgp::Cert;
 pub use status::{Signature, SignatureStatus};
 pub use verify::verify;

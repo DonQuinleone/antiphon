@@ -183,6 +183,7 @@ dependencies = [
 name = "antiphon-pgp"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "mail-parser",
  "sequoia-openpgp",
 ]

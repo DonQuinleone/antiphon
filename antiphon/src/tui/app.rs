@@ -4,6 +4,7 @@ use antiphon_pgp::{Keyring, Signature};
 use antiphon_store::MessageSummary;
 use antiphon_ui::{Theme, VESPERS};
 
+use super::crypto::PgpPlan;
 use super::editor::EditorPane;
 use super::scope::{self, ViewScope};
 use super::sidebar::{self, SidebarEntry};
@@ -15,6 +16,16 @@ const PAGER_HALF_PAGE_ROWS: u16 = 10;
 
 const UNREAD_TAG: &str = "unread";
 const TEMPLATE_COMMAND: &str = "template ";
+
+/// Per-message overrides of the identity's pgp defaults:
+/// command name, whether it targets signing (else encryption),
+/// and the value it arms for the next compose.
+const PGP_TOGGLES: [(&str, bool, bool); 4] = [
+    ("sign", true, true),
+    ("nosign", true, false),
+    ("encrypt", false, true),
+    ("noencrypt", false, false),
+];
 pub const DEFAULT_QUERY: &str = "*";
 const FLAGGED_TAG: &str = "flagged";
 
@@ -139,6 +150,8 @@ pub struct App {
     pub current_query: String,
     pub pending_ops: Vec<OpIntent>,
     pub pending_template: Option<String>,
+    pending_sign: Option<bool>,
+    pending_encrypt: Option<bool>,
     pub frame_stats: FrameStats,
     pub composer: Composer,
     pub editor: Option<EditorPane>,
@@ -182,6 +195,8 @@ impl App {
             current_query: DEFAULT_QUERY.to_string(),
             pending_ops: Vec::new(),
             pending_template: None,
+            pending_sign: None,
+            pending_encrypt: None,
             frame_stats: FrameStats::default(),
             composer: loaded.config.ui.composer,
             editor: None,
@@ -358,7 +373,36 @@ impl App {
         self.current_query = query;
     }
 
+    /// The pgp plan for a compose starting now: the identity
+    /// default with any armed per-message overrides consumed.
+    pub fn take_pgp_plan(&mut self, default_sign: bool) -> PgpPlan {
+        PgpPlan {
+            sign: self.pending_sign.take().unwrap_or(default_sign),
+            encrypt: self.pending_encrypt.take().unwrap_or(false),
+        }
+    }
+
+    fn pgp_toggle(&mut self, command: &str) -> bool {
+        let Some((_, is_sign, value)) =
+            PGP_TOGGLES.iter().find(|(name, _, _)| *name == command)
+        else {
+            return false;
+        };
+        let (slot, what) = if *is_sign {
+            (&mut self.pending_sign, "signing")
+        } else {
+            (&mut self.pending_encrypt, "encryption")
+        };
+        *slot = Some(*value);
+        let state = if *value { "on" } else { "off" };
+        self.notice = Some(format!("next compose: {what} {state}"));
+        true
+    }
+
     pub fn run_command(&mut self, command: &str) {
+        if self.pgp_toggle(command.trim()) {
+            return;
+        }
         match command.trim() {
             "q" | "quit" => self.quit = true,
             "frames" => self.notice = Some(self.frame_stats.summary()),
@@ -532,6 +576,8 @@ mod tests {
             current_query: DEFAULT_QUERY.to_string(),
             pending_ops: Vec::new(),
             pending_template: None,
+            pending_sign: None,
+            pending_encrypt: None,
             frame_stats: FrameStats::default(),
             composer: Composer::Embedded,
             editor: None,
@@ -717,6 +763,57 @@ mod tests {
         assert_eq!(stats.max_micros, 300);
         assert_eq!(stats.mean_micros(), 200);
         assert_eq!(FrameStats::default().mean_micros(), 0);
+    }
+
+    #[test]
+    fn pgp_toggles_shape_the_next_compose_plan() {
+        let cases: &[(bool, &[&str], bool, bool)] = &[
+            (false, &[], false, false),
+            (true, &[], true, false),
+            (true, &["nosign"], false, false),
+            (false, &["sign"], true, false),
+            (false, &["encrypt"], false, true),
+            (false, &["sign", "encrypt"], true, true),
+            (true, &["encrypt"], true, true),
+            (true, &["encrypt", "noencrypt"], true, false),
+            (false, &["encrypt", "nosign"], false, true),
+            (false, &["sign", "nosign"], false, false),
+        ];
+        for (default_sign, commands, sign, encrypt) in cases {
+            let mut app = app_with_messages(1);
+            for command in *commands {
+                app.run_command(command);
+            }
+            let plan = app.take_pgp_plan(*default_sign);
+            let expected = PgpPlan {
+                sign: *sign,
+                encrypt: *encrypt,
+            };
+            assert_eq!(plan, expected, "{commands:?}");
+        }
+    }
+
+    #[test]
+    fn pgp_overrides_are_consumed_by_one_compose() {
+        let mut app = app_with_messages(1);
+        app.run_command("sign");
+        app.run_command("encrypt");
+        assert!(
+            app.notice
+                .as_deref()
+                .is_some_and(|n| n.contains("encryption on"))
+        );
+        let armed = app.take_pgp_plan(false);
+        assert_eq!(
+            armed,
+            PgpPlan {
+                sign: true,
+                encrypt: true,
+            }
+        );
+        let next = app.take_pgp_plan(false);
+        assert_eq!(next, PgpPlan::default());
+        assert!(app.take_pgp_plan(true).sign);
     }
 
     #[test]

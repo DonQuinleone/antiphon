@@ -12,11 +12,22 @@ pub struct ComposeIdentity {
     pub name: Option<String>,
     pub address: String,
     pub signature: Option<String>,
+    pub pgp_sign: bool,
+    pub pgp_key: Option<String>,
+}
+
+/// The pgp settings of one configured identity, keyed by its
+/// address so reply resolution can recover them.
+struct IdentityPgp {
+    address: String,
+    sign: bool,
+    key: Option<String>,
 }
 
 pub struct ComposeContext {
     entries: Vec<(String, ComposeIdentity)>,
     parsed: Vec<(String, Vec<ParsedIdentity>)>,
+    pgp: Vec<(String, Vec<IdentityPgp>)>,
     dirs: Dirs,
 }
 
@@ -40,9 +51,20 @@ impl ComposeContext {
                 )
             })
             .collect();
+        let pgp = loaded
+            .accounts
+            .iter()
+            .map(|named| {
+                (
+                    named.account.account.name.clone(),
+                    identity_pgp(&named.account),
+                )
+            })
+            .collect();
         ComposeContext {
             entries,
             parsed,
+            pgp,
             dirs: dirs.clone(),
         }
     }
@@ -78,6 +100,8 @@ impl ComposeContext {
                     name: identity.name.clone(),
                     address: identity.address.clone(),
                     signature: identity.signature.clone(),
+                    pgp_sign: identity.pgp_sign,
+                    pgp_key: identity.pgp_key.clone(),
                 },
             )
         })
@@ -97,6 +121,7 @@ impl ComposeContext {
         let addrs: Vec<Addr> =
             delivered.iter().map(|a| Addr::new(a)).collect();
         let resolved = reply_identity(identities, &addrs)?;
+        let pgp = self.pgp_for(account, &resolved.identity.address);
         Some(ComposeIdentity {
             name: resolved.identity.name.clone(),
             address: resolved.from.clone(),
@@ -105,8 +130,31 @@ impl ComposeContext {
                     antiphon_config::signature_text(&self.dirs, name)
                 },
             ),
+            pgp_sign: pgp.is_some_and(|pgp| pgp.sign),
+            pgp_key: pgp.and_then(|pgp| pgp.key.clone()),
         })
     }
+
+    fn pgp_for(
+        &self,
+        account: &str,
+        address: &str,
+    ) -> Option<&IdentityPgp> {
+        let (_, identities) =
+            self.pgp.iter().find(|(name, _)| name == account)?;
+        identities.iter().find(|pgp| pgp.address == address)
+    }
+}
+
+fn identity_pgp(file: &AccountFile) -> Vec<IdentityPgp> {
+    file.identities
+        .iter()
+        .map(|identity| IdentityPgp {
+            address: identity.address.clone(),
+            sign: identity.pgp_sign,
+            key: identity.pgp_key.clone(),
+        })
+        .collect()
 }
 
 fn parsed_identities(file: &AccountFile) -> Vec<ParsedIdentity> {
@@ -135,6 +183,8 @@ fn account_identity(
             signature: identity.signature.as_deref().and_then(|name| {
                 antiphon_config::signature_text(dirs, name)
             }),
+            pgp_sign: identity.pgp_sign,
+            pgp_key: identity.pgp_key.clone(),
         });
     }
     let user = file.imap.user.clone();
@@ -145,6 +195,8 @@ fn account_identity(
         name: None,
         address: user,
         signature: None,
+        pgp_sign: false,
+        pgp_key: None,
     })
 }
 
@@ -419,6 +471,8 @@ mod tests {
             name: Some("Tester".to_string()),
             address: "tester@example.com".to_string(),
             signature: Some("Kind regards\n".to_string()),
+            pgp_sign: false,
+            pgp_key: None,
         }
     }
 

@@ -1,5 +1,6 @@
 mod app;
 mod compose;
+mod crypto;
 mod draw;
 mod editor;
 mod scope;
@@ -28,7 +29,10 @@ use app::{
     App, DEFAULT_QUERY, KeyRoute, OpIntent, PromptKind, View,
     account_names, account_of,
 };
-use compose::{ComposeContext, ParsedDraft, ReplySource};
+use compose::{
+    ComposeContext, ComposeIdentity, ParsedDraft, ReplySource,
+};
+use crypto::ComposeCrypto;
 use editor::{EditorPane, EditorSession};
 use scope::ViewScope;
 
@@ -213,9 +217,11 @@ fn tick_editor(
     let pane = app.close_editor().expect("editor pane present");
     app.notice = Some(finish_compose(
         layout,
+        &app.keyring,
         &pane.account,
         &pane.written,
         &pane.path,
+        &pane.crypto,
         success,
     ));
     nudge_daemon();
@@ -382,6 +388,7 @@ fn pending_template_request(
             Some(&template),
             &now_attribution(),
         ),
+        crypto: compose_crypto(app, identity),
     })
 }
 
@@ -390,6 +397,20 @@ fn pending_template_request(
 struct EditorRequest {
     account: String,
     text: String,
+    crypto: ComposeCrypto,
+}
+
+/// The seal settings a compose starts with: the identity's
+/// defaults with any armed per-message overrides consumed.
+fn compose_crypto(
+    app: &mut App,
+    identity: &ComposeIdentity,
+) -> ComposeCrypto {
+    ComposeCrypto {
+        plan: app.take_pgp_plan(identity.pgp_sign),
+        key: identity.pgp_key.clone(),
+        address: identity.address.clone(),
+    }
 }
 
 fn dispatch(
@@ -413,8 +434,8 @@ fn dispatch(
     let path = app.selected_message()?.path.clone();
     match std::fs::read(&path) {
         Ok(raw) => {
-            let signature = antiphon_pgp::verify(&raw, &app.keyring);
-            app.open_pager(body_text(&raw), signature);
+            let opened = crypto::read_message(&raw, &app.keyring, None);
+            app.open_pager(opened.body, opened.signature);
         }
         Err(error) => {
             app.open_pager(
@@ -446,6 +467,7 @@ fn fresh_request(
             context.template(CONVENTION_NEW).as_deref(),
             &now_attribution(),
         ),
+        crypto: compose_crypto(app, identity),
     })
 }
 
@@ -484,13 +506,15 @@ fn reply_request(
         ),
         body: &body_text(&raw),
     };
+    let text = compose::reply_draft(
+        &identity,
+        &source,
+        context.template(CONVENTION_REPLY).as_deref(),
+    );
     Some(EditorRequest {
         account,
-        text: compose::reply_draft(
-            &identity,
-            &source,
-            context.template(CONVENTION_REPLY).as_deref(),
-        ),
+        text,
+        crypto: compose_crypto(app, &identity),
     })
 }
 
@@ -539,6 +563,7 @@ fn open_embedded(
         account: request.account.clone(),
         written: request.text.clone(),
         path: path.to_path_buf(),
+        crypto: request.crypto.clone(),
         session,
     });
     Ok(true)
@@ -556,9 +581,11 @@ fn suspend_compose(
     app.notice = Some(match status {
         Ok(status) => finish_compose(
             layout,
+            &app.keyring,
             &request.account,
             &request.text,
             path,
+            &request.crypto,
             status.success(),
         ),
         Err(error) => format!("editor: {error}"),
@@ -605,9 +632,11 @@ fn write_draft(
 
 fn finish_compose(
     layout: &StoreLayout,
+    keyring: &Keyring,
     account: &str,
     written: &str,
     path: &Path,
+    crypto: &ComposeCrypto,
     success: bool,
 ) -> String {
     if !success {
@@ -623,20 +652,43 @@ fn finish_compose(
         return COMPOSE_ABORTED.to_string();
     }
     match compose::parse_draft(&edited) {
-        Ok(parsed) => queue_message(layout, account, &parsed, path),
+        Ok(parsed) => queue_message(
+            layout, keyring, account, &parsed, path, crypto,
+        ),
         Err(error) => error,
     }
 }
 
+/// Seals (signs and/or encrypts) the assembled message per the
+/// compose plan and enqueues it. Any pgp failure aborts the
+/// send: the draft stays on disk and nothing reaches the
+/// outbox, so a message is never sent unprotected by accident.
 fn queue_message(
     layout: &StoreLayout,
+    keyring: &Keyring,
     account: &str,
     parsed: &ParsedDraft,
     path: &Path,
+    crypto: &ComposeCrypto,
 ) -> String {
     let raw = compose::assemble(parsed, unix_now());
     let envelope = compose::envelope(account, parsed);
-    match Outbox::open(layout).enqueue(&envelope, &raw) {
+    let sealed = match crypto::seal(
+        &raw,
+        &envelope.recipients,
+        crypto,
+        keyring,
+        None,
+    ) {
+        Ok(sealed) => sealed,
+        Err(error) => {
+            return format!(
+                "not sent: {error}; draft kept: {}",
+                path.display()
+            );
+        }
+    };
+    match Outbox::open(layout).enqueue(&envelope, &sealed) {
         Ok(_) => {
             let _ = std::fs::remove_file(path);
             format!(

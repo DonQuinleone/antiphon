@@ -411,6 +411,9 @@ fn prompt_line(theme: &Theme, prompt: &Prompt) -> Line<'static> {
 
 fn status_line(app: &App) -> Line<'static> {
     let theme = app.theme;
+    if let Some(pane) = &app.editor {
+        return compose_status(theme, pane);
+    }
     let text = match &app.notice {
         Some(notice) => notice.clone(),
         None => format!(
@@ -428,6 +431,23 @@ fn status_line(app: &App) -> Line<'static> {
         Span::styled(UNREAD_MARK, Style::new().fg(theme.accent)),
         Span::styled(text, Style::new().fg(theme.text_muted)),
     ])
+}
+
+fn compose_status(
+    theme: &Theme,
+    pane: &super::editor::EditorPane,
+) -> Line<'static> {
+    let mut spans = vec![Span::styled(
+        format!("compose \u{b7} {}", pane.account),
+        Style::new().fg(theme.text_muted),
+    )];
+    if let Some(label) = pane.crypto.plan.label() {
+        spans.push(Span::styled(
+            format!(" {label}"),
+            Style::new().fg(theme.accent),
+        ));
+    }
+    Line::from(spans)
 }
 
 fn context_prefix(app: &App) -> String {

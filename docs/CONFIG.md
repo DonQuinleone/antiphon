@@ -146,6 +146,27 @@ bad one. On reply, the most specific match wins (literal, then
 plus-pattern, then catch-all) and the From is the delivered
 address verbatim.
 
+## OpenPGP at compose time
+
+`pgp_sign` sets the default for mail sent from that identity;
+signing is off unless enabled. Before composing, `:sign`,
+`:nosign`, `:encrypt` and `:noencrypt` override the default
+for the next message only, and the compose statusline shows
+the resulting plan (`[sign]`, `[sign+encrypt]`). Signing goes
+through gpg-agent, so pinentry and smartcards work as they do
+for gpg; the signer is the `pgp_key` fingerprint or, absent
+that, the agent key whose user ID carries the identity
+address.
+
+Encryption requires a cert for every To and Cc address in the
+trusted keyring (`.asc`/`.pgp` files under the config
+directory's `pgp/`). If a cert is missing, signing fails, or
+the agent refuses, nothing is sent: the message stays in
+`store/drafts/` and the statusline names the problem. Received
+`multipart/encrypted` mail is decrypted through gpg-agent when
+opened, and any signature inside is verified against the same
+keyring.
+
 ## Machine state and data
 
 State (nothing precious) goes to `$XDG_STATE_HOME/antiphon`,

@@ -7,6 +7,8 @@ use portable_pty::{
 };
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use super::crypto::ComposeCrypto;
+
 const PTY_READ_CHUNK: usize = 4096;
 const SCROLLBACK_LINES: usize = 0;
 const EDITOR_TERM: &str = "xterm-256color";
@@ -20,6 +22,7 @@ pub struct EditorPane {
     pub account: String,
     pub written: String,
     pub path: PathBuf,
+    pub crypto: ComposeCrypto,
     pub session: EditorSession,
 }
 
