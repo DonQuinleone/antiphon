@@ -10,9 +10,11 @@ use antiphon_store::{
     MessageSummary, SearchError, SearchIndex, StoreLayout,
 };
 use ratatui::DefaultTerminal;
-use ratatui::crossterm::event::{self, Event, KeyEventKind};
+use ratatui::crossterm::event::{
+    self, Event, KeyCode, KeyEvent, KeyEventKind,
+};
 
-use app::{App, View};
+use app::{App, DEFAULT_QUERY, PromptKind, View};
 
 const INPUT_POLL: Duration = Duration::from_millis(250);
 const LIST_WINDOW: usize = 500;
@@ -25,17 +27,24 @@ pub fn run(loaded: &Loaded, layout: &StoreLayout) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let (messages, total) = match load_messages(layout) {
-        Ok(loaded_messages) => loaded_messages,
+    let index = match SearchIndex::open(layout) {
+        Ok(index) => index,
         Err(error) => {
             eprintln!("{error}");
             eprintln!("run `antiphon doctor` to check the setup");
             return ExitCode::FAILURE;
         }
     };
+    let (messages, total) = match query_window(&index, DEFAULT_QUERY) {
+        Ok(results) => results,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
+    };
     let mut app = App::new(loaded, messages, total);
     let mut terminal = ratatui::init();
-    let outcome = event_loop(&mut terminal, &mut app, keymap);
+    let outcome = event_loop(&mut terminal, &mut app, keymap, &index);
     ratatui::restore();
     match outcome {
         Ok(()) => ExitCode::SUCCESS,
@@ -46,12 +55,12 @@ pub fn run(loaded: &Loaded, layout: &StoreLayout) -> ExitCode {
     }
 }
 
-fn load_messages(
-    layout: &StoreLayout,
+fn query_window(
+    index: &SearchIndex,
+    query: &str,
 ) -> Result<(Vec<MessageSummary>, u32), SearchError> {
-    let index = SearchIndex::open(layout)?;
-    let messages = index.query("*", Some(LIST_WINDOW))?;
-    let total = index.count("*")?;
+    let messages = index.query(query, Some(LIST_WINDOW))?;
+    let total = index.count(query)?;
     Ok((messages, total))
 }
 
@@ -59,6 +68,7 @@ fn event_loop(
     terminal: &mut DefaultTerminal,
     app: &mut App,
     mut keymap: Keymap,
+    index: &SearchIndex,
 ) -> std::io::Result<()> {
     while !app.quit {
         terminal.draw(|frame| draw::draw(frame, app))?;
@@ -71,11 +81,49 @@ fn event_loop(
         if key.kind != KeyEventKind::Press {
             continue;
         }
+        if app.prompt.is_some() {
+            prompt_key(app, index, key);
+            continue;
+        }
         if let Resolution::Match(action) = keymap.feed(key) {
             dispatch(app, action);
         }
     }
     Ok(())
+}
+
+fn prompt_key(app: &mut App, index: &SearchIndex, key: KeyEvent) {
+    match key.code {
+        KeyCode::Char(ch) => app.prompt_push(ch),
+        KeyCode::Backspace => app.prompt_backspace(),
+        KeyCode::Esc => app.prompt_cancel(),
+        KeyCode::Enter => submit_prompt(app, index),
+        _ => {}
+    }
+}
+
+fn submit_prompt(app: &mut App, index: &SearchIndex) {
+    let Some(prompt) = app.prompt_submit() else {
+        return;
+    };
+    match prompt.kind {
+        PromptKind::Command => app.run_command(&prompt.buffer),
+        PromptKind::Search => run_search(app, index, prompt.buffer),
+    }
+}
+
+fn run_search(app: &mut App, index: &SearchIndex, raw: String) {
+    let query = if raw.trim().is_empty() {
+        DEFAULT_QUERY.to_string()
+    } else {
+        raw
+    };
+    match query_window(index, &query) {
+        Ok((messages, total)) => {
+            app.set_results(messages, total, query)
+        }
+        Err(error) => app.notice = Some(error.to_string()),
+    }
 }
 
 fn dispatch(app: &mut App, action: Action) {

@@ -11,7 +11,7 @@ use ratatui::widgets::{
     Wrap,
 };
 
-use super::app::{App, View};
+use super::app::{App, DEFAULT_QUERY, Prompt, PromptKind, View};
 
 const SIDEBAR_WIDTH: u16 = 20;
 const DATE_WIDTH: u16 = 13;
@@ -276,25 +276,62 @@ fn pager_line_colour(
 
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     let theme = app.theme;
-    let text = match app.notice {
-        Some(notice) => notice.to_string(),
+    let line = match &app.prompt {
+        Some(prompt) => prompt_line(theme, prompt),
+        None => status_line(app),
+    };
+    frame.render_widget(
+        Paragraph::new(line).style(Style::new().bg(theme.surface)),
+        area,
+    );
+}
+
+fn prompt_line(theme: &Theme, prompt: &Prompt) -> Line<'static> {
+    let sigil = match prompt.kind {
+        PromptKind::Search => "/",
+        PromptKind::Command => ":",
+    };
+    Line::from(vec![
+        Span::styled(
+            sigil.to_string(),
+            Style::new().fg(theme.accent_strong),
+        ),
+        Span::styled(
+            prompt.buffer.clone(),
+            Style::new().fg(theme.text_primary),
+        ),
+        Span::styled(
+            "\u{258c}".to_string(),
+            Style::new().fg(theme.accent),
+        ),
+    ])
+}
+
+fn status_line(app: &App) -> Line<'static> {
+    let theme = app.theme;
+    let text = match &app.notice {
+        Some(notice) => notice.clone(),
         None => format!(
-            "{} of {} messages \u{b7} {} unread shown \u{b7} \
+            "{}{} of {} messages \u{b7} {} unread shown \u{b7} \
              theme {}",
+            query_prefix(&app.current_query),
             app.messages.len(),
             app.total_messages,
             app.unread_count(),
             app.theme.name,
         ),
     };
-    let line = Line::from(vec![
+    Line::from(vec![
         Span::styled(UNREAD_MARK, Style::new().fg(theme.accent)),
         Span::styled(text, Style::new().fg(theme.text_muted)),
-    ]);
-    frame.render_widget(
-        Paragraph::new(line).style(Style::new().bg(theme.surface)),
-        area,
-    );
+    ])
+}
+
+fn query_prefix(query: &str) -> String {
+    if query == DEFAULT_QUERY {
+        return String::new();
+    }
+    format!("{query} \u{b7} ")
 }
 
 fn sender_name(from: &str) -> String {

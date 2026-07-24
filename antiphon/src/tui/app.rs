@@ -8,12 +8,25 @@ const PAGER_SCROLL_ROWS: u16 = 1;
 const PAGER_HALF_PAGE_ROWS: u16 = 10;
 
 const UNREAD_TAG: &str = "unread";
+pub const DEFAULT_QUERY: &str = "*";
 const FLAGGED_TAG: &str = "flagged";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum View {
     List,
     Pager,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PromptKind {
+    Search,
+    Command,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Prompt {
+    pub kind: PromptKind,
+    pub buffer: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -40,7 +53,9 @@ pub struct App {
     pub sidebar: bool,
     pub theme: &'static Theme,
     pub date_format: String,
-    pub notice: Option<&'static str>,
+    pub notice: Option<String>,
+    pub prompt: Option<Prompt>,
+    pub current_query: String,
     pub pending_ops: Vec<OpIntent>,
     pub quit: bool,
 }
@@ -71,6 +86,8 @@ impl App {
             theme,
             date_format: loaded.config.ui.date_format.clone(),
             notice: None,
+            prompt: None,
+            current_query: DEFAULT_QUERY.to_string(),
             pending_ops: Vec::new(),
             quit: false,
         }
@@ -112,16 +129,69 @@ impl App {
             Action::Bottom => self.selected = self.last_index(),
             Action::ToggleSidebar => self.sidebar = !self.sidebar,
             Action::CycleReadingPane => self.cycle_reading_pane(),
+            Action::Search => self.open_prompt(PromptKind::Search),
+            Action::Command => self.open_prompt(PromptKind::Command),
             Action::MarkRead => self.set_unread(false),
             Action::MarkUnread => self.set_unread(true),
             Action::ToggleFlagged => self.toggle_flagged(),
             Action::DeleteMessage => self.delete_selected(),
             Action::Quit => self.quit = true,
-            _ => {
-                self.notice =
-                    Some("not built yet; see DESIGN.md milestones")
+            _ => self.not_built_notice(),
+        }
+    }
+
+    fn open_prompt(&mut self, kind: PromptKind) {
+        self.prompt = Some(Prompt {
+            kind,
+            buffer: String::new(),
+        });
+    }
+
+    pub fn prompt_push(&mut self, ch: char) {
+        if let Some(prompt) = &mut self.prompt {
+            prompt.buffer.push(ch);
+        }
+    }
+
+    pub fn prompt_backspace(&mut self) {
+        if let Some(prompt) = &mut self.prompt {
+            prompt.buffer.pop();
+        }
+    }
+
+    pub fn prompt_cancel(&mut self) {
+        self.prompt = None;
+    }
+
+    pub fn prompt_submit(&mut self) -> Option<Prompt> {
+        self.prompt.take()
+    }
+
+    pub fn set_results(
+        &mut self,
+        messages: Vec<MessageSummary>,
+        total: u32,
+        query: String,
+    ) {
+        self.messages = messages;
+        self.total_messages = total;
+        self.selected = 0;
+        self.current_query = query;
+    }
+
+    pub fn run_command(&mut self, command: &str) {
+        match command.trim() {
+            "q" | "quit" => self.quit = true,
+            "" => {}
+            other => {
+                self.notice = Some(format!("unknown command: {other}"))
             }
         }
+    }
+
+    fn not_built_notice(&mut self) {
+        self.notice =
+            Some("not built yet; see DESIGN.md milestones".to_string());
     }
 
     fn set_unread(&mut self, unread: bool) {
@@ -195,10 +265,7 @@ impl App {
             }
             Action::Top => self.pager_scroll = 0,
             Action::Back | Action::Quit => self.view = View::List,
-            _ => {
-                self.notice =
-                    Some("not built yet; see DESIGN.md milestones")
-            }
+            _ => self.not_built_notice(),
         }
     }
 
@@ -263,6 +330,8 @@ mod tests {
             theme: &VESPERS,
             date_format: String::new(),
             notice: None,
+            prompt: None,
+            current_query: DEFAULT_QUERY.to_string(),
             pending_ops: Vec::new(),
             quit: false,
         }
@@ -367,6 +436,47 @@ mod tests {
         assert_eq!(app.selected, 0);
         assert_eq!(app.total_messages, 1);
         assert!(matches!(app.pending_ops[0], OpIntent::Delete { .. }));
+    }
+
+    #[test]
+    fn prompt_edits_cancels_and_submits() {
+        let mut app = app_with_messages(1);
+        app.apply(Action::Search);
+        for ch in "tag:unread".chars() {
+            app.prompt_push(ch);
+        }
+        app.prompt_backspace();
+        let prompt = app.prompt_submit().expect("open prompt");
+        assert_eq!(prompt.kind, PromptKind::Search);
+        assert_eq!(prompt.buffer, "tag:unrea");
+        assert!(app.prompt.is_none());
+
+        app.apply(Action::Command);
+        app.prompt_cancel();
+        assert!(app.prompt.is_none());
+    }
+
+    #[test]
+    fn commands_quit_or_complain() {
+        let mut app = app_with_messages(1);
+        app.run_command("nonsense");
+        assert!(
+            app.notice
+                .as_deref()
+                .is_some_and(|n| n.contains("nonsense"))
+        );
+        app.run_command("q");
+        assert!(app.quit);
+    }
+
+    #[test]
+    fn results_replace_the_window_and_reset_selection() {
+        let mut app = app_with_messages(5);
+        app.apply(Action::Bottom);
+        app.set_results(Vec::new(), 0, "tag:flagged".into());
+        assert_eq!(app.selected, 0);
+        assert_eq!(app.total_messages, 0);
+        assert_eq!(app.current_query, "tag:flagged");
     }
 
     #[test]
