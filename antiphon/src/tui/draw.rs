@@ -13,6 +13,8 @@ use ratatui::widgets::{
 use tui_term::widget::PseudoTerminal;
 
 use super::app::{App, DEFAULT_QUERY, Prompt, PromptKind, View};
+use super::scope::ViewScope;
+use super::sidebar::SidebarEntry;
 
 const SIDEBAR_WIDTH: u16 = 20;
 const DATE_WIDTH: u16 = 13;
@@ -23,6 +25,11 @@ const UNREAD_MARK: &str = "\u{25c6} ";
 const READ_MARK: &str = "  ";
 const FLAG_MARK: &str = "\u{2691} ";
 const NO_FLAG_MARK: &str = "  ";
+const ACTIVE_MARK: &str = "\u{25b8} ";
+const INACTIVE_MARK: &str = "  ";
+const SIDEBAR_BORDER_COLS: usize = 1;
+const SIDEBAR_RULE_COLS: usize =
+    SIDEBAR_WIDTH as usize - SIDEBAR_BORDER_COLS;
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
@@ -101,25 +108,72 @@ fn split_reading_pane(
 
 fn draw_sidebar(frame: &mut Frame, app: &App, area: Rect) {
     let theme = app.theme;
-    let mut items = vec![ListItem::new(Line::from(vec![
-        Span::styled(UNREAD_MARK, Style::new().fg(theme.unread_marker)),
-        Span::styled(
-            "unified",
-            Style::new()
-                .fg(theme.accent_strong)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ]))];
-    items.extend(app.accounts.iter().map(|account| {
-        ListItem::new(Line::from(Span::styled(
-            format!("  {account}"),
-            Style::new().fg(theme.text_muted),
-        )))
-    }));
+    let mut items = Vec::new();
+    for (index, entry) in app.sidebar_entries.iter().enumerate() {
+        if saved_section_starts(&app.sidebar_entries, index) {
+            items.push(sidebar_separator(theme));
+        }
+        items.push(sidebar_item(app, index, entry));
+    }
     let block = Block::new()
         .borders(Borders::RIGHT)
         .border_style(Style::new().fg(theme.border));
     frame.render_widget(List::new(items).block(block), area);
+}
+
+fn saved_section_starts(
+    entries: &[SidebarEntry],
+    index: usize,
+) -> bool {
+    if !entries[index].is_saved() {
+        return false;
+    }
+    index == 0 || !entries[index - 1].is_saved()
+}
+
+fn sidebar_separator(theme: &Theme) -> ListItem<'static> {
+    let rule = "\u{2500}".repeat(SIDEBAR_RULE_COLS);
+    ListItem::new(Line::from(Span::styled(
+        rule,
+        Style::new().fg(theme.border),
+    )))
+}
+
+fn sidebar_item(
+    app: &App,
+    index: usize,
+    entry: &SidebarEntry,
+) -> ListItem<'static> {
+    let theme = app.theme;
+    let active = entry_active(app, entry);
+    let marker = if active { ACTIVE_MARK } else { INACTIVE_MARK };
+    let mut style = if active {
+        Style::new()
+            .fg(theme.accent_strong)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::new().fg(theme.text_muted)
+    };
+    if index == app.sidebar_selected {
+        style = style.bg(theme.selection_bg).fg(theme.selection_fg);
+    }
+    ListItem::new(Line::from(Span::styled(
+        format!("{marker}{}", entry.label()),
+        style,
+    )))
+}
+
+fn entry_active(app: &App, entry: &SidebarEntry) -> bool {
+    match entry {
+        SidebarEntry::Unified => app.scope == ViewScope::Unified,
+        SidebarEntry::Account(account) => matches!(
+            &app.scope,
+            ViewScope::Account(current) if current == account
+        ),
+        SidebarEntry::Saved { name, .. } => {
+            app.active_search.as_deref() == Some(name)
+        }
+    }
 }
 
 fn draw_list(frame: &mut Frame, app: &App, area: Rect) {
@@ -336,7 +390,7 @@ fn status_line(app: &App) -> Line<'static> {
         None => format!(
             "{}{} of {} messages \u{b7} {} unread shown \u{b7} \
              theme {}{}",
-            query_prefix(&app.current_query),
+            context_prefix(app),
             app.messages.len(),
             app.total_messages,
             app.unread_count(),
@@ -348,6 +402,19 @@ fn status_line(app: &App) -> Line<'static> {
         Span::styled(UNREAD_MARK, Style::new().fg(theme.accent)),
         Span::styled(text, Style::new().fg(theme.text_muted)),
     ])
+}
+
+fn context_prefix(app: &App) -> String {
+    let scope = app.scope.label();
+    match &app.active_search {
+        Some(name) => format!("{scope} \u{b7} {name} \u{b7} "),
+        None => {
+            format!(
+                "{scope} \u{b7} {}",
+                query_prefix(&app.current_query)
+            )
+        }
+    }
 }
 
 fn query_prefix(query: &str) -> String {

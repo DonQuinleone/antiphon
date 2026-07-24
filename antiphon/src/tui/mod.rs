@@ -2,6 +2,9 @@ mod app;
 mod compose;
 mod draw;
 mod editor;
+mod scope;
+mod scope_shim;
+mod sidebar;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -23,10 +26,11 @@ use antiphon_ipc::{
 
 use app::{
     App, DEFAULT_QUERY, KeyRoute, OpIntent, PromptKind, View,
-    account_of,
+    account_names, account_of,
 };
 use compose::{ComposeContext, ParsedDraft, ReplySource};
 use editor::{EditorPane, EditorSession};
+use scope::ViewScope;
 
 const INPUT_POLL: Duration = Duration::from_millis(250);
 const EDITOR_POLL: Duration = Duration::from_millis(20);
@@ -52,7 +56,19 @@ pub fn run(
             return ExitCode::FAILURE;
         }
     };
-    let (messages, total) = match query_window(layout, DEFAULT_QUERY) {
+    let accounts = account_names(loaded);
+    let effective = match scope::effective_query(
+        &ViewScope::Unified,
+        &accounts,
+        DEFAULT_QUERY,
+    ) {
+        Ok(effective) => effective,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let (messages, total) = match query_window(layout, &effective) {
         Ok(results) => results,
         Err(error) => {
             eprintln!("{error}");
@@ -164,7 +180,12 @@ fn keymap_key(
     let Resolution::Match(action) = keymap.feed(key) else {
         return Ok(());
     };
-    let Some(request) = dispatch(app, action, context) else {
+    let request = dispatch(app, action, context);
+    if app.take_requery() {
+        let query = app.current_query.clone();
+        run_query(app, layout, query);
+    }
+    let Some(request) = request else {
         return Ok(());
     };
     begin_compose(terminal, app, layout, request)
@@ -213,13 +234,19 @@ fn maybe_refresh(
     }
     *last_refresh = Instant::now();
     let query = app.current_query.clone();
+    let Ok(effective) = app.scoped(&query) else {
+        return;
+    };
+    let Ok(unread_query) = app.scoped(UNREAD_QUERY) else {
+        return;
+    };
     let Ok(index) = SearchIndex::open(layout) else {
         return;
     };
-    let Ok(total) = index.count(&query) else {
+    let Ok(total) = index.count(&effective) else {
         return;
     };
-    let Ok(unread) = index.count(UNREAD_QUERY) else {
+    let Ok(unread) = index.count(&unread_query) else {
         return;
     };
     let unchanged =
@@ -228,7 +255,7 @@ fn maybe_refresh(
     if unchanged {
         return;
     }
-    let Ok((messages, fresh_total)) = query_window(layout, &query)
+    let Ok((messages, fresh_total)) = query_window(layout, &effective)
     else {
         return;
     };
@@ -309,7 +336,19 @@ fn run_search(app: &mut App, layout: &StoreLayout, raw: String) {
     } else {
         raw
     };
-    match query_window(layout, &query) {
+    app.active_search = None;
+    run_query(app, layout, query);
+}
+
+fn run_query(app: &mut App, layout: &StoreLayout, query: String) {
+    let effective = match app.scoped(&query) {
+        Ok(effective) => effective,
+        Err(error) => {
+            app.notice = Some(error.to_string());
+            return;
+        }
+    };
+    match query_window(layout, &effective) {
         Ok((messages, total)) => {
             app.set_results(messages, total, query)
         }

@@ -20,6 +20,9 @@ const DEFAULT_BINDINGS: &[(Action, &str)] = &[
     (Action::Command, ":"),
     (Action::NextAccount, "gt"),
     (Action::PreviousAccount, "gT"),
+    (Action::SidebarNext, "ctrl-n"),
+    (Action::SidebarPrevious, "ctrl-p"),
+    (Action::SidebarOpen, "ctrl-o"),
     (Action::ToggleSidebar, "B"),
     (Action::CycleReadingPane, "R"),
     (Action::Sync, ",s"),
@@ -243,6 +246,27 @@ mod tests {
             (shifted('R'), Action::CycleReadingPane),
             (press(KeyCode::Char('r')), Action::Reply),
             (press(KeyCode::Char('n')), Action::Compose),
+            (
+                KeyEvent::new(
+                    KeyCode::Char('n'),
+                    KeyModifiers::CONTROL,
+                ),
+                Action::SidebarNext,
+            ),
+            (
+                KeyEvent::new(
+                    KeyCode::Char('p'),
+                    KeyModifiers::CONTROL,
+                ),
+                Action::SidebarPrevious,
+            ),
+            (
+                KeyEvent::new(
+                    KeyCode::Char('o'),
+                    KeyModifiers::CONTROL,
+                ),
+                Action::SidebarOpen,
+            ),
         ];
         for (event, action) in cases {
             let mut keymap = Keymap::default();

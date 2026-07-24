@@ -4,6 +4,9 @@ use antiphon_store::MessageSummary;
 use antiphon_ui::{Theme, VESPERS};
 
 use super::editor::EditorPane;
+use super::scope::{self, ViewScope};
+use super::scope_shim::ScopeError;
+use super::sidebar::{self, SidebarEntry};
 
 const HALF_PAGE_ROWS: usize = 10;
 const PAGER_SCROLL_ROWS: u16 = 1;
@@ -104,8 +107,20 @@ pub fn account_of(path: &std::path::Path) -> String {
         .unwrap_or_default()
 }
 
+pub fn account_names(loaded: &Loaded) -> Vec<String> {
+    loaded
+        .accounts
+        .iter()
+        .map(|entry| entry.account.account.name.clone())
+        .collect()
+}
+
 pub struct App {
     pub accounts: Vec<String>,
+    pub scope: ViewScope,
+    pub sidebar_entries: Vec<SidebarEntry>,
+    pub sidebar_selected: usize,
+    pub active_search: Option<String>,
     pub messages: Vec<MessageSummary>,
     pub total_messages: u32,
     pub selected: usize,
@@ -125,6 +140,7 @@ pub struct App {
     pub composer: Composer,
     pub editor: Option<EditorPane>,
     editor_return: View,
+    requery: bool,
     pub quit: bool,
 }
 
@@ -134,15 +150,17 @@ impl App {
         messages: Vec<MessageSummary>,
         total_messages: u32,
     ) -> App {
-        let accounts = loaded
-            .accounts
-            .iter()
-            .map(|entry| entry.account.account.name.clone())
-            .collect();
+        let accounts = account_names(loaded);
+        let sidebar_entries =
+            sidebar::entries(&accounts, &loaded.config.saved_searches);
         let theme =
             Theme::by_name(&loaded.config.ui.theme).unwrap_or(&VESPERS);
         App {
             accounts,
+            scope: ViewScope::Unified,
+            sidebar_entries,
+            sidebar_selected: 0,
+            active_search: None,
             messages,
             total_messages,
             selected: 0,
@@ -162,8 +180,22 @@ impl App {
             composer: loaded.config.ui.composer,
             editor: None,
             editor_return: View::List,
+            requery: false,
             quit: false,
         }
+    }
+
+    /// Every query the client runs is built here, so nothing
+    /// can reach the index without the scope conjoined.
+    pub fn scoped(
+        &self,
+        user_query: &str,
+    ) -> Result<String, ScopeError> {
+        scope::effective_query(&self.scope, &self.accounts, user_query)
+    }
+
+    pub fn take_requery(&mut self) -> bool {
+        std::mem::take(&mut self.requery)
     }
 
     pub fn key_route(&self) -> KeyRoute {
@@ -224,6 +256,23 @@ impl App {
             Action::Top => self.selected = 0,
             Action::Bottom => self.selected = self.last_index(),
             Action::ToggleSidebar => self.sidebar = !self.sidebar,
+            Action::NextAccount => self.shift_scope(scope::next_scope),
+            Action::PreviousAccount => {
+                self.shift_scope(scope::previous_scope)
+            }
+            Action::SidebarNext => {
+                self.sidebar_selected = sidebar::next_index(
+                    self.sidebar_selected,
+                    self.sidebar_entries.len(),
+                )
+            }
+            Action::SidebarPrevious => {
+                self.sidebar_selected = sidebar::previous_index(
+                    self.sidebar_selected,
+                    self.sidebar_entries.len(),
+                )
+            }
+            Action::SidebarOpen => self.sidebar_open(),
             Action::CycleReadingPane => self.cycle_reading_pane(),
             Action::Search => self.open_prompt(PromptKind::Search),
             Action::Command => self.open_prompt(PromptKind::Command),
@@ -234,6 +283,33 @@ impl App {
             Action::Quit => self.quit = true,
             _ => self.not_built_notice(),
         }
+    }
+
+    fn shift_scope(
+        &mut self,
+        step: fn(&ViewScope, &[String]) -> ViewScope,
+    ) {
+        self.scope = step(&self.scope, &self.accounts);
+        self.requery = true;
+    }
+
+    fn sidebar_open(&mut self) {
+        let Some(entry) =
+            self.sidebar_entries.get(self.sidebar_selected)
+        else {
+            return;
+        };
+        match entry.clone() {
+            SidebarEntry::Unified => self.scope = ViewScope::Unified,
+            SidebarEntry::Account(account) => {
+                self.scope = ViewScope::Account(account)
+            }
+            SidebarEntry::Saved { name, query } => {
+                self.current_query = query;
+                self.active_search = Some(name);
+            }
+        }
+        self.requery = true;
     }
 
     fn open_prompt(&mut self, kind: PromptKind) {
@@ -428,6 +504,10 @@ mod tests {
             .collect();
         App {
             accounts: Vec::new(),
+            scope: ViewScope::Unified,
+            sidebar_entries: Vec::new(),
+            sidebar_selected: 0,
+            active_search: None,
             messages,
             total_messages: count as u32,
             selected: 0,
@@ -447,8 +527,17 @@ mod tests {
             composer: Composer::Embedded,
             editor: None,
             editor_return: View::List,
+            requery: false,
             quit: false,
         }
+    }
+
+    fn app_with_accounts(names: &[&str]) -> App {
+        let mut app = app_with_messages(1);
+        app.accounts =
+            names.iter().map(|name| (*name).to_string()).collect();
+        app.sidebar_entries = sidebar::entries(&app.accounts, &[]);
+        app
     }
 
     #[test]
@@ -639,6 +728,75 @@ mod tests {
         assert_eq!(app.selected, 0);
         assert_eq!(app.total_messages, 0);
         assert_eq!(app.current_query, "tag:flagged");
+    }
+
+    #[test]
+    fn gt_cycles_unified_through_accounts_and_back() {
+        let mut app = app_with_accounts(&["a", "b"]);
+        app.apply(Action::NextAccount);
+        assert_eq!(app.scope, ViewScope::Account("a".into()));
+        assert!(app.take_requery());
+        app.apply(Action::NextAccount);
+        assert_eq!(app.scope, ViewScope::Account("b".into()));
+        app.apply(Action::NextAccount);
+        assert_eq!(app.scope, ViewScope::Unified);
+        app.apply(Action::PreviousAccount);
+        assert_eq!(app.scope, ViewScope::Account("b".into()));
+        assert!(app.take_requery());
+        assert!(!app.take_requery());
+    }
+
+    #[test]
+    fn sidebar_moves_in_entry_order_without_querying() {
+        let mut app = app_with_accounts(&["a"]);
+        app.apply(Action::SidebarNext);
+        app.apply(Action::SidebarNext);
+        assert_eq!(app.sidebar_selected, 2);
+        assert!(!app.take_requery());
+        app.apply(Action::SidebarPrevious);
+        assert_eq!(app.sidebar_selected, 1);
+    }
+
+    #[test]
+    fn opening_an_account_entry_sets_the_scope() {
+        let mut app = app_with_accounts(&["a", "b"]);
+        app.apply(Action::SidebarNext);
+        app.apply(Action::SidebarNext);
+        app.apply(Action::SidebarOpen);
+        assert_eq!(app.scope, ViewScope::Account("b".into()));
+        assert!(app.take_requery());
+        assert_eq!(app.current_query, DEFAULT_QUERY);
+        assert!(app.active_search.is_none());
+    }
+
+    #[test]
+    fn opening_a_saved_search_keeps_scope_and_names_it() {
+        let mut app = app_with_accounts(&["a"]);
+        app.scope = ViewScope::Account("a".into());
+        let unread = app
+            .sidebar_entries
+            .iter()
+            .position(|entry| entry.label() == "unread")
+            .expect("built-in unread entry");
+        app.sidebar_selected = unread;
+        app.apply(Action::SidebarOpen);
+        assert_eq!(app.current_query, "tag:unread");
+        assert_eq!(app.active_search.as_deref(), Some("unread"));
+        assert_eq!(app.scope, ViewScope::Account("a".into()));
+        assert!(app.take_requery());
+    }
+
+    #[test]
+    fn app_queries_are_always_scope_conjoined() {
+        let mut app = app_with_accounts(&["a", "b"]);
+        assert_eq!(
+            app.scoped("tag:unread").unwrap(),
+            "(path:\"a/**\" or path:\"b/**\") and (tag:unread)",
+        );
+        app.scope = ViewScope::Account("a".into());
+        let scoped = app.scoped("*").unwrap();
+        assert_eq!(scoped, "(path:\"a/**\")");
+        assert!(!scoped.contains('b'));
     }
 
     #[test]

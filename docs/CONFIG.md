@@ -76,9 +76,20 @@ unparseable sequences fail at startup naming the entry.
 Actions: `move-down`, `move-up`, `top`, `bottom`,
 `half-page-down`, `half-page-up`, `open`, `back`, `quit`,
 `search`, `command`, `next-account`, `previous-account`,
+`sidebar-next`, `sidebar-previous`, `sidebar-open`,
 `toggle-sidebar`, `cycle-reading-pane`, `sync`, `reply`,
 `compose`, `mark-read`, `mark-unread`, `toggle-flagged`,
 `delete-message`.
+
+`next-account` (`gt`) and `previous-account` (`gT`) cycle the
+view scope: unified, then each account in turn. `sidebar-next`
+(`ctrl-n`) and `sidebar-previous` (`ctrl-p`) move the sidebar
+highlight over the unified view, the accounts, three built-in
+searches (`inbox`, `unread`, `flagged`) and the
+`[[saved_searches]]` from config, in that order;
+`sidebar-open` (`ctrl-o`) applies the highlighted entry.
+Account entries set the scope; saved searches run their query
+inside the current scope.
 
 ## accounts/*.toml
 
