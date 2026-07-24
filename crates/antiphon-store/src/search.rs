@@ -78,6 +78,7 @@ impl SearchIndex {
     pub fn query(
         &self,
         query: &str,
+        limit: Option<usize>,
     ) -> Result<Vec<MessageSummary>, SearchError> {
         let wrap = |source| SearchError::Query {
             query: query.to_owned(),
@@ -88,6 +89,7 @@ impl SearchIndex {
         let messages = parsed.search_messages().map_err(wrap)?;
         messages
             .into_iter()
+            .take(limit.unwrap_or(usize::MAX))
             .map(|message| summarise(&message).map_err(wrap))
             .collect()
     }

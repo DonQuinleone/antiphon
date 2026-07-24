@@ -100,7 +100,7 @@ fn generated_store_indexes_and_answers_queries() {
     run_mailgen(layout.root());
 
     let index = SearchIndex::open(&layout).unwrap();
-    let all = index.query("*").unwrap();
+    let all = index.query("*", None).unwrap();
     assert_eq!(all.len(), MESSAGE_COUNT);
 
     let threads: HashSet<&str> =
@@ -110,16 +110,16 @@ fn generated_store_indexes_and_answers_queries() {
         "replies should share thread ids"
     );
 
-    let unread = index.query("tag:unread").unwrap();
+    let unread = index.query("tag:unread", None).unwrap();
     assert!(!unread.is_empty(), "recent messages stay unread");
     assert!(
         unread.len() < MESSAGE_COUNT,
         "seen flags should strip unread"
     );
 
-    let scoped = index.query("path:acct0/**").unwrap();
+    let scoped = index.query("path:acct0/**", None).unwrap();
     assert!(!scoped.is_empty(), "account scoping works");
 
-    let by_word = index.query("archive").unwrap();
+    let by_word = index.query("archive", None).unwrap();
     assert!(!by_word.is_empty(), "body text is searchable");
 }

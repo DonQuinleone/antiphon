@@ -109,7 +109,7 @@ fn wrapper_reads_an_index_built_by_notmuch_new() {
     run_notmuch_new(&config);
 
     let index = SearchIndex::open(&layout).unwrap();
-    let all = index.query("*").unwrap();
+    let all = index.query("*", None).unwrap();
     assert_eq!(all.len(), 3);
 
     let subjects: Vec<&str> =
@@ -136,7 +136,7 @@ fn wrapper_reads_an_index_built_by_notmuch_new() {
     assert!(seen.tags.iter().any(|t| t == "inbox"));
 
     let scoped = index
-        .query(&format!("path:{ACCOUNT}/** and tag:unread"))
+        .query(&format!("path:{ACCOUNT}/** and tag:unread"), None)
         .unwrap();
     assert_eq!(scoped.len(), 2);
     assert!(scoped[0].date_unix > scoped[1].date_unix, "newest first");

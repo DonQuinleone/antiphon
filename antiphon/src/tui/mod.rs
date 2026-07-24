@@ -50,9 +50,7 @@ fn load_messages(
     layout: &StoreLayout,
 ) -> Result<Vec<MessageSummary>, SearchError> {
     let index = SearchIndex::open(layout)?;
-    let mut messages = index.query("*")?;
-    messages.truncate(LIST_WINDOW);
-    Ok(messages)
+    index.query("*", Some(LIST_WINDOW))
 }
 
 fn event_loop(
