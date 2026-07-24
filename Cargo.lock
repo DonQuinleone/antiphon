@@ -91,6 +91,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "antiphon-core"
+version = "0.0.0"
+dependencies = [
+ "crossterm",
+]
+
+[[package]]
 name = "antiphon-store"
 version = "0.0.0"
 dependencies = [
