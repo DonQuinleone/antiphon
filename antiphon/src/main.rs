@@ -1,3 +1,4 @@
+mod autostart;
 mod doctor;
 mod tui;
 mod vaultcmd;
@@ -62,6 +63,14 @@ fn open_client() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // The daemon may hold the only key to the store: behind a
+    // sealed vault it mounts it, so start it before the
+    // existence check.
+    if let Err(error) =
+        autostart::ensure_daemon(loaded.config.daemon.autostart, &dirs)
+    {
+        eprintln!("{error}");
+    }
     let layout = StoreLayout::new(dirs.store_root());
     if !layout.exists() {
         eprintln!(

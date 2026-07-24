@@ -8,6 +8,7 @@ pub struct Config {
     pub ui: Ui,
     pub vault: Vault,
     pub sync: Sync,
+    pub daemon: DaemonConfig,
     pub notifications: Notifications,
     pub keys: BTreeMap<String, String>,
     pub saved_searches: Vec<SavedSearch>,
@@ -17,6 +18,18 @@ pub struct Config {
 #[serde(deny_unknown_fields, default)]
 pub struct Sync {
     pub interval_minutes: u32,
+}
+
+#[derive(Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct DaemonConfig {
+    pub autostart: bool,
+}
+
+impl Default for DaemonConfig {
+    fn default() -> DaemonConfig {
+        DaemonConfig { autostart: true }
+    }
 }
 
 impl Default for Sync {
