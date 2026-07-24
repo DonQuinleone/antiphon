@@ -56,5 +56,5 @@ fn open_client() -> ExitCode {
         );
         return ExitCode::FAILURE;
     }
-    tui::run(&loaded, &layout)
+    tui::run(&loaded, &layout, &dirs.config.join("signatures"))
 }

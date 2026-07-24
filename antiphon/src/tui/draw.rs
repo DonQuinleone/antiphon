@@ -342,7 +342,7 @@ fn queued_suffix(pending: usize) -> String {
     format!(" \u{b7} {pending} queued for antiphond")
 }
 
-fn sender_name(from: &str) -> String {
+pub(super) fn sender_name(from: &str) -> String {
     let name = from.split('<').next().unwrap_or("").trim();
     let name = name.trim_matches('"');
     if name.is_empty() {
@@ -351,7 +351,7 @@ fn sender_name(from: &str) -> String {
     name.to_string()
 }
 
-fn format_date(unix: i64, format: &str) -> String {
+pub(super) fn format_date(unix: i64, format: &str) -> String {
     let Some(utc) = DateTime::from_timestamp(unix, 0) else {
         return String::new();
     };
