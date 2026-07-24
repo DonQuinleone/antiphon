@@ -94,6 +94,40 @@ jobs:
       - name: Build the release binaries
         run: cargo build --workspace --locked --release
 
+  perf-smoke:
+    name: perf smoke (20k store)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install stable toolchain
+        # dtolnay/rust-toolchain master 2026-07-24
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: stable
+      - name: Cache cargo artefacts
+        # v2.9.1
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+      - name: Install notmuch
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y notmuch libnotmuch-dev
+      - name: Build the store examples
+        run: >
+          cargo build --release -p antiphon-store
+          --example mailgen --example querybench
+      - name: Generate a 20k-message store
+        run: >
+          ./target/release/examples/mailgen
+          --root /tmp/perf-store --messages 20000 --seed 1
+      - name: Assert query budgets
+        # A gross-regression tripwire on shared runners, not
+        # the strict local budgets from DESIGN.md section 9.
+        run: >
+          ./target/release/examples/querybench
+          /tmp/perf-store --assert-under 200
+
   msrv:
     name: MSRV (1.95)
     runs-on: ubuntu-latest
