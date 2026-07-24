@@ -8,6 +8,7 @@ sources:
   - https://git.sr.ht/~donquinleone/antiphon
 environment:
   MSRV: "1.95"
+  RUSTFLAGS: "-C target-feature=-crt-static"
 tasks:
   - toolchain: |
       rustup-init -y --profile minimal --default-toolchain "$MSRV" \
