@@ -1,5 +1,6 @@
 mod autostart;
 mod doctor;
+mod oauthcmd;
 mod sendmail;
 mod tui;
 mod vaultcmd;
@@ -34,6 +35,11 @@ enum Command {
         #[command(subcommand)]
         action: VaultAction,
     },
+    /// Manage OAuth sign-ins for [oauth] accounts.
+    Oauth {
+        #[command(subcommand)]
+        action: OauthAction,
+    },
     /// Sendmail-compatible queueing for git send-email.
     #[command(disable_help_flag = true)]
     Sendmail {
@@ -48,11 +54,25 @@ enum VaultAction {
     Create,
 }
 
+#[derive(Subcommand)]
+enum OauthAction {
+    /// Run the provider's sign-in flow and store the grants.
+    Login { account: String },
+    /// Show the stored grants and their expiry.
+    Status { account: String },
+}
+
 fn main() -> ExitCode {
     match Cli::parse().command {
         Some(Command::Doctor { init_store }) => doctor::run(init_store),
         Some(Command::Vault { action }) => match action {
             VaultAction::Create => vaultcmd::create(),
+        },
+        Some(Command::Oauth { action }) => match action {
+            OauthAction::Login { account } => oauthcmd::login(&account),
+            OauthAction::Status { account } => {
+                oauthcmd::status(&account)
+            }
         },
         Some(Command::Sendmail { args }) => sendmail::run(&args),
         None => open_client(),

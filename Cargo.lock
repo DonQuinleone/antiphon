@@ -135,6 +135,7 @@ dependencies = [
  "antiphon-config",
  "antiphon-core",
  "antiphon-ipc",
+ "antiphon-oauth",
  "antiphon-pgp",
  "antiphon-pgp-agent",
  "antiphon-render",
@@ -145,6 +146,7 @@ dependencies = [
  "clap",
  "portable-pty",
  "ratatui",
+ "secrecy",
  "tui-term",
  "vt100",
 ]

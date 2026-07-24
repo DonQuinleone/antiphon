@@ -12,6 +12,7 @@ description = "A modern mail client for the terminal"
 antiphon-config = { path = "../crates/antiphon-config" }
 antiphon-core = { path = "../crates/antiphon-core" }
 antiphon-ipc = { path = "../crates/antiphon-ipc" }
+antiphon-oauth = { path = "../crates/antiphon-oauth" }
 antiphon-pgp = { path = "../crates/antiphon-pgp" }
 antiphon-pgp-agent = { path = "../crates/antiphon-pgp-agent" }
 antiphon-render = { path = "../crates/antiphon-render" }
@@ -24,6 +25,9 @@ clap = { version = "=4.6.4", features = ["derive"] }
 portable-pty = "=0.9.0"
 tui-term = "=0.3.4"
 vt100 = "=0.16.2"
+
+[dev-dependencies]
+secrecy = "=0.10.3"
 
 [build-dependencies]
 antiphon-buildinfo = { path = "../crates/antiphon-buildinfo" }
