@@ -27,6 +27,20 @@ pub fn fresh_draft(
     draft_text(identity, "", "", "", &body, None)
 }
 
+pub fn unsubscribe_draft(
+    identity: &ComposeIdentity,
+    mailto: &antiphon_render::MailtoUnsubscribe,
+) -> String {
+    draft_text(
+        identity,
+        &mailto.address,
+        "",
+        mailto.subject.as_deref().unwrap_or(""),
+        mailto.body.as_deref().unwrap_or(""),
+        None,
+    )
+}
+
 pub fn reply_draft_to(
     identity: &ComposeIdentity,
     source: &ReplySource<'_>,
@@ -361,6 +375,27 @@ mod tests {
             parsed.in_reply_to.as_deref(),
             Some("id-1@example.com")
         );
+    }
+
+    #[test]
+    fn unsubscribe_drafts_prefill_from_the_mailto_uri() {
+        let mailto = antiphon_render::MailtoUnsubscribe {
+            address: "leave@example.com".to_string(),
+            subject: Some("unsubscribe me".to_string()),
+            body: Some("please".to_string()),
+        };
+        let draft = unsubscribe_draft(&identity(), &mailto);
+        assert!(draft.contains("To: leave@example.com\n"));
+        assert!(draft.contains("Subject: unsubscribe me\n"));
+        assert!(draft.contains("\n\nplease\n"), "{draft}");
+
+        let bare = antiphon_render::MailtoUnsubscribe {
+            address: "leave@example.com".to_string(),
+            subject: None,
+            body: None,
+        };
+        let draft = unsubscribe_draft(&identity(), &bare);
+        assert!(draft.contains("Subject: \n"));
     }
 
     #[test]

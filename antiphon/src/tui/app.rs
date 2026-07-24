@@ -1,6 +1,7 @@
 use antiphon_config::{Composer, Loaded, ReadingPane};
 use antiphon_core::Action;
 use antiphon_pgp::{Keyring, Signature};
+use antiphon_render::MailtoUnsubscribe;
 use antiphon_store::MessageSummary;
 use antiphon_ui::{Theme, VESPERS};
 
@@ -59,6 +60,8 @@ pub struct App {
     pub pending_patches: Option<PatchCommand>,
     pub(super) pending_sign: Option<bool>,
     pub(super) pending_encrypt: Option<bool>,
+    pub(super) pending_one_click: Option<String>,
+    pub(super) pending_unsubscribe: Option<(String, MailtoUnsubscribe)>,
     pub frame_stats: FrameStats,
     pub composer: Composer,
     pub editor: Option<EditorPane>,
@@ -106,6 +109,8 @@ impl App {
             pending_patches: None,
             pending_sign: None,
             pending_encrypt: None,
+            pending_one_click: None,
+            pending_unsubscribe: None,
             frame_stats: FrameStats::default(),
             composer: loaded.config.ui.composer,
             editor: None,
@@ -281,6 +286,8 @@ pub(super) fn app_with_messages(count: usize) -> App {
         pending_patches: None,
         pending_sign: None,
         pending_encrypt: None,
+        pending_one_click: None,
+        pending_unsubscribe: None,
         frame_stats: FrameStats::default(),
         composer: Composer::Embedded,
         editor: None,

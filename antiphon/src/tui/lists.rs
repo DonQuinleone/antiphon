@@ -1,5 +1,11 @@
-use antiphon_render::{ListHeaders, ListReply, reply_to_list};
+use antiphon_render::{
+    ListHeaders, ListReply, Unsubscribe, list_headers, reply_to_list,
+    unsubscribe_method,
+};
 
+use super::actions::account_of;
+use super::app::App;
+use super::commands::{Prompt, PromptKind};
 use super::compose::bare_address;
 
 #[derive(Debug)]
@@ -72,10 +78,89 @@ fn reply_all(
     }
 }
 
+impl App {
+    /// The :unsubscribe command: RFC 8058 one-click asks for
+    /// confirmation first; a mailto entry arms a compose; a
+    /// web-only entry is displayed, never fetched.
+    pub(super) fn unsubscribe_command(&mut self) {
+        let Some(message) = self.selected_message() else {
+            self.notice = Some("no message selected".to_string());
+            return;
+        };
+        let path = message.path.clone();
+        let raw = match std::fs::read(&path) {
+            Ok(raw) => raw,
+            Err(error) => {
+                self.notice = Some(format!(
+                    "cannot read {}: {error}",
+                    path.display()
+                ));
+                return;
+            }
+        };
+        let headers = list_headers(&raw);
+        let list = list_name(&headers).to_string();
+        match unsubscribe_method(&headers) {
+            Unsubscribe::OneClick { url } => {
+                self.confirm_one_click(url, list)
+            }
+            Unsubscribe::Mailto(mailto) => {
+                self.pending_unsubscribe =
+                    Some((account_of(&path), mailto))
+            }
+            Unsubscribe::Browse { url } => {
+                self.notice =
+                    Some(format!("open to unsubscribe: {url}"))
+            }
+            Unsubscribe::None => {
+                self.notice = Some(
+                    "no unsubscribe header on this message".to_string(),
+                )
+            }
+        }
+    }
+
+    fn confirm_one_click(&mut self, url: String, list: String) {
+        self.pending_one_click = Some(url);
+        self.prompt = Some(Prompt {
+            kind: PromptKind::ConfirmUnsubscribe,
+            buffer: list,
+        });
+    }
+
+    pub(super) fn confirming_unsubscribe(&self) -> bool {
+        self.prompt.as_ref().is_some_and(|prompt| {
+            prompt.kind == PromptKind::ConfirmUnsubscribe
+        })
+    }
+
+    pub(super) fn confirm_unsubscribe(&mut self, confirmed: bool) {
+        self.prompt = None;
+        let Some(url) = self.pending_one_click.take() else {
+            return;
+        };
+        if !confirmed {
+            self.notice = Some("unsubscribe cancelled".to_string());
+            return;
+        }
+        self.notice = Some(queue_one_click(&url));
+    }
+}
+
+/// The one hand-off point for a confirmed RFC 8058 unsubscribe:
+/// it records the intent in the status line; the POST itself is
+/// antiphond's, wired in a later slice, so no network happens
+/// here.
+fn queue_one_click(url: &str) -> String {
+    format!("queued: one-click unsubscribe \u{b7} POST {url}")
+}
+
 #[cfg(test)]
 mod tests {
     use antiphon_render::ListPost;
 
+    use super::super::app::app_with_messages;
+    use super::super::testkit::TempDir;
     use super::*;
 
     fn headers(
@@ -177,6 +262,106 @@ mod tests {
                 "old.example.com has no List-Post header; \
                  replying to all 2 recipient(s)"
             )
+        );
+    }
+
+    fn app_with_message(
+        extra_headers: &str,
+    ) -> (TempDir, super::super::app::App) {
+        let dir = TempDir::new();
+        let path = dir.path.join("msg.eml");
+        std::fs::write(
+            &path,
+            format!(
+                "From: news@example.com\r\n\
+                 To: me@example.com\r\n\
+                 Subject: weekly\r\n\
+                 {extra_headers}\
+                 \r\n\
+                 body\r\n"
+            ),
+        )
+        .unwrap();
+        let mut app = app_with_messages(1);
+        app.messages[0].path = path;
+        (dir, app)
+    }
+
+    #[test]
+    fn one_click_confirms_by_name_then_queues() {
+        let (_dir, mut app) = app_with_message(
+            "List-Id: <news.example.com>\r\n\
+             List-Unsubscribe: <https://example.com/u/1>\r\n\
+             List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n",
+        );
+        app.run_command("unsubscribe");
+        let prompt = app.prompt.clone().expect("a confirmation");
+        assert_eq!(prompt.kind, PromptKind::ConfirmUnsubscribe);
+        assert_eq!(prompt.buffer, "news.example.com");
+        assert!(app.confirming_unsubscribe());
+
+        app.confirm_unsubscribe(true);
+        assert!(app.prompt.is_none());
+        assert!(app.pending_one_click.is_none());
+        let notice = app.notice.as_deref().unwrap();
+        assert!(
+            notice.starts_with("queued: one-click unsubscribe"),
+            "{notice}"
+        );
+        assert!(notice.contains("https://example.com/u/1"));
+    }
+
+    #[test]
+    fn declining_the_confirmation_queues_nothing() {
+        let (_dir, mut app) = app_with_message(
+            "List-Id: <news.example.com>\r\n\
+             List-Unsubscribe: <https://example.com/u/1>\r\n\
+             List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n",
+        );
+        app.run_command("unsubscribe");
+        app.confirm_unsubscribe(false);
+        assert!(app.prompt.is_none());
+        assert!(app.pending_one_click.is_none());
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("unsubscribe cancelled")
+        );
+    }
+
+    #[test]
+    fn mailto_unsubscribe_arms_a_compose() {
+        let (_dir, mut app) = app_with_message(
+            "List-Unsubscribe: <mailto:leave@example.com\
+             ?subject=unsubscribe>\r\n",
+        );
+        app.run_command("unsubscribe");
+        assert!(app.prompt.is_none());
+        let (_, mailto) =
+            app.pending_unsubscribe.clone().expect("armed compose");
+        assert_eq!(mailto.address, "leave@example.com");
+        assert_eq!(mailto.subject.as_deref(), Some("unsubscribe"));
+    }
+
+    #[test]
+    fn web_only_unsubscribe_is_shown_not_fetched() {
+        let (_dir, mut app) = app_with_message(
+            "List-Unsubscribe: <https://example.com/u/1>\r\n",
+        );
+        app.run_command("unsubscribe");
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("open to unsubscribe: https://example.com/u/1")
+        );
+        assert!(app.pending_one_click.is_none());
+    }
+
+    #[test]
+    fn no_unsubscribe_header_says_so() {
+        let (_dir, mut app) = app_with_message("");
+        app.run_command("unsubscribe");
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("no unsubscribe header on this message")
         );
     }
 }

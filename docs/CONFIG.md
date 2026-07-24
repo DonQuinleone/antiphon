@@ -106,6 +106,15 @@ without any `List-Post` header falls back to reply-all with a
 warning naming the recipient count rather than guessing an
 address.
 
+`:unsubscribe` acts on the current message's
+`List-Unsubscribe` header. An RFC 8058 one-click entry asks
+for confirmation naming the list, then records the queued
+POST for antiphond (the client never touches the network, and
+the daemon route is not yet wired). A mailto entry opens a
+compose prefilled with the address, subject and body from the
+URI. A web-only entry displays the URL for you to open;
+nothing is ever fetched automatically.
+
 ## accounts/*.toml
 
 ```toml

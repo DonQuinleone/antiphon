@@ -41,6 +41,19 @@ pub(super) fn pending_template_request(
     })
 }
 
+pub(super) fn pending_unsubscribe_request(
+    app: &mut App,
+    context: &ComposeContext,
+) -> Option<EditorRequest> {
+    let (account, mailto) = app.pending_unsubscribe.take()?;
+    let (account, identity) = context.identity_for(&account)?;
+    Some(EditorRequest {
+        account: account.to_string(),
+        text: compose::unsubscribe_draft(identity, &mailto),
+        crypto: compose_crypto(app, identity),
+    })
+}
+
 /// A draft ready for the user's editor; the event loop owns
 /// the terminal hand-off, so app state never touches it.
 pub(super) struct EditorRequest {

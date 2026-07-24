@@ -89,6 +89,7 @@ impl FrameStats {
 pub enum PromptKind {
     Search,
     Command,
+    ConfirmUnsubscribe,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -161,6 +162,7 @@ impl App {
         }
         match command {
             "q" | "quit" => self.quit = true,
+            "unsubscribe" => self.unsubscribe_command(),
             "frames" => self.notice = Some(self.frame_stats.summary()),
             "" => {}
             other => {

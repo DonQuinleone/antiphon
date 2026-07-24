@@ -25,6 +25,9 @@ fn prompt_line(theme: &Theme, prompt: &Prompt) -> Line<'static> {
     let sigil = match prompt.kind {
         PromptKind::Search => "/",
         PromptKind::Command => ":",
+        PromptKind::ConfirmUnsubscribe => {
+            return confirm_line(theme, &prompt.buffer);
+        }
     };
     Line::from(vec![
         Span::styled(
@@ -38,6 +41,19 @@ fn prompt_line(theme: &Theme, prompt: &Prompt) -> Line<'static> {
         Span::styled(
             "\u{258c}".to_string(),
             Style::new().fg(theme.accent),
+        ),
+    ])
+}
+
+fn confirm_line(theme: &Theme, list: &str) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            format!("unsubscribe from {list}? "),
+            Style::new().fg(theme.text_primary),
+        ),
+        Span::styled(
+            "y/n".to_string(),
+            Style::new().fg(theme.accent_strong),
         ),
     ])
 }

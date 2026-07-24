@@ -39,7 +39,9 @@ use antiphon_pgp::Keyring;
 use actions::{OpIntent, account_names};
 use app::{App, DEFAULT_QUERY, KeyRoute, View};
 use commands::PromptKind;
-use dispatch::{dispatch, pending_template_request};
+use dispatch::{
+    dispatch, pending_template_request, pending_unsubscribe_request,
+};
 use identity::ComposeContext;
 use scope::ViewScope;
 use session::{begin_compose, finish_compose};
@@ -144,9 +146,12 @@ fn event_loop(
             KeyRoute::Editor => editor_key(app, key),
             KeyRoute::Prompt => {
                 prompt_key(app, layout, key);
-                if let Some(request) =
-                    pending_template_request(app, context)
-                {
+                let mut request =
+                    pending_template_request(app, context);
+                if request.is_none() {
+                    request = pending_unsubscribe_request(app, context);
+                }
+                if let Some(request) = request {
                     begin_compose(terminal, app, layout, request)?;
                 }
             }
@@ -322,6 +327,11 @@ fn wire_op(intent: OpIntent) -> Operation {
 }
 
 fn prompt_key(app: &mut App, layout: &StoreLayout, key: KeyEvent) {
+    if app.confirming_unsubscribe() {
+        let confirmed = matches!(key.code, KeyCode::Char('y' | 'Y'));
+        app.confirm_unsubscribe(confirmed);
+        return;
+    }
     match key.code {
         KeyCode::Char(ch) => app.prompt_push(ch),
         KeyCode::Backspace => app.prompt_backspace(),
@@ -341,6 +351,7 @@ fn submit_prompt(app: &mut App, layout: &StoreLayout) {
             patches::run_pending(app, layout);
         }
         PromptKind::Search => run_search(app, layout, prompt.buffer),
+        PromptKind::ConfirmUnsubscribe => {}
     }
 }
 
