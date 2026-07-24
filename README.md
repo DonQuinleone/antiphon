@@ -15,13 +15,16 @@
 [Builds](https://builds.sr.ht/~donquinleone/antiphon)
 
 > Pre-alpha, built milestone by milestone against
-> [DESIGN.md](DESIGN.md). Already working: `antiphon doctor`
-> (setup preflight with `--init-store`), the themed client over
-> a local notmuch store (list, pager, live search, vim-flavoured
-> rebindable keys), and `antiphond` syncing a plain-auth IMAP
-> account with client mutations landing in a crash-safe
-> operation log. Not yet: composing, OAuth accounts, the vault,
-> and everything else the design defers to later milestones.
+> [DESIGN.md](DESIGN.md). Already working: the themed client
+> over a local notmuch store (list, pager, live search,
+> vim-flavoured rebindable keys), composing and replying in
+> your own editor embedded in the client (durable outbox,
+> templates, identity-matched replies), multiple plain-auth
+> IMAP accounts synced by `antiphond` through a crash-safe
+> operation log, always-scoped search with saved searches, and
+> the encrypted vault ([docs/VAULT.md](docs/VAULT.md)) sealing
+> the store at rest. Not yet: OpenPGP, OAuth accounts, and
+> everything else the design defers to later milestones.
 
 Antiphon is a Rust TUI mail client built for people who live in
 the terminal and refuse to choose between speed, security and
