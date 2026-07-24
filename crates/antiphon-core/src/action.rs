@@ -20,6 +20,10 @@ pub enum Action {
     Sync,
     Reply,
     Compose,
+    MarkRead,
+    MarkUnread,
+    ToggleFlagged,
+    DeleteMessage,
 }
 
 const NAMES: &[(Action, &str)] = &[
@@ -41,6 +45,10 @@ const NAMES: &[(Action, &str)] = &[
     (Action::Sync, "sync"),
     (Action::Reply, "reply"),
     (Action::Compose, "compose"),
+    (Action::MarkRead, "mark-read"),
+    (Action::MarkUnread, "mark-unread"),
+    (Action::ToggleFlagged, "toggle-flagged"),
+    (Action::DeleteMessage, "delete-message"),
 ];
 
 impl Action {

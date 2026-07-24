@@ -25,6 +25,10 @@ const DEFAULT_BINDINGS: &[(Action, &str)] = &[
     (Action::Sync, ",s"),
     (Action::Reply, "r"),
     (Action::Compose, "n"),
+    (Action::MarkRead, "m"),
+    (Action::MarkUnread, "M"),
+    (Action::ToggleFlagged, "F"),
+    (Action::DeleteMessage, "d"),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -7,10 +7,25 @@ const HALF_PAGE_ROWS: usize = 10;
 const PAGER_SCROLL_ROWS: u16 = 1;
 const PAGER_HALF_PAGE_ROWS: u16 = 10;
 
+const UNREAD_TAG: &str = "unread";
+const FLAGGED_TAG: &str = "flagged";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum View {
     List,
     Pager,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OpIntent {
+    Flag {
+        message_id: String,
+        add: Vec<String>,
+        remove: Vec<String>,
+    },
+    Delete {
+        message_id: String,
+    },
 }
 
 pub struct App {
@@ -26,6 +41,7 @@ pub struct App {
     pub theme: &'static Theme,
     pub date_format: String,
     pub notice: Option<&'static str>,
+    pub pending_ops: Vec<OpIntent>,
     pub quit: bool,
 }
 
@@ -55,11 +71,13 @@ impl App {
             theme,
             date_format: loaded.config.ui.date_format.clone(),
             notice: None,
+            pending_ops: Vec::new(),
             quit: false,
         }
     }
 
     pub fn open_pager(&mut self, body: String) {
+        self.set_unread(false);
         self.pager_body = body;
         self.pager_scroll = 0;
         self.view = View::Pager;
@@ -94,12 +112,71 @@ impl App {
             Action::Bottom => self.selected = self.last_index(),
             Action::ToggleSidebar => self.sidebar = !self.sidebar,
             Action::CycleReadingPane => self.cycle_reading_pane(),
+            Action::MarkRead => self.set_unread(false),
+            Action::MarkUnread => self.set_unread(true),
+            Action::ToggleFlagged => self.toggle_flagged(),
+            Action::DeleteMessage => self.delete_selected(),
             Action::Quit => self.quit = true,
             _ => {
                 self.notice =
                     Some("not built yet; see DESIGN.md milestones")
             }
         }
+    }
+
+    fn set_unread(&mut self, unread: bool) {
+        let Some(message) = self.messages.get_mut(self.selected) else {
+            return;
+        };
+        if message.unread == unread {
+            return;
+        }
+        message.unread = unread;
+        let tag = UNREAD_TAG.to_string();
+        let (add, remove) = if unread {
+            message.tags.push(tag.clone());
+            (vec![tag], Vec::new())
+        } else {
+            message.tags.retain(|t| t != UNREAD_TAG);
+            (Vec::new(), vec![tag])
+        };
+        self.pending_ops.push(OpIntent::Flag {
+            message_id: message.id.clone(),
+            add,
+            remove,
+        });
+    }
+
+    fn toggle_flagged(&mut self) {
+        let Some(message) = self.messages.get_mut(self.selected) else {
+            return;
+        };
+        let tag = FLAGGED_TAG.to_string();
+        let flagged = message.tags.iter().any(|t| t == FLAGGED_TAG);
+        let (add, remove) = if flagged {
+            message.tags.retain(|t| t != FLAGGED_TAG);
+            (Vec::new(), vec![tag])
+        } else {
+            message.tags.push(tag.clone());
+            (vec![tag], Vec::new())
+        };
+        self.pending_ops.push(OpIntent::Flag {
+            message_id: message.id.clone(),
+            add,
+            remove,
+        });
+    }
+
+    fn delete_selected(&mut self) {
+        if self.selected >= self.messages.len() {
+            return;
+        }
+        let message = self.messages.remove(self.selected);
+        self.total_messages = self.total_messages.saturating_sub(1);
+        self.pending_ops.push(OpIntent::Delete {
+            message_id: message.id,
+        });
+        self.selected = self.selected.min(self.last_index());
     }
 
     fn apply_in_pager(&mut self, action: Action) {
@@ -186,6 +263,7 @@ mod tests {
             theme: &VESPERS,
             date_format: String::new(),
             notice: None,
+            pending_ops: Vec::new(),
             quit: false,
         }
     }
@@ -244,6 +322,51 @@ mod tests {
         app.apply(Action::Quit);
         assert_eq!(app.view, View::List);
         assert!(!app.quit);
+    }
+
+    #[test]
+    fn marking_read_flips_state_and_queues_one_op() {
+        let mut app = app_with_messages(2);
+        assert!(app.messages[0].unread);
+        app.apply(Action::MarkRead);
+        app.apply(Action::MarkRead);
+        assert!(!app.messages[0].unread);
+        assert_eq!(app.pending_ops.len(), 1);
+        let OpIntent::Flag { remove, add, .. } = &app.pending_ops[0]
+        else {
+            panic!("expected a flag op");
+        };
+        assert_eq!(remove, &vec!["unread".to_string()]);
+        assert!(add.is_empty());
+    }
+
+    #[test]
+    fn opening_the_pager_marks_the_message_read() {
+        let mut app = app_with_messages(1);
+        app.open_pager(String::new());
+        assert!(!app.messages[0].unread);
+        assert_eq!(app.pending_ops.len(), 1);
+    }
+
+    #[test]
+    fn flag_toggle_round_trips_through_tags() {
+        let mut app = app_with_messages(1);
+        app.apply(Action::ToggleFlagged);
+        assert!(app.messages[0].tags.contains(&"flagged".into()));
+        app.apply(Action::ToggleFlagged);
+        assert!(!app.messages[0].tags.contains(&"flagged".into()));
+        assert_eq!(app.pending_ops.len(), 2);
+    }
+
+    #[test]
+    fn delete_removes_the_row_and_clamps_selection() {
+        let mut app = app_with_messages(2);
+        app.apply(Action::Bottom);
+        app.apply(Action::DeleteMessage);
+        assert_eq!(app.messages.len(), 1);
+        assert_eq!(app.selected, 0);
+        assert_eq!(app.total_messages, 1);
+        assert!(matches!(app.pending_ops[0], OpIntent::Delete { .. }));
     }
 
     #[test]
