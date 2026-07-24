@@ -47,6 +47,14 @@ impl<S: System> ApfsVault<S> {
     pub fn mount_point(&self) -> &Path {
         &self.mount_point
     }
+
+    fn detach(&self, extra: &[&str]) -> Invocation {
+        let mut args: Vec<OsString> =
+            vec!["detach".into(), "-quiet".into()];
+        args.extend(extra.iter().map(OsString::from));
+        args.push(self.mount_point.clone().into());
+        Invocation::new("hdiutil", args)
+    }
 }
 
 impl<S: System> Vault for ApfsVault<S> {
@@ -118,15 +126,14 @@ impl<S: System> Vault for ApfsVault<S> {
         if !self.system.is_mount_point(&self.mount_point) {
             return Ok(());
         }
-        let detach = Invocation::new(
-            "hdiutil",
-            vec![
-                "detach".into(),
-                "-quiet".into(),
-                self.mount_point.clone().into(),
-            ],
-        );
-        run_tool(&self.system, &detach)?;
+        let plain = self.detach(&[]);
+        if self.system.run(&plain)?.success() {
+            return Ok(());
+        }
+        // A file handle lingering just after heavy I/O leaves
+        // the volume busy (hdiutil exits 16); a forced detach
+        // seals it rather than leaving plaintext mounted.
+        run_tool(&self.system, &self.detach(&["-force"]))?;
         Ok(())
     }
 }
@@ -257,6 +264,18 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].program, "hdiutil");
         assert_eq!(argv_of(&calls[0])[0], "detach");
+    }
+
+    #[test]
+    fn a_busy_volume_is_force_detached() {
+        let system = FakeSystem::with_paths(&[&image()], &[&mount()]);
+        system.script(&[(16, "resource busy")]);
+        let vault = vault(system);
+        vault.lock().unwrap();
+        let calls = vault.system.calls.borrow();
+        assert_eq!(calls.len(), 2);
+        assert!(!argv_of(&calls[0]).contains(&"-force".to_owned()));
+        assert!(argv_of(&calls[1]).contains(&"-force".to_owned()));
     }
 
     #[test]

@@ -99,6 +99,7 @@ pub enum VaultError {
         command: String,
     },
     NotYet(&'static str),
+    PassphraseCommand(String),
 }
 
 impl fmt::Display for VaultError {
@@ -158,6 +159,9 @@ impl fmt::Display for VaultError {
             }
             VaultError::NotYet(what) => {
                 write!(out, "{what} is not implemented yet")
+            }
+            VaultError::PassphraseCommand(detail) => {
+                write!(out, "vault passphrase_cmd: {detail}")
             }
         }
     }
