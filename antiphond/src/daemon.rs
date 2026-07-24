@@ -1,9 +1,10 @@
+use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use signal_hook::consts::{SIGINT, SIGTERM};
+use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 
 use antiphon_config::{Dirs, Loaded, load};
 use antiphon_ipc::{IpcServer, socket_path};
@@ -101,7 +102,7 @@ pub fn run() -> ExitCode {
 
 fn install_shutdown() -> Arc<AtomicBool> {
     let flag = Arc::new(AtomicBool::new(false));
-    for signal in [SIGINT, SIGTERM] {
+    for signal in [SIGHUP, SIGINT, SIGTERM] {
         let _ = signal_hook::flag::register(signal, flag.clone());
     }
     flag
@@ -129,19 +130,20 @@ fn serve_with_timer(
     let mut last_sync = Instant::now();
     while !shutdown.load(Ordering::Relaxed) {
         match server.accept() {
-            Ok(stream) => {
-                stream.set_nonblocking(false)?;
-                // A silent client must not starve the accept
-                // loop and the sync timer behind it.
-                stream.set_read_timeout(Some(CLIENT_READ_TIMEOUT))?;
-                daemon.serve_connection(stream);
-            }
+            Ok(stream) => serve_client(daemon, stream),
             Err(error)
                 if error.kind() == std::io::ErrorKind::WouldBlock =>
             {
                 std::thread::sleep(ACCEPT_POLL);
             }
-            Err(error) => return Err(error),
+            // A client that vanishes between connect and accept
+            // surfaces here (macOS says EINVAL, others say
+            // ECONNABORTED); no accept error may kill the
+            // daemon, it serves until told to stop.
+            Err(error) => {
+                eprintln!("accept: {error}");
+                std::thread::sleep(ACCEPT_POLL);
+            }
         }
         if due(last_sync, interval) {
             daemon.sync_pass(true);
@@ -150,6 +152,21 @@ fn serve_with_timer(
     }
     println!("shutting down; sealing the vault");
     Ok(())
+}
+
+/// A connection may die between accept and setup; a client
+/// lost that early is dropped, never a reason to stop serving.
+fn serve_client(daemon: &mut Daemon, stream: UnixStream) {
+    let ready = stream.set_nonblocking(false).and_then(|()| {
+        // A silent client must not starve the accept loop and
+        // the sync timer behind it.
+        stream.set_read_timeout(Some(CLIENT_READ_TIMEOUT))
+    });
+    if let Err(error) = ready {
+        eprintln!("client setup: {error}");
+        return;
+    }
+    daemon.serve_connection(stream);
 }
 
 #[cfg(test)]
