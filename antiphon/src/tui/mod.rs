@@ -76,6 +76,7 @@ fn event_loop(
     while !app.quit {
         terminal.draw(|frame| draw::draw(frame, app))?;
         if !event::poll(INPUT_POLL)? {
+            drain_ops(app);
             maybe_refresh(
                 app,
                 layout,
