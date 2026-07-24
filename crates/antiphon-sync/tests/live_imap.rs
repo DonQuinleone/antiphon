@@ -1,14 +1,21 @@
 use std::env;
 use std::fs;
-use std::net::TcpStream;
-use std::sync::Arc;
+use std::future::Future;
+use std::num::NonZeroU32;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use antiphon_store::{Op, OpKind, SearchIndex, StoreLayout};
 use antiphon_sync::{SyncAccount, replay, sync};
-use imap::Session;
-use rustls::pki_types::ServerName;
-use rustls::{ClientConfig, ClientConnection, StreamOwned};
+use imap_client::client::tokio::Client;
+use imap_client::imap_types::core::Vec1;
+use imap_client::imap_types::fetch::{
+    MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName,
+};
+use imap_client::imap_types::flag::Flag;
+use imap_client::imap_types::sequence::{
+    SeqOrUid, Sequence, SequenceSet,
+};
+use imap_client::tasks::tasks::logout::LogoutTask;
 
 const HOST_VAR: &str = "ANTIPHON_TEST_IMAP_HOST";
 const USER_VAR: &str = "ANTIPHON_TEST_IMAP_USER";
@@ -17,8 +24,6 @@ const IMAPS_PORT: u16 = 993;
 const INBOX: &str = "INBOX";
 const ACCOUNT_NAME: &str = "live-test";
 const UID_MARKER: &str = ",U=";
-
-type TestSession = Session<StreamOwned<ClientConnection, TcpStream>>;
 
 fn live_account() -> Option<SyncAccount> {
     let host = env::var(HOST_VAR).ok()?;
@@ -39,47 +44,76 @@ fn live_account() -> Option<SyncAccount> {
     })
 }
 
-fn open_session(account: &SyncAccount) -> TestSession {
-    let mut roots = rustls::RootCertStore::empty();
-    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let config = ClientConfig::builder()
-        .with_root_certificates(roots)
-        .with_no_client_auth();
-    let server_name =
-        ServerName::try_from(account.host.clone()).unwrap();
-    let connection =
-        ClientConnection::new(Arc::new(config), server_name).unwrap();
-    let tcp = TcpStream::connect((account.host.as_str(), account.port))
-        .unwrap();
-    let mut client =
-        imap::Client::new(StreamOwned::new(connection, tcp));
-    client.read_greeting().unwrap();
-    client
-        .login(&account.user, &account.password)
-        .map_err(|(error, _)| error)
+fn block_on<T>(future: impl Future<Output = T>) -> T {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
         .unwrap()
+        .block_on(future)
+}
+
+async fn open_client(account: &SyncAccount) -> Client {
+    let mut client = Client::rustls(
+        account.host.as_str(),
+        account.port,
+        false,
+        None,
+    )
+    .await
+    .unwrap();
+    client
+        .login(account.user.as_str(), account.password.as_str())
+        .await
+        .unwrap();
+    client
+}
+
+async fn logout(mut client: Client) {
+    let _ = client.resolve(LogoutTask::new()).await;
+}
+
+fn append_to_inbox(account: &SyncAccount, message: &str) {
+    block_on(async {
+        let mut client = open_client(account).await;
+        client
+            .append(INBOX, Vec::<Flag>::new(), message.as_bytes())
+            .await
+            .unwrap();
+        logout(client).await;
+    });
 }
 
 fn server_flags(
     account: &SyncAccount,
     uid: u32,
 ) -> Option<Vec<String>> {
-    let mut session = open_session(account);
-    session.select(INBOX).unwrap();
-    let fetches =
-        session.uid_fetch(uid.to_string(), "(UID FLAGS)").unwrap();
-    let flags = fetches
-        .iter()
-        .find(|fetch| fetch.uid == Some(uid))
-        .map(|fetch| {
-            fetch
-                .flags()
-                .iter()
-                .map(|flag| format!("{flag:?}"))
-                .collect()
-        });
-    let _ = session.logout();
-    flags
+    block_on(async {
+        let mut client = open_client(account).await;
+        client.select(INBOX).await.unwrap();
+        let set = SequenceSet(Vec1::from(Sequence::Single(
+            SeqOrUid::Value(NonZeroU32::new(uid).unwrap()),
+        )));
+        let items =
+            MacroOrMessageDataItemNames::MessageDataItemNames(vec![
+                MessageDataItemName::Flags,
+            ]);
+        let fetched = client.uid_fetch(set, items).await.unwrap();
+        let flags =
+            fetched.get(&NonZeroU32::new(uid).unwrap()).map(|items| {
+                items
+                    .as_ref()
+                    .iter()
+                    .filter_map(|item| match item {
+                        MessageDataItem::Flags(flags) => Some(flags),
+                        _ => None,
+                    })
+                    .flatten()
+                    .map(|flag| format!("{flag:?}"))
+                    .collect()
+            });
+        logout(client).await;
+        flags
+    })
 }
 
 fn uid_from_path(path: &std::path::Path) -> u32 {
@@ -205,9 +239,7 @@ fn live_flag_replay_round_trip() {
          \r\n\
          replay test body\r\n"
     );
-    let mut session = open_session(&account);
-    session.append(INBOX, &message).unwrap();
-    let _ = session.logout();
+    append_to_inbox(&account, &message);
 
     let dir = tempfile::tempdir().unwrap();
     let layout = StoreLayout::new(dir.path().join("store"));

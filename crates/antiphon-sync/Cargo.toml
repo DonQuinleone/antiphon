@@ -6,17 +6,19 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "IMAP sync engine for antiphond"
+description = "IMAP sync and SMTP submission engine for antiphond"
 
 [dependencies]
 antiphon-store = { path = "../antiphon-store" }
-imap = { version = "=2.4.1", default-features = false }
-rustls = { version = "=0.23.42", default-features = false, features = [
-    "ring",
-    "std",
-    "tls12",
+imap-client = "=0.3.1"
+lettre = { version = "=0.11.22", default-features = false, features = [
+    "smtp-transport",
+    "rustls-tls",
+    "hostname",
 ] }
-webpki-roots = "=1.0.9"
+tokio = { version = "=1.53.1", default-features = false, features = [
+    "rt",
+] }
 
 [dev-dependencies]
 tempfile = "=3.27.0"

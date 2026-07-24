@@ -2,21 +2,17 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use antiphon_store::{Op, OpKind, SearchIndex, StoreLayout};
+use imap_client::imap_types::flag::{Flag, StoreType};
 
-use crate::engine::{
-    RemoteFolder, SyncAccount, TlsSession, connect, selectable_folders,
-};
+use crate::engine::{RemoteFolder, SyncAccount};
 use crate::error::SyncError;
 use crate::folders::folder_subdir;
 use crate::maildir::parse_uid;
-
-const UID_ONLY_ITEMS: &str = "(UID)";
-const UIDPLUS_CAPABILITY: &str = "UIDPLUS";
-const DELETED_FLAG_QUERY: &str = "+FLAGS.SILENT (\\Deleted)";
+use crate::session::ImapSession;
 
 struct TagFlag {
     tag: &'static str,
-    imap_flag: &'static str,
+    imap_flag: Flag<'static>,
     inverted: bool,
 }
 
@@ -25,17 +21,17 @@ struct TagFlag {
 const TAG_FLAGS: [TagFlag; 3] = [
     TagFlag {
         tag: "unread",
-        imap_flag: "\\Seen",
+        imap_flag: Flag::Seen,
         inverted: true,
     },
     TagFlag {
         tag: "flagged",
-        imap_flag: "\\Flagged",
+        imap_flag: Flag::Flagged,
         inverted: false,
     },
     TagFlag {
         tag: "replied",
-        imap_flag: "\\Answered",
+        imap_flag: Flag::Answered,
         inverted: false,
     },
 ];
@@ -71,9 +67,13 @@ pub fn replay(
     }
     let index = SearchIndex::open(layout)
         .map_err(|source| SyncError::Index { source })?;
-    let mut session = connect(account)?;
-    let folders = subdir_map(&selectable_folders(&mut session)?);
-    let can_uid_expunge = supports_uid_expunge(&mut session)?;
+    let mut session = ImapSession::connect(account)?;
+    let folders = subdir_map(
+        &session
+            .list_selectable()
+            .map_err(SyncError::imap("listing folders"))?,
+    );
+    let can_uid_expunge = session.supports_uidplus();
     let mut replayer = Replayer {
         session,
         index,
@@ -89,12 +89,12 @@ pub fn replay(
             Verdict::Unsupported => report.unsupported.push(op.id),
         }
     }
-    let _ = replayer.session.logout();
+    replayer.session.logout();
     Ok(report)
 }
 
 struct Replayer {
-    session: TlsSession,
+    session: ImapSession,
     index: SearchIndex,
     folders: HashMap<PathBuf, String>,
     maildir_root: PathBuf,
@@ -111,8 +111,8 @@ impl Replayer {
                     return Ok(Verdict::Dropped);
                 };
                 self.with_uid(op, |this, uid| {
-                    for query in store_queries(&set, &clear) {
-                        this.uid_store(uid, &query)?;
+                    for (kind, flags) in store_actions(set, clear) {
+                        this.uid_store(uid, kind, flags)?;
                     }
                     Ok(())
                 })
@@ -173,46 +173,31 @@ impl Replayer {
     }
 
     fn uid_exists(&mut self, uid: u32) -> Result<bool, SyncError> {
-        let fetches = self
-            .session
-            .uid_fetch(uid.to_string(), UID_ONLY_ITEMS)
-            .map_err(SyncError::imap(format!("probing uid {uid}")))?;
-        Ok(fetches.iter().any(|fetch| fetch.uid == Some(uid)))
+        self.session
+            .uid_exists(uid)
+            .map_err(SyncError::imap(format!("probing uid {uid}")))
     }
 
     fn uid_store(
         &mut self,
         uid: u32,
-        query: &str,
+        kind: StoreType,
+        flags: Vec<Flag<'static>>,
     ) -> Result<(), SyncError> {
-        self.session.uid_store(uid.to_string(), query).map_err(
+        self.session.uid_store(uid, kind, flags).map_err(
             SyncError::imap(format!("storing flags on uid {uid}")),
-        )?;
-        Ok(())
+        )
     }
 
     fn expunge_uid(&mut self, uid: u32) -> Result<(), SyncError> {
-        self.uid_store(uid, DELETED_FLAG_QUERY)?;
+        self.uid_store(uid, StoreType::Add, vec![Flag::Deleted])?;
         if self.can_uid_expunge {
-            self.session.uid_expunge(uid.to_string()).map_err(
+            return self.session.uid_expunge(uid).map_err(
                 SyncError::imap(format!("expunging uid {uid}")),
-            )?;
-            return Ok(());
+            );
         }
-        self.session
-            .expunge()
-            .map_err(SyncError::imap("expunging"))?;
-        Ok(())
+        self.session.expunge().map_err(SyncError::imap("expunging"))
     }
-}
-
-fn supports_uid_expunge(
-    session: &mut TlsSession,
-) -> Result<bool, SyncError> {
-    let capabilities = session
-        .capabilities()
-        .map_err(SyncError::imap("reading capabilities"))?;
-    Ok(capabilities.has_str(UIDPLUS_CAPABILITY))
 }
 
 fn subdir_map(folders: &[RemoteFolder]) -> HashMap<PathBuf, String> {
@@ -235,7 +220,7 @@ fn subdir_map(folders: &[RemoteFolder]) -> HashMap<PathBuf, String> {
 fn flag_sets(
     add: &[String],
     remove: &[String],
-) -> Option<(Vec<&'static str>, Vec<&'static str>)> {
+) -> Option<(Vec<Flag<'static>>, Vec<Flag<'static>>)> {
     let mut set = Vec::new();
     let mut clear = Vec::new();
     for (tags, tagged) in [(add, true), (remove, false)] {
@@ -243,24 +228,27 @@ fn flag_sets(
             let mapping =
                 TAG_FLAGS.iter().find(|mapping| mapping.tag == tag)?;
             if tagged != mapping.inverted {
-                set.push(mapping.imap_flag);
+                set.push(mapping.imap_flag.clone());
             } else {
-                clear.push(mapping.imap_flag);
+                clear.push(mapping.imap_flag.clone());
             }
         }
     }
     Some((set, clear))
 }
 
-fn store_queries(set: &[&str], clear: &[&str]) -> Vec<String> {
-    let mut queries = Vec::new();
+fn store_actions(
+    set: Vec<Flag<'static>>,
+    clear: Vec<Flag<'static>>,
+) -> Vec<(StoreType, Vec<Flag<'static>>)> {
+    let mut actions = Vec::new();
     if !set.is_empty() {
-        queries.push(format!("+FLAGS.SILENT ({})", set.join(" ")));
+        actions.push((StoreType::Add, set));
     }
     if !clear.is_empty() {
-        queries.push(format!("-FLAGS.SILENT ({})", clear.join(" ")));
+        actions.push((StoreType::Remove, clear));
     }
-    queries
+    actions
 }
 
 /// Reads the server UID and folder subdirectory back out of a
@@ -289,7 +277,7 @@ mod tests {
     fn marking_read_and_flagged_sets_seen_and_flagged() {
         let (set, clear) =
             flag_sets(&tags(&["flagged"]), &tags(&["unread"])).unwrap();
-        assert_eq!(set, ["\\Flagged", "\\Seen"]);
+        assert_eq!(set, [Flag::Flagged, Flag::Seen]);
         assert!(clear.is_empty());
     }
 
@@ -298,13 +286,13 @@ mod tests {
         let (set, clear) =
             flag_sets(&tags(&["unread"]), &tags(&["flagged"])).unwrap();
         assert!(set.is_empty());
-        assert_eq!(clear, ["\\Seen", "\\Flagged"]);
+        assert_eq!(clear, [Flag::Seen, Flag::Flagged]);
     }
 
     #[test]
     fn replied_maps_to_answered() {
         let (set, clear) = flag_sets(&tags(&["replied"]), &[]).unwrap();
-        assert_eq!(set, ["\\Answered"]);
+        assert_eq!(set, [Flag::Answered]);
         assert!(clear.is_empty());
     }
 
@@ -317,17 +305,19 @@ mod tests {
     }
 
     #[test]
-    fn store_queries_split_into_plus_and_minus() {
-        let queries =
-            store_queries(&["\\Seen", "\\Flagged"], &["\\Answered"]);
+    fn store_actions_split_into_add_and_remove() {
+        let actions = store_actions(
+            vec![Flag::Seen, Flag::Flagged],
+            vec![Flag::Answered],
+        );
         assert_eq!(
-            queries,
+            actions,
             [
-                "+FLAGS.SILENT (\\Seen \\Flagged)",
-                "-FLAGS.SILENT (\\Answered)",
+                (StoreType::Add, vec![Flag::Seen, Flag::Flagged]),
+                (StoreType::Remove, vec![Flag::Answered]),
             ]
         );
-        assert!(store_queries(&[], &[]).is_empty());
+        assert!(store_actions(Vec::new(), Vec::new()).is_empty());
     }
 
     #[test]
