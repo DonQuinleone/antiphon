@@ -83,6 +83,7 @@ dependencies = [
  "antiphon-buildinfo",
  "antiphon-config",
  "antiphon-core",
+ "antiphon-ipc",
  "antiphon-render",
  "antiphon-store",
  "antiphon-ui",

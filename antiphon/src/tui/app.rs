@@ -32,13 +32,28 @@ pub struct Prompt {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OpIntent {
     Flag {
+        account: String,
         message_id: String,
         add: Vec<String>,
         remove: Vec<String>,
     },
     Delete {
+        account: String,
         message_id: String,
     },
+}
+
+pub fn account_of(path: &std::path::Path) -> String {
+    let mut components = path.components();
+    for component in components.by_ref() {
+        if component.as_os_str() == "maildir" {
+            break;
+        }
+    }
+    components
+        .next()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 pub struct App {
@@ -211,6 +226,7 @@ impl App {
             (Vec::new(), vec![tag])
         };
         self.pending_ops.push(OpIntent::Flag {
+            account: account_of(&message.path),
             message_id: message.id.clone(),
             add,
             remove,
@@ -231,6 +247,7 @@ impl App {
             (vec![tag], Vec::new())
         };
         self.pending_ops.push(OpIntent::Flag {
+            account: account_of(&message.path),
             message_id: message.id.clone(),
             add,
             remove,
@@ -244,6 +261,7 @@ impl App {
         let message = self.messages.remove(self.selected);
         self.total_messages = self.total_messages.saturating_sub(1);
         self.pending_ops.push(OpIntent::Delete {
+            account: account_of(&message.path),
             message_id: message.id,
         });
         self.selected = self.selected.min(self.last_index());
@@ -425,6 +443,22 @@ mod tests {
         app.apply(Action::ToggleFlagged);
         assert!(!app.messages[0].tags.contains(&"flagged".into()));
         assert_eq!(app.pending_ops.len(), 2);
+    }
+
+    #[test]
+    fn accounts_derive_from_maildir_paths() {
+        let cases = [
+            ("/store/maildir/work/cur/1.host:2,S", "work"),
+            ("/store/maildir/personal/new/2.host", "personal"),
+            ("/elsewhere/3.host", ""),
+        ];
+        for (path, expected) in cases {
+            assert_eq!(
+                account_of(std::path::Path::new(path)),
+                expected,
+                "{path}"
+            );
+        }
     }
 
     #[test]

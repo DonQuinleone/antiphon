@@ -14,10 +14,15 @@ use ratatui::crossterm::event::{
     self, Event, KeyCode, KeyEvent, KeyEventKind,
 };
 
-use app::{App, DEFAULT_QUERY, PromptKind, View};
+use antiphon_ipc::{
+    IpcClient, OpId, OpKind, Operation, Request, socket_path,
+};
+
+use app::{App, DEFAULT_QUERY, OpIntent, PromptKind, View};
 
 const INPUT_POLL: Duration = Duration::from_millis(250);
 const LIST_WINDOW: usize = 500;
+const DAEMON_ASSIGNS_ID: u64 = 0;
 
 pub fn run(loaded: &Loaded, layout: &StoreLayout) -> ExitCode {
     let keymap = match Keymap::new(&loaded.config.keys) {
@@ -88,8 +93,47 @@ fn event_loop(
         if let Resolution::Match(action) = keymap.feed(key) {
             dispatch(app, action);
         }
+        drain_ops(app);
     }
     Ok(())
+}
+
+fn drain_ops(app: &mut App) {
+    if app.pending_ops.is_empty() {
+        return;
+    }
+    let path = socket_path(|var| std::env::var_os(var));
+    let Ok(mut client) = IpcClient::connect(&path) else {
+        return;
+    };
+    while let Some(intent) = app.pending_ops.first().cloned() {
+        let request = Request::EnqueueOp(wire_op(intent));
+        let Ok(_) = client.request(&request) else {
+            return;
+        };
+        app.pending_ops.remove(0);
+    }
+}
+
+fn wire_op(intent: OpIntent) -> Operation {
+    let (account, message_id, kind) = match intent {
+        OpIntent::Flag {
+            account,
+            message_id,
+            add,
+            remove,
+        } => (account, message_id, OpKind::Flag { add, remove }),
+        OpIntent::Delete {
+            account,
+            message_id,
+        } => (account, message_id, OpKind::Delete),
+    };
+    Operation {
+        op_id: OpId(DAEMON_ASSIGNS_ID),
+        account,
+        message_id,
+        kind,
+    }
 }
 
 fn prompt_key(app: &mut App, index: &SearchIndex, key: KeyEvent) {

@@ -313,12 +313,13 @@ fn status_line(app: &App) -> Line<'static> {
         Some(notice) => notice.clone(),
         None => format!(
             "{}{} of {} messages \u{b7} {} unread shown \u{b7} \
-             theme {}",
+             theme {}{}",
             query_prefix(&app.current_query),
             app.messages.len(),
             app.total_messages,
             app.unread_count(),
             app.theme.name,
+            queued_suffix(app.pending_ops.len()),
         ),
     };
     Line::from(vec![
@@ -332,6 +333,13 @@ fn query_prefix(query: &str) -> String {
         return String::new();
     }
     format!("{query} \u{b7} ")
+}
+
+fn queued_suffix(pending: usize) -> String {
+    if pending == 0 {
+        return String::new();
+    }
+    format!(" \u{b7} {pending} queued for antiphond")
 }
 
 fn sender_name(from: &str) -> String {
