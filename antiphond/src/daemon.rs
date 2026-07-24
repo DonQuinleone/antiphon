@@ -11,7 +11,10 @@ use antiphon_ipc::{IpcServer, VaultState, socket_path};
 use antiphon_store::{OpLog, StoreLayout};
 use antiphon_sync::{DeliveryRule, SmtpAccount, SyncAccount};
 
-use crate::accounts::{delivery_rules, smtp_accounts, sync_accounts};
+use crate::accounts::{
+    OauthAccount, delivery_rules, oauth_accounts, smtp_accounts,
+    sync_accounts,
+};
 use crate::vaultctl;
 
 const ACCEPT_POLL: Duration = Duration::from_millis(200);
@@ -21,6 +24,7 @@ pub(crate) struct Daemon {
     pub(crate) layout: StoreLayout,
     pub(crate) log: OpLog,
     pub(crate) accounts: Vec<SyncAccount>,
+    pub(crate) oauth: Vec<OauthAccount>,
     pub(crate) smtp: Vec<(String, SmtpAccount)>,
     pub(crate) rules: Vec<(String, Vec<DeliveryRule>)>,
     pub(crate) last_sync_unix: Option<u64>,
@@ -59,6 +63,7 @@ pub fn run() -> ExitCode {
         return ExitCode::FAILURE;
     }
     let accounts = sync_accounts(&loaded);
+    let oauth = oauth_accounts(&loaded);
     let smtp = smtp_accounts(&loaded);
     let rules = delivery_rules(&loaded);
     let log = match OpLog::open(&layout) {
@@ -85,6 +90,7 @@ pub fn run() -> ExitCode {
         layout,
         log,
         accounts,
+        oauth,
         smtp,
         rules,
         last_sync_unix: None,

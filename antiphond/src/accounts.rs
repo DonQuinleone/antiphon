@@ -1,10 +1,62 @@
 use std::process::Command;
 
 use antiphon_config::{Loaded, Rule};
+use antiphon_oauth::imap_grant;
 use antiphon_sync::{Auth, DeliveryRule, SmtpAccount, SyncAccount};
 
 const IMAPS_PORT: u16 = 993;
 const SUBMISSION_PORT: u16 = 587;
+
+#[derive(Clone, Debug)]
+pub struct OauthAccount {
+    pub name: String,
+    pub user: String,
+    pub imap_host: String,
+    pub imap_port: u16,
+    pub smtp: Option<SmtpEndpoint>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SmtpEndpoint {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+}
+
+impl OauthAccount {
+    pub fn grant_name(&self) -> String {
+        imap_grant(&self.name)
+    }
+
+    pub fn sync_account(&self, access_token: String) -> SyncAccount {
+        SyncAccount {
+            name: self.name.clone(),
+            host: self.imap_host.clone(),
+            port: self.imap_port,
+            user: self.user.clone(),
+            auth: Auth::XOauth2 {
+                user: self.user.clone(),
+                access_token,
+            },
+        }
+    }
+
+    pub fn smtp_account(
+        &self,
+        access_token: String,
+    ) -> Option<SmtpAccount> {
+        let endpoint = self.smtp.as_ref()?;
+        Some(SmtpAccount {
+            host: endpoint.host.clone(),
+            port: endpoint.port,
+            user: endpoint.user.clone(),
+            auth: Auth::XOauth2 {
+                user: endpoint.user.clone(),
+                access_token,
+            },
+        })
+    }
+}
 
 pub fn sync_accounts(loaded: &Loaded) -> Vec<SyncAccount> {
     loaded
@@ -12,6 +64,9 @@ pub fn sync_accounts(loaded: &Loaded) -> Vec<SyncAccount> {
         .iter()
         .filter_map(|entry| {
             let account = &entry.account;
+            if account.oauth.is_some() {
+                return None;
+            }
             let command = account.imap.password_cmd.as_deref()?;
             let password = resolve_password(command)?;
             Some(SyncAccount {
@@ -25,12 +80,41 @@ pub fn sync_accounts(loaded: &Loaded) -> Vec<SyncAccount> {
         .collect()
 }
 
+pub fn oauth_accounts(loaded: &Loaded) -> Vec<OauthAccount> {
+    loaded
+        .accounts
+        .iter()
+        .filter_map(|entry| {
+            let account = &entry.account;
+            account.oauth.as_ref()?;
+            let user = account.imap.user.clone();
+            Some(OauthAccount {
+                name: account.account.name.clone(),
+                user: user.clone(),
+                imap_host: account.imap.host.clone(),
+                imap_port: account.imap.port.unwrap_or(IMAPS_PORT),
+                smtp: account.smtp.as_ref().map(|smtp| SmtpEndpoint {
+                    host: smtp.host.clone(),
+                    port: smtp.port.unwrap_or(SUBMISSION_PORT),
+                    user: smtp
+                        .user
+                        .clone()
+                        .unwrap_or_else(|| user.clone()),
+                }),
+            })
+        })
+        .collect()
+}
+
 pub fn smtp_accounts(loaded: &Loaded) -> Vec<(String, SmtpAccount)> {
     loaded
         .accounts
         .iter()
         .filter_map(|entry| {
             let account = &entry.account;
+            if account.oauth.is_some() {
+                return None;
+            }
             let smtp = account.smtp.as_ref()?;
             let user = smtp
                 .user
@@ -97,4 +181,106 @@ fn resolve_password(command: &str) -> Option<String> {
         return None;
     }
     Some(password)
+}
+
+#[cfg(test)]
+mod tests {
+    use antiphon_config::{
+        Account, AccountFile, Config, Imap, NamedAccount, Oauth,
+        OauthProvider, Smtp,
+    };
+
+    use super::*;
+
+    fn oauth_entry(smtp: Option<Smtp>) -> NamedAccount {
+        NamedAccount {
+            file_stem: "work".to_string(),
+            account: AccountFile {
+                account: Account {
+                    name: "work".to_string(),
+                    maildir: None,
+                },
+                imap: Imap {
+                    host: "imap.example.com".to_string(),
+                    port: None,
+                    user: "quin@example.com".to_string(),
+                    password_cmd: Some("echo never-run".to_string()),
+                },
+                smtp,
+                identities: Vec::new(),
+                rules: Vec::new(),
+                oauth: Some(Oauth {
+                    provider: OauthProvider::Google,
+                    client_id: Some("client-app".to_string()),
+                }),
+                graph: None,
+            },
+        }
+    }
+
+    fn loaded_with(entry: NamedAccount) -> Loaded {
+        Loaded {
+            config: Config::default(),
+            accounts: vec![entry],
+        }
+    }
+
+    fn bare_smtp() -> Smtp {
+        Smtp {
+            host: "smtp.example.com".to_string(),
+            port: None,
+            user: None,
+            password_cmd: None,
+        }
+    }
+
+    #[test]
+    fn oauth_accounts_never_reach_the_password_paths() {
+        let loaded = loaded_with(oauth_entry(Some(bare_smtp())));
+        assert!(sync_accounts(&loaded).is_empty());
+        assert!(smtp_accounts(&loaded).is_empty());
+    }
+
+    #[test]
+    fn oauth_specs_fill_ports_and_the_smtp_user_fallback() {
+        let loaded = loaded_with(oauth_entry(Some(bare_smtp())));
+        let specs = oauth_accounts(&loaded);
+        assert_eq!(specs.len(), 1);
+        let spec = &specs[0];
+        assert_eq!(spec.name, "work");
+        assert_eq!(spec.imap_port, IMAPS_PORT);
+        assert_eq!(spec.grant_name(), "work-imap");
+        let endpoint = spec.smtp.as_ref().expect("smtp endpoint");
+        assert_eq!(endpoint.port, SUBMISSION_PORT);
+        assert_eq!(endpoint.user, "quin@example.com");
+    }
+
+    #[test]
+    fn oauth_specs_build_xoauth2_sync_and_smtp_accounts() {
+        let loaded = loaded_with(oauth_entry(Some(bare_smtp())));
+        let spec = &oauth_accounts(&loaded)[0];
+
+        let sync = spec.sync_account("token-1".to_string());
+        assert_eq!(sync.user, "quin@example.com");
+        assert!(matches!(
+            &sync.auth,
+            Auth::XOauth2 { user, access_token }
+                if user == "quin@example.com"
+                    && access_token == "token-1"
+        ));
+
+        let smtp = spec
+            .smtp_account("token-1".to_string())
+            .expect("smtp account");
+        assert!(matches!(
+            &smtp.auth,
+            Auth::XOauth2 { user, access_token }
+                if user == "quin@example.com"
+                    && access_token == "token-1"
+        ));
+
+        let no_smtp = oauth_entry(None);
+        let spec = &oauth_accounts(&loaded_with(no_smtp))[0];
+        assert!(spec.smtp_account("token-1".to_string()).is_none());
+    }
 }

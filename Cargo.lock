@@ -266,11 +266,13 @@ dependencies = [
  "antiphon-buildinfo",
  "antiphon-config",
  "antiphon-ipc",
+ "antiphon-oauth",
  "antiphon-store",
  "antiphon-sync",
  "antiphon-vault",
  "secrecy",
  "signal-hook 0.4.4",
+ "tempfile",
 ]
 
 [[package]]

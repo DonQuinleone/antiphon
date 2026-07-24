@@ -2,26 +2,26 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
 use std::thread::{self, JoinHandle};
 
-pub(crate) struct StubResponse {
+pub struct StubResponse {
     status: &'static str,
     body: String,
 }
 
-pub(crate) fn ok(body: &str) -> StubResponse {
+pub fn ok(body: &str) -> StubResponse {
     StubResponse {
         status: "200 OK",
         body: body.to_string(),
     }
 }
 
-pub(crate) fn bad_request(body: &str) -> StubResponse {
+pub fn bad_request(body: &str) -> StubResponse {
     StubResponse {
         status: "400 Bad Request",
         body: body.to_string(),
     }
 }
 
-pub(crate) struct Stub {
+pub struct Stub {
     pub base_url: String,
     handle: JoinHandle<Vec<String>>,
 }

@@ -13,7 +13,7 @@ pub fn refresh(
     refresh_at(grant.provider.token_url(), tokens, grant)
 }
 
-pub(crate) fn refresh_at(
+pub fn refresh_at(
     token_url: &str,
     tokens: &TokenSet,
     grant: &Grant,

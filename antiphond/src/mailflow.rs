@@ -3,13 +3,17 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use antiphon_ipc::Response;
+use antiphon_oauth::{TokenStore, refresh};
 use antiphon_store::{Op, Outbox};
 use antiphon_sync::{
-    DeliveryRule, RuleOutcome, apply_rules, replay, send, sync,
+    DeliveryRule, RuleOutcome, SmtpAccount, SyncAccount, SyncError,
+    SyncReport, apply_rules, replay, send, sync,
 };
 
+use crate::accounts::OauthAccount;
 use crate::daemon::Daemon;
 use crate::notify;
+use crate::tokens;
 
 impl Daemon {
     pub(crate) fn sync_pass(&mut self, announce: bool) -> usize {
@@ -26,49 +30,143 @@ impl Daemon {
         }
         Response::Error(format!(
             "sync failed for {failures} of {} accounts",
-            self.accounts.len()
+            self.accounts.len() + self.oauth.len()
         ))
     }
 
     fn sync_all(&mut self, announce: bool) -> usize {
         let mut failures = 0;
-        for account in &self.accounts {
-            match sync(account, &self.layout) {
-                Ok(report) => {
-                    println!(
-                        "synced {}: {} new, {} updated",
-                        account.name,
-                        report.total_new(),
-                        report.total_updated(),
-                    );
-                    let rules =
-                        account_rules(&self.rules, &account.name);
-                    if !rules.is_empty() {
-                        let outcome = apply_rules(
-                            &account.name,
-                            rules,
-                            &report.delivered(),
-                            &self.layout,
-                            &mut self.log,
-                        );
-                        announce_rules(&account.name, outcome);
-                    }
-                    if announce && self.notify {
-                        notify::new_mail(&account.name, &report);
-                    }
-                }
-                Err(error) => {
-                    failures += 1;
-                    eprintln!(
-                        "sync {}: {}",
-                        account.name,
-                        error_chain(&error)
-                    );
-                }
-            }
+        for account in self.accounts.clone() {
+            failures += usize::from(!self.sync_one(&account, announce));
+        }
+        for spec in self.oauth.clone() {
+            failures += usize::from(!self.sync_oauth(&spec, announce));
         }
         self.last_sync_unix = Some(now_unix());
         failures
+    }
+
+    fn sync_one(
+        &mut self,
+        account: &SyncAccount,
+        announce: bool,
+    ) -> bool {
+        match sync(account, &self.layout) {
+            Ok(report) => {
+                self.after_sync(&account.name, &report, announce);
+                true
+            }
+            Err(error) => {
+                eprintln!(
+                    "sync {}: {}",
+                    account.name,
+                    error_chain(&error)
+                );
+                false
+            }
+        }
+    }
+
+    /// One AUTHENTICATIONFAILED gets one forced refresh and one
+    /// retry; a second failure waits for the next pass.
+    fn sync_oauth(
+        &mut self,
+        spec: &OauthAccount,
+        announce: bool,
+    ) -> bool {
+        let token = match self.oauth_token(spec, false) {
+            Ok(token) => token,
+            Err(message) => {
+                eprintln!("{message}");
+                return false;
+            }
+        };
+        let mut outcome = sync(&spec.sync_account(token), &self.layout);
+        if matches!(outcome, Err(SyncError::Login { .. })) {
+            eprintln!(
+                "sync {}: authentication failed; refreshing the \
+                 token and retrying once",
+                spec.name
+            );
+            match self.oauth_token(spec, true) {
+                Ok(token) => {
+                    outcome =
+                        sync(&spec.sync_account(token), &self.layout);
+                }
+                Err(message) => {
+                    eprintln!("{message}");
+                    return false;
+                }
+            }
+        }
+        match outcome {
+            Ok(report) => {
+                self.after_sync(&spec.name, &report, announce);
+                true
+            }
+            Err(error) => {
+                eprintln!(
+                    "sync {}: {}",
+                    spec.name,
+                    error_chain(&error)
+                );
+                false
+            }
+        }
+    }
+
+    fn oauth_token(
+        &self,
+        spec: &OauthAccount,
+        force_refresh: bool,
+    ) -> Result<String, String> {
+        let store = TokenStore::open(self.layout.tokens_dir())
+            .map_err(|error| {
+                format!("{}: token store: {error}", spec.name)
+            })?;
+        if force_refresh {
+            return tokens::refreshed_token(
+                &store,
+                &spec.grant_name(),
+                &spec.name,
+                &refresh,
+            );
+        }
+        tokens::access_token(
+            &store,
+            &spec.grant_name(),
+            &spec.name,
+            now_unix(),
+            &refresh,
+        )
+    }
+
+    fn after_sync(
+        &mut self,
+        account: &str,
+        report: &SyncReport,
+        announce: bool,
+    ) {
+        println!(
+            "synced {}: {} new, {} updated",
+            account,
+            report.total_new(),
+            report.total_updated(),
+        );
+        let rules = account_rules(&self.rules, account);
+        if !rules.is_empty() {
+            let outcome = apply_rules(
+                account,
+                rules,
+                &report.delivered(),
+                &self.layout,
+                &mut self.log,
+            );
+            announce_rules(account, outcome);
+        }
+        if announce && self.notify {
+            notify::new_mail(account, report);
+        }
     }
 
     pub(crate) fn drain_outbox(&mut self) {
@@ -91,9 +189,7 @@ impl Daemon {
         queued: antiphon_store::QueuedMessage,
     ) {
         let account = queued.envelope.account.clone();
-        let Some((_, smtp)) =
-            self.smtp.iter().find(|(name, _)| *name == account)
-        else {
+        let Some(smtp) = self.smtp_for(&account) else {
             eprintln!(
                 "outbox {}: no smtp account for {account}",
                 queued.id
@@ -107,7 +203,7 @@ impl Daemon {
                 return;
             }
         };
-        if let Err(error) = send(smtp, &raw) {
+        if let Err(error) = send(&smtp, &raw) {
             eprintln!("send {}: {error}", queued.id);
             return;
         }
@@ -119,6 +215,29 @@ impl Daemon {
             return;
         }
         println!("sent outbox message {}", queued.id);
+    }
+
+    fn smtp_for(&self, account: &str) -> Option<SmtpAccount> {
+        let stored = self
+            .smtp
+            .iter()
+            .find(|(name, _)| name == account)
+            .map(|(_, smtp)| smtp.clone());
+        if stored.is_some() {
+            return stored;
+        }
+        let spec = self
+            .oauth
+            .iter()
+            .find(|spec| spec.name == account && spec.smtp.is_some())?;
+        let token = match self.oauth_token(spec, false) {
+            Ok(token) => token,
+            Err(message) => {
+                eprintln!("{message}");
+                return None;
+            }
+        };
+        spec.smtp_account(token)
     }
 
     fn file_sent(

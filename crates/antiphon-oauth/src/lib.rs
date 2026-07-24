@@ -10,13 +10,15 @@ mod token;
 
 #[cfg(test)]
 mod flow_tests;
-#[cfg(test)]
-mod stub;
+#[cfg(any(test, feature = "stub"))]
+pub mod stub;
 
 pub use device::device_code_flow;
 pub use error::OauthError;
 pub use pkce::pkce_loopback_flow;
 pub use refresh::refresh;
+#[cfg(any(test, feature = "stub"))]
+pub use refresh::refresh_at;
 pub use store::TokenStore;
 pub use token::TokenSet;
 
@@ -78,4 +80,12 @@ pub struct VerificationPrompt {
 
 pub struct BrowserPrompt {
     pub consent_url: String,
+}
+
+pub fn imap_grant(account: &str) -> String {
+    format!("{account}-imap")
+}
+
+pub fn graph_grant(account: &str) -> String {
+    format!("{account}-graph")
 }

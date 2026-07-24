@@ -11,11 +11,18 @@ description = "Sync daemon for the antiphon mail client"
 [dependencies]
 antiphon-config = { path = "../crates/antiphon-config" }
 antiphon-ipc = { path = "../crates/antiphon-ipc" }
+antiphon-oauth = { path = "../crates/antiphon-oauth" }
 antiphon-store = { path = "../crates/antiphon-store" }
 antiphon-sync = { path = "../crates/antiphon-sync" }
 antiphon-vault = { path = "../crates/antiphon-vault" }
 secrecy = "=0.10.3"
 signal-hook = "=0.4.4"
+
+[dev-dependencies]
+antiphon-oauth = { path = "../crates/antiphon-oauth", features = [
+    "stub",
+] }
+tempfile = "=3.27.0"
 
 [build-dependencies]
 antiphon-buildinfo = { path = "../crates/antiphon-buildinfo" }
