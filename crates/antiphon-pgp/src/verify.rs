@@ -78,7 +78,7 @@ fn is_pgp_signature(part: &mail_parser::MessagePart) -> bool {
     subtype_is(part, PGP_MIME_TYPE, PGP_MIME_SUBTYPE)
 }
 
-fn subtype_is(
+pub(crate) fn subtype_is(
     part: &mail_parser::MessagePart,
     ctype: &str,
     subtype: &str,
@@ -263,22 +263,16 @@ fn issuer_key_id(sig: &SigPacket) -> String {
 #[cfg(test)]
 mod tests {
     use std::io::Write;
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU32, Ordering};
 
     use sequoia_openpgp::Cert;
-    use sequoia_openpgp::armor::Kind;
-    use sequoia_openpgp::cert::CertBuilder;
-    use sequoia_openpgp::crypto::KeyPair;
-    use sequoia_openpgp::policy::StandardPolicy;
-    use sequoia_openpgp::serialize::SerializeInto;
-    use sequoia_openpgp::serialize::stream::{
-        Armorer, Message, Signer,
-    };
+    use sequoia_openpgp::serialize::stream::{Message, Signer};
 
     use super::{MessageParser, detached, verify};
-    use crate::keyring::Keyring;
     use crate::status::SignatureStatus;
+    use crate::testkit::{
+        cert, detached_signature, empty_keyring, keyring_with,
+        signing_keypair,
+    };
 
     const ALICE: &str = "Alice <alice@example.com>";
     const SIGNATURE_SLOT: &str = "REPLACE_ME_SIGNATURE";
@@ -315,83 +309,8 @@ mod tests {
     )
     .as_bytes();
 
-    struct TempDir {
-        path: PathBuf,
-    }
-
-    impl TempDir {
-        fn new() -> TempDir {
-            static COUNTER: AtomicU32 = AtomicU32::new(0);
-            let nonce = COUNTER.fetch_add(1, Ordering::Relaxed);
-            let name =
-                format!("antiphon-pgp-{}-{nonce}", std::process::id());
-            let path = std::env::temp_dir().join(name);
-            std::fs::create_dir_all(&path).unwrap();
-            TempDir { path }
-        }
-
-        fn write(&self, name: &str, bytes: &[u8]) {
-            std::fs::write(self.path.join(name), bytes).unwrap();
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.path);
-        }
-    }
-
     fn alice() -> Cert {
-        CertBuilder::general_purpose(Some(ALICE))
-            .generate()
-            .unwrap()
-            .0
-    }
-
-    fn keyring_with(cert: &Cert) -> (TempDir, Keyring) {
-        let dir = TempDir::new();
-        dir.write("alice.asc", &cert.armored().to_vec().unwrap());
-        let keyring = Keyring::from_dir(&dir.path);
-        (dir, keyring)
-    }
-
-    fn empty_keyring() -> (TempDir, Keyring) {
-        let dir = TempDir::new();
-        let keyring = Keyring::from_dir(&dir.path);
-        (dir, keyring)
-    }
-
-    fn signing_keypair(cert: &Cert) -> KeyPair {
-        let policy = StandardPolicy::new();
-        cert.keys()
-            .unencrypted_secret()
-            .with_policy(&policy, None)
-            .alive()
-            .revoked(false)
-            .for_signing()
-            .next()
-            .unwrap()
-            .key()
-            .clone()
-            .into_keypair()
-            .unwrap()
-    }
-
-    fn detached_signature(cert: &Cert, data: &[u8]) -> Vec<u8> {
-        let mut out = Vec::new();
-        let message = Message::new(&mut out);
-        let message = Armorer::new(message)
-            .kind(Kind::Signature)
-            .build()
-            .unwrap();
-        let mut signer = Signer::new(message, signing_keypair(cert))
-            .unwrap()
-            .detached()
-            .build()
-            .unwrap();
-        signer.write_all(data).unwrap();
-        signer.finalize().unwrap();
-        out
+        cert(ALICE)
     }
 
     fn cleartext_signature(cert: &Cert, data: &[u8]) -> Vec<u8> {

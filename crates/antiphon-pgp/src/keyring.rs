@@ -34,6 +34,23 @@ impl Keyring {
     pub fn is_empty(&self) -> bool {
         self.certs.is_empty()
     }
+
+    /// The trusted cert whose user ID carries this e-mail
+    /// address, if any.
+    pub fn cert_for_address(&self, address: &str) -> Option<&Cert> {
+        self.certs.iter().find(|cert| cert_matches(cert, address))
+    }
+}
+
+fn cert_matches(cert: &Cert, address: &str) -> bool {
+    cert.userids().any(|amalgamation| {
+        amalgamation
+            .userid()
+            .email()
+            .ok()
+            .flatten()
+            .is_some_and(|email| email.eq_ignore_ascii_case(address))
+    })
 }
 
 fn load_file(path: &Path, certs: &mut Vec<Cert>) {
