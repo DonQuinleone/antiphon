@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use antiphon_pgp::{Cert, Keyring, Signature, mime};
+use antiphon_pgp::{Cert, Keyring, mime};
 use antiphon_pgp_agent::GpgAgent;
 
 /// What OpenPGP protection the finished compose receives,
@@ -131,104 +131,18 @@ fn uid_matches(uid: &str, address: &str) -> bool {
     uid == address || uid.contains(&format!("<{address}>"))
 }
 
-/// A message opened for reading: the rendered body and its
-/// signature verdict.
-pub struct Opened {
-    pub body: String,
-    pub signature: Signature,
-}
-
-/// Renders a stored message for the pager. An encrypted
-/// message is decrypted through gpg-agent first (connected
-/// only then), the inner part rendered as usual and verified;
-/// an agent failure becomes the displayed body, never a crash.
-pub fn read_message(
-    raw: &[u8],
-    keyring: &Keyring,
-    gnupg_home: Option<&Path>,
-) -> Opened {
-    let Some(ciphertext) = mime::encrypted_payload(raw) else {
-        return Opened {
-            body: antiphon_render::body_text(raw).text,
-            signature: antiphon_pgp::verify(raw, keyring),
-        };
-    };
-    let decrypted = GpgAgent::connect(gnupg_home)
-        .and_then(|agent| agent.decrypt(&ciphertext));
-    let entity = match decrypted {
-        Ok(entity) => entity,
-        Err(error) => {
-            return Opened {
-                body: format!("cannot decrypt: {error}"),
-                signature: Signature::none(),
-            };
-        }
-    };
-    let merged = mime::merge_decrypted(raw, &entity);
-    Opened {
-        body: antiphon_render::body_text(&merged).text,
-        signature: antiphon_pgp::verify(&merged, keyring),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
-    use std::process::Command;
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::path::Path;
 
-    use antiphon_pgp::{Keyring, SignatureStatus};
+    use antiphon_pgp::Keyring;
 
-    use super::{
-        ComposeCrypto, PgpPlan, read_message, seal, uid_matches,
+    use super::super::decrypt::read_message;
+    use super::super::testkit::{
+        BODY, EphemeralHome, PLAIN, TEST_ADDRESS, TempDir,
+        assert_good_signature, plan,
     };
-
-    const TEST_USER_ID: &str =
-        "Antiphon Test <antiphon-test@example.com>";
-    const TEST_ADDRESS: &str = "antiphon-test@example.com";
-    const BODY: &str = "A body line for the pager round trip.";
-
-    const PLAIN: &str = concat!(
-        "From: Antiphon Test <antiphon-test@example.com>\r\n",
-        "To: Antiphon Test <antiphon-test@example.com>\r\n",
-        "Subject: sealed\r\n",
-        "MIME-Version: 1.0\r\n",
-        "Content-Type: text/plain; charset=\"utf-8\"\r\n",
-        "\r\n",
-        "A body line for the pager round trip.\r\n",
-    );
-
-    fn plan(sign: bool, encrypt: bool) -> ComposeCrypto {
-        ComposeCrypto {
-            plan: PgpPlan { sign, encrypt },
-            key: None,
-            address: TEST_ADDRESS.to_string(),
-        }
-    }
-
-    struct TempDir {
-        path: PathBuf,
-    }
-
-    impl TempDir {
-        fn new() -> TempDir {
-            static COUNTER: AtomicU32 = AtomicU32::new(0);
-            let nonce = COUNTER.fetch_add(1, Ordering::Relaxed);
-            let name = format!(
-                "antiphon-crypto-{}-{nonce}",
-                std::process::id()
-            );
-            let path = std::env::temp_dir().join(name);
-            std::fs::create_dir_all(&path).unwrap();
-            TempDir { path }
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.path);
-        }
-    }
+    use super::{PgpPlan, seal, uid_matches};
 
     #[test]
     fn labels_read_per_plan() {
@@ -297,143 +211,6 @@ mod tests {
     }
 
     #[test]
-    fn unencrypted_messages_never_touch_the_agent() {
-        let dir = TempDir::new();
-        let keyring = Keyring::from_dir(&dir.path);
-        let opened = read_message(
-            PLAIN.as_bytes(),
-            &keyring,
-            Some(Path::new("/nonexistent")),
-        );
-        assert!(opened.body.contains(BODY));
-        assert_eq!(opened.signature.status, SignatureStatus::None);
-    }
-
-    struct EphemeralHome {
-        dir: TempDir,
-        fingerprint: String,
-    }
-
-    impl EphemeralHome {
-        fn new() -> Option<EphemeralHome> {
-            if !gpg_usable() {
-                eprintln!(
-                    "SKIP: no usable gpg CLI; live gpg-agent \
-                     test not run"
-                );
-                return None;
-            }
-            let dir = TempDir::new();
-            restrict_permissions(&dir.path);
-            let mut home = EphemeralHome {
-                dir,
-                fingerprint: String::new(),
-            };
-            home.gpg(&[
-                "--quick-gen-key",
-                TEST_USER_ID,
-                "ed25519",
-                "cert,sign",
-                "never",
-            ]);
-            home.fingerprint = home.primary_fingerprint();
-            let fingerprint = home.fingerprint.clone();
-            home.gpg(&[
-                "--quick-add-key",
-                &fingerprint,
-                "cv25519",
-                "encr",
-                "never",
-            ]);
-            Some(home)
-        }
-
-        fn path(&self) -> &Path {
-            &self.dir.path
-        }
-
-        fn gpg(&self, args: &[&str]) -> Vec<u8> {
-            let output = Command::new("gpg")
-                .arg("--homedir")
-                .arg(self.path())
-                .args([
-                    "--batch",
-                    "--pinentry-mode",
-                    "loopback",
-                    "--passphrase",
-                    "",
-                ])
-                .args(args)
-                .output()
-                .expect("running gpg");
-            assert!(
-                output.status.success(),
-                "gpg {args:?} failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-            output.stdout
-        }
-
-        fn primary_fingerprint(&self) -> String {
-            let listing = self.gpg(&["--list-keys", "--with-colons"]);
-            let listing = String::from_utf8_lossy(&listing);
-            listing
-                .lines()
-                .find(|line| line.starts_with("fpr:"))
-                .and_then(|line| line.split(':').nth(9))
-                .expect("a fingerprint in the gpg listing")
-                .to_string()
-        }
-
-        fn keyring(&self) -> (TempDir, Keyring) {
-            let exported = self.gpg(&["--export"]);
-            let dir = TempDir::new();
-            std::fs::write(dir.path.join("test.pgp"), exported)
-                .unwrap();
-            let keyring = Keyring::from_dir(&dir.path);
-            (dir, keyring)
-        }
-    }
-
-    impl Drop for EphemeralHome {
-        fn drop(&mut self) {
-            let _ = Command::new("gpgconf")
-                .arg("--homedir")
-                .arg(&self.dir.path)
-                .args(["--kill", "all"])
-                .status();
-        }
-    }
-
-    fn gpg_usable() -> bool {
-        let gpg = Command::new("gpg").arg("--version").output();
-        let gpgconf = Command::new("gpgconf").arg("--version").output();
-        matches!(gpg, Ok(out) if out.status.success())
-            && matches!(gpgconf, Ok(out) if out.status.success())
-    }
-
-    fn restrict_permissions(path: &Path) {
-        use std::os::unix::fs::PermissionsExt;
-
-        std::fs::set_permissions(
-            path,
-            std::fs::Permissions::from_mode(0o700),
-        )
-        .expect("restricting GNUPGHOME permissions");
-    }
-
-    fn assert_good_signature(
-        signature: &antiphon_pgp::Signature,
-        context: &str,
-    ) {
-        let SignatureStatus::Good { signer, .. } = &signature.status
-        else {
-            panic!("{context}: expected Good, got other");
-        };
-        assert_eq!(signer, TEST_USER_ID, "{context}");
-    }
-
-    #[test]
     fn signed_composes_verify_good_by_address_or_key() {
         let Some(home) = EphemeralHome::new() else {
             return;
@@ -488,70 +265,5 @@ mod tests {
             "no signing key for nobody@example.com known to \
              gpg-agent"
         );
-    }
-
-    #[test]
-    fn encrypted_composes_decrypt_in_the_pager() {
-        let Some(home) = EphemeralHome::new() else {
-            return;
-        };
-        let (_dir, keyring) = home.keyring();
-        let sealed = seal(
-            PLAIN.as_bytes(),
-            &[TEST_ADDRESS.to_string()],
-            &plan(true, true),
-            &keyring,
-            Some(home.path()),
-        )
-        .unwrap();
-        let text = String::from_utf8_lossy(&sealed);
-        assert!(text.contains("multipart/encrypted"), "{text}");
-        assert!(!text.contains(BODY), "plaintext leaked: {text}");
-
-        let opened = read_message(&sealed, &keyring, Some(home.path()));
-        assert!(opened.body.contains(BODY), "{}", opened.body);
-        assert_good_signature(&opened.signature, "sign+encrypt");
-    }
-
-    #[test]
-    fn a_decrypt_failure_shows_the_error_not_a_crash() {
-        let Some(home) = EphemeralHome::new() else {
-            return;
-        };
-        let (_dir, keyring) = home.keyring();
-        let sealed = seal(
-            PLAIN.as_bytes(),
-            &[TEST_ADDRESS.to_string()],
-            &plan(false, true),
-            &keyring,
-            Some(home.path()),
-        )
-        .unwrap();
-        let corrupted = corrupt_armour(&sealed);
-        let opened =
-            read_message(&corrupted, &keyring, Some(home.path()));
-        assert!(
-            opened.body.starts_with("cannot decrypt:"),
-            "{}",
-            opened.body
-        );
-        assert_eq!(opened.signature.status, SignatureStatus::None);
-    }
-
-    /// Reverses one base64 line inside the armoured payload so
-    /// the ciphertext no longer parses.
-    fn corrupt_armour(sealed: &[u8]) -> Vec<u8> {
-        let text = String::from_utf8(sealed.to_vec()).unwrap();
-        let target = text
-            .lines()
-            .skip_while(|line| {
-                !line.starts_with("-----BEGIN PGP MESSAGE-----")
-            })
-            .skip(2)
-            .find(|line| line.len() > 40)
-            .expect("a base64 payload line")
-            .to_string();
-        let reversed: String = target.chars().rev().collect();
-        text.replacen(&target, &reversed, 1).into_bytes()
     }
 }

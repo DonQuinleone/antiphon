@@ -3,7 +3,8 @@ use antiphon_core::Action;
 use super::actions::account_of;
 use super::app::{App, View};
 use super::compose::{self, ReplySource};
-use super::crypto::{self, ComposeCrypto};
+use super::crypto::ComposeCrypto;
+use super::decrypt;
 use super::draw;
 use super::identity::{ComposeContext, ComposeIdentity};
 
@@ -80,7 +81,8 @@ pub(super) fn dispatch(
     let path = app.selected_message()?.path.clone();
     match std::fs::read(&path) {
         Ok(raw) => {
-            let opened = crypto::read_message(&raw, &app.keyring, None);
+            let opened =
+                decrypt::read_message(&raw, &app.keyring, None);
             app.open_pager(opened.body, opened.signature);
         }
         Err(error) => {

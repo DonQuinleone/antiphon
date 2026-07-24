@@ -3,6 +3,7 @@ mod app;
 mod commands;
 mod compose;
 mod crypto;
+mod decrypt;
 mod dispatch;
 mod draw;
 mod editor;
@@ -12,6 +13,8 @@ mod scope;
 mod session;
 mod sidebar;
 mod status;
+#[cfg(test)]
+mod testkit;
 
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
