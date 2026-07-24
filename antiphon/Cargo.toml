@@ -8,5 +8,9 @@ repository.workspace = true
 authors.workspace = true
 description = "A modern mail client for the terminal"
 
+[dependencies]
+antiphon-config = { path = "../crates/antiphon-config" }
+clap = { version = "=4.6.4", features = ["derive"] }
+
 [build-dependencies]
 antiphon-buildinfo = { path = "../crates/antiphon-buildinfo" }
