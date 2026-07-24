@@ -65,16 +65,18 @@ fn status_line(app: &App) -> Line<'static> {
     }
     let text = match &app.notice {
         Some(notice) => notice.clone(),
-        None => format!(
-            "{}{} of {} messages \u{b7} {} unread shown \u{b7} \
+        None => {
+            format!(
+                "{}{} of {} messages \u{b7} {} unread shown \u{b7} \
              theme {}{}",
-            context_prefix(app),
-            app.messages.len(),
-            app.total_messages,
-            app.unread_count(),
-            app.theme.name,
-            queued_suffix(app.pending_ops.len()),
-        ),
+                context_prefix(app),
+                app.messages.len(),
+                app.total_messages,
+                app.unread_count(),
+                app.theme.name,
+                queued_suffix(app.pending_ops.len()),
+            ) + &sync_suffix(app)
+        }
     };
     Line::from(vec![
         Span::styled(UNREAD_MARK, Style::new().fg(theme.accent)),
@@ -124,4 +126,22 @@ fn queued_suffix(pending: usize) -> String {
         return String::new();
     }
     format!(" \u{b7} {pending} queued for antiphond")
+}
+
+fn sync_suffix(app: &App) -> String {
+    use antiphon_sync::SyncState;
+
+    let Some(progress) = &app.sync_progress else {
+        return String::new();
+    };
+    if progress.state != SyncState::Syncing {
+        return String::new();
+    }
+    format!(
+        " \u{b7} syncing {}/{} {}/{}",
+        progress.account,
+        progress.folder,
+        progress.fetched,
+        progress.total,
+    )
 }

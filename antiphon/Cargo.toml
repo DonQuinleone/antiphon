@@ -17,6 +17,7 @@ antiphon-pgp = { path = "../crates/antiphon-pgp" }
 antiphon-pgp-agent = { path = "../crates/antiphon-pgp-agent" }
 antiphon-render = { path = "../crates/antiphon-render" }
 antiphon-store = { path = "../crates/antiphon-store" }
+antiphon-sync = { path = "../crates/antiphon-sync" }
 antiphon-vault = { path = "../crates/antiphon-vault" }
 antiphon-ui = { path = "../crates/antiphon-ui" }
 chrono = "=0.4.45"

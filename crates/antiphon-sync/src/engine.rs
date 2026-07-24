@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::mpsc;
 
 use antiphon_store::StoreLayout;
 
@@ -8,12 +9,17 @@ use crate::auth::Auth;
 use crate::error::SyncError;
 use crate::folders::folder_subdir;
 use crate::maildir::MaildirFolder;
+use crate::progress::{SyncProgress, write_progress};
 use crate::report::{FolderReport, SyncReport};
 use crate::session::ImapSession;
 use crate::state::{AccountState, FolderState};
 
 const FIRST_UID: u32 = 1;
 const STATE_FILE_EXTENSION: &str = "state";
+/// Bounded batches keep memory flat on a huge first sync and
+/// let the indexer make mail visible while later batches are
+/// still downloading.
+const FETCH_BATCH: usize = 200;
 
 #[derive(Clone, Debug)]
 pub struct SyncAccount {
@@ -46,20 +52,68 @@ pub fn sync(
     ensure_dir(state_path.parent().unwrap_or(layout.root()))?;
     let mut state = AccountState::load(&state_path)?;
     let mut report = SyncReport::default();
-    for folder in folders {
-        let folder_report = sync_folder(
-            &mut session,
-            account,
-            layout,
-            &folder,
-            &mut state,
-        )?;
-        state.save(&state_path)?;
-        report.folders.push(folder_report);
-    }
+    let indexer = Indexer::start(layout);
+    let outcome = (|| {
+        for folder in folders {
+            let folder_report = sync_folder(
+                &mut session,
+                account,
+                layout,
+                &folder,
+                &mut state,
+                &indexer,
+            )?;
+            state.save(&state_path)?;
+            report.folders.push(folder_report);
+        }
+        Ok(())
+    })();
     session.logout();
+    indexer.finish()?;
+    outcome?;
     run_notmuch_new(&layout.notmuch_config_path())?;
     Ok(report)
+}
+
+/// Indexing overlaps the network: delivered batches become
+/// searchable while the next batch downloads. One thread, so
+/// notmuch keeps its single writer.
+struct Indexer {
+    sender: Option<mpsc::Sender<()>>,
+    handle: std::thread::JoinHandle<Result<(), SyncError>>,
+}
+
+impl Indexer {
+    fn start(layout: &StoreLayout) -> Indexer {
+        let config = layout.notmuch_config_path();
+        let (sender, receiver) = mpsc::channel::<()>();
+        let handle = std::thread::spawn(move || {
+            while receiver.recv().is_ok() {
+                while receiver.try_recv().is_ok() {}
+                run_notmuch_new(&config)?;
+            }
+            Ok(())
+        });
+        Indexer {
+            sender: Some(sender),
+            handle,
+        }
+    }
+
+    fn nudge(&self) {
+        if let Some(sender) = &self.sender {
+            let _ = sender.send(());
+        }
+    }
+
+    fn finish(mut self) -> Result<(), SyncError> {
+        self.sender.take();
+        self.handle.join().unwrap_or_else(|_| {
+            Err(SyncError::Notmuch {
+                detail: "the indexer thread panicked".into(),
+            })
+        })
+    }
 }
 
 fn sync_folder(
@@ -68,6 +122,7 @@ fn sync_folder(
     layout: &StoreLayout,
     folder: &RemoteFolder,
     state: &mut AccountState,
+    indexer: &Indexer,
 ) -> Result<FolderReport, SyncError> {
     let maildir = open_maildir(account, layout, folder)?;
     let mailbox = session.examine(&folder.name).map_err(
@@ -86,7 +141,10 @@ fn sync_folder(
     let expects_new =
         mailbox.uid_next.is_none_or(|next| next > known_uid + 1);
     let deliveries = if has_mail && expects_new {
-        fetch_new(session, folder, &maildir, known_uid)?
+        fetch_new(
+            session, account, layout, folder, &maildir, known_uid,
+            indexer,
+        )?
     } else {
         Vec::new()
     };
@@ -161,15 +219,69 @@ fn known_uid(
 
 fn fetch_new(
     session: &mut ImapSession,
+    account: &SyncAccount,
+    layout: &StoreLayout,
     folder: &RemoteFolder,
     maildir: &MaildirFolder,
     known_uid: u32,
+    indexer: &Indexer,
 ) -> Result<Vec<Delivery>, SyncError> {
-    let fetched =
-        session.fetch_new(known_uid + 1).map_err(SyncError::imap(
-            format!("fetching new mail in {}", folder.name),
-        ))?;
+    let uids: Vec<u32> = session
+        .list_new_uids(known_uid + 1)
+        .map_err(SyncError::imap(format!(
+            "listing new mail in {}",
+            folder.name
+        )))?
+        .into_iter()
+        .filter(|uid| *uid > known_uid)
+        .collect();
+    let total = uids.len();
     let mut delivered = Vec::new();
+    for batch in uids.chunks(FETCH_BATCH) {
+        write_progress(
+            layout,
+            &SyncProgress::syncing(
+                &account.name,
+                &folder.name,
+                delivered.len(),
+                total,
+            ),
+        );
+        deliver_batch(
+            session,
+            folder,
+            maildir,
+            known_uid,
+            batch,
+            &mut delivered,
+        )?;
+        indexer.nudge();
+    }
+    write_progress(
+        layout,
+        &SyncProgress::syncing(
+            &account.name,
+            &folder.name,
+            delivered.len(),
+            total,
+        ),
+    );
+    Ok(delivered)
+}
+
+fn deliver_batch(
+    session: &mut ImapSession,
+    folder: &RemoteFolder,
+    maildir: &MaildirFolder,
+    known_uid: u32,
+    batch: &[u32],
+    delivered: &mut Vec<Delivery>,
+) -> Result<(), SyncError> {
+    let fetched =
+        session.fetch_uids(batch).map_err(SyncError::imap(format!(
+            "fetching new mail in {}",
+            folder.name
+        )))?;
     for message in fetched {
         if message.uid <= known_uid {
             continue;
@@ -191,7 +303,7 @@ fn fetch_new(
             path,
         });
     }
-    Ok(delivered)
+    Ok(())
 }
 
 fn mirror_flags(

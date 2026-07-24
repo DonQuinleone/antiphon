@@ -140,6 +140,7 @@ dependencies = [
  "antiphon-pgp-agent",
  "antiphon-render",
  "antiphon-store",
+ "antiphon-sync",
  "antiphon-ui",
  "antiphon-vault",
  "chrono",
@@ -242,6 +243,8 @@ dependencies = [
  "imap-client",
  "lettre",
  "mail-parser",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
 ]

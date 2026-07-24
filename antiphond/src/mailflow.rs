@@ -7,7 +7,8 @@ use antiphon_oauth::{TokenStore, refresh};
 use antiphon_store::{Op, Outbox};
 use antiphon_sync::{
     DeliveryRule, RuleOutcome, SmtpAccount, SyncAccount, SyncError,
-    SyncReport, apply_rules, replay, send, sync,
+    SyncProgress, SyncReport, apply_rules, replay, send, sync,
+    write_progress,
 };
 
 use crate::accounts::OauthAccount;
@@ -42,6 +43,7 @@ impl Daemon {
         for spec in self.oauth.clone() {
             failures += usize::from(!self.sync_oauth(&spec, announce));
         }
+        write_progress(&self.layout, &SyncProgress::idle());
         self.last_sync_unix = Some(now_unix());
         failures
     }

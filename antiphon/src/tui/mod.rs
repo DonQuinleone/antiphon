@@ -242,13 +242,14 @@ fn maybe_refresh(
     last_refresh: &mut Instant,
     last_unread: &mut Option<u32>,
 ) {
-    if app.view != View::List || app.prompt.is_some() {
-        return;
-    }
     if last_refresh.elapsed() < REFRESH_EVERY {
         return;
     }
     *last_refresh = Instant::now();
+    app.sync_progress = antiphon_sync::read_progress(layout);
+    if app.view != View::List || app.prompt.is_some() {
+        return;
+    }
     let query = app.current_query.clone();
     let Ok(effective) = app.scoped(&query) else {
         return;

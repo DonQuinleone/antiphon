@@ -118,10 +118,29 @@ impl ImapSession {
 
     /// Fetches flags and full bodies for every message with a
     /// UID at or above `first_uid`, in ascending UID order.
-    pub fn fetch_new(
+    /// Only the UIDs, so a large folder can be fetched in
+    /// bounded batches instead of one unbounded response.
+    pub fn list_new_uids(
         &mut self,
         first_uid: u32,
+    ) -> Result<Vec<u32>, ClientError> {
+        let fetched = self.uid_fetch(
+            range_from(first_uid),
+            vec![MessageDataItemName::Uid],
+        )?;
+        let mut uids: Vec<u32> =
+            fetched.into_keys().map(|uid| uid.get()).collect();
+        uids.sort_unstable();
+        Ok(uids)
+    }
+
+    pub fn fetch_uids(
+        &mut self,
+        uids: &[u32],
     ) -> Result<Vec<FetchedMessage>, ClientError> {
+        let Some(set) = uid_set(uids) else {
+            return Ok(Vec::new());
+        };
         let items = vec![
             MessageDataItemName::Flags,
             MessageDataItemName::BodyExt {
@@ -130,7 +149,7 @@ impl ImapSession {
                 peek: true,
             },
         ];
-        let fetched = self.uid_fetch(range_from(first_uid), items)?;
+        let fetched = self.uid_fetch(set, items)?;
         let mut messages: Vec<FetchedMessage> = fetched
             .into_iter()
             .map(|(uid, items)| FetchedMessage {
@@ -276,6 +295,14 @@ fn mailbox_name(mailbox: &Mailbox<'_>) -> String {
 
 fn uid_value(uid: u32) -> SeqOrUid {
     SeqOrUid::Value(NonZeroU32::new(uid).expect("uids are never zero"))
+}
+
+fn uid_set(uids: &[u32]) -> Option<SequenceSet> {
+    let sequences: Vec<Sequence> = uids
+        .iter()
+        .map(|uid| Sequence::Single(uid_value(*uid)))
+        .collect();
+    Some(SequenceSet(Vec1::try_from(sequences).ok()?))
 }
 
 fn single(uid: u32) -> SequenceSet {
