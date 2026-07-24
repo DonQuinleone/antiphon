@@ -1,8 +1,11 @@
+use std::path::PathBuf;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FolderReport {
     pub folder: String,
     pub new_messages: usize,
     pub updated_messages: usize,
+    pub delivered: Vec<PathBuf>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -20,5 +23,45 @@ impl SyncReport {
             .iter()
             .map(|folder| folder.updated_messages)
             .sum()
+    }
+
+    pub fn delivered(&self) -> Vec<PathBuf> {
+        self.folders
+            .iter()
+            .flat_map(|folder| folder.delivered.iter().cloned())
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn delivered_flattens_across_folders() {
+        let report = SyncReport {
+            folders: vec![
+                FolderReport {
+                    folder: "INBOX".to_owned(),
+                    new_messages: 2,
+                    updated_messages: 0,
+                    delivered: vec![
+                        PathBuf::from("/m/new/a"),
+                        PathBuf::from("/m/new/b"),
+                    ],
+                },
+                FolderReport {
+                    folder: "Sent".to_owned(),
+                    new_messages: 0,
+                    updated_messages: 1,
+                    delivered: Vec::new(),
+                },
+            ],
+        };
+        let expected =
+            vec![PathBuf::from("/m/new/a"), PathBuf::from("/m/new/b")];
+        assert_eq!(report.delivered(), expected);
+        assert_eq!(report.total_new(), 2);
+        assert_eq!(report.total_updated(), 1);
     }
 }

@@ -55,13 +55,13 @@ impl MaildirFolder {
 
     /// Maildir delivery: write into tmp/, then rename into
     /// new/ (or cur/ with the seen flag), so readers never
-    /// observe a partial message.
+    /// observe a partial message. Returns the delivered path.
     pub fn deliver(
         &self,
         uid: u32,
         seen: bool,
         content: &[u8],
-    ) -> io::Result<()> {
+    ) -> io::Result<PathBuf> {
         let base = unique_name(uid);
         let (subdir, name) = if seen {
             (DIR_CUR, format!("{base}{FLAG_SUFFIX}{SEEN_FLAG}"))
@@ -70,7 +70,9 @@ impl MaildirFolder {
         };
         let staging = self.root.join(DIR_TMP).join(&base);
         fs::write(&staging, content)?;
-        fs::rename(&staging, self.root.join(subdir).join(name))
+        let target = self.root.join(subdir).join(name);
+        fs::rename(&staging, &target)?;
+        Ok(target)
     }
 
     pub fn scan(&self) -> io::Result<Vec<LocalMessage>> {
@@ -224,8 +226,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let folder = MaildirFolder::new(dir.path().to_path_buf());
         folder.ensure().unwrap();
-        folder.deliver(1, false, b"unread mail").unwrap();
-        folder.deliver(2, true, b"read mail").unwrap();
+        let unseen = folder.deliver(1, false, b"unread mail").unwrap();
+        let seen = folder.deliver(2, true, b"read mail").unwrap();
+        assert!(unseen.starts_with(dir.path().join(DIR_NEW)));
+        assert!(unseen.is_file());
+        assert!(seen.starts_with(dir.path().join(DIR_CUR)));
+        assert!(seen.is_file());
         let mut messages = folder.scan().unwrap();
         messages.sort_by_key(|message| message.uid);
         assert_eq!(messages.len(), 2);

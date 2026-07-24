@@ -78,6 +78,7 @@ mod tests {
                     folder: (*name).to_owned(),
                     new_messages: *new_messages,
                     updated_messages: 0,
+                    delivered: Vec::new(),
                 })
                 .collect(),
         }

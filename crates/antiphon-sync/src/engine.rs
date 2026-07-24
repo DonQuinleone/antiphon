@@ -28,6 +28,11 @@ pub(crate) struct RemoteFolder {
     pub(crate) delimiter: Option<String>,
 }
 
+struct Delivery {
+    uid: u32,
+    path: PathBuf,
+}
+
 pub fn sync(
     account: &SyncAccount,
     layout: &StoreLayout,
@@ -79,7 +84,7 @@ fn sync_folder(
     // an IMAP `n:*` range never selects the empty set.
     let expects_new =
         mailbox.uid_next.is_none_or(|next| next > known_uid + 1);
-    let new_messages = if has_mail && expects_new {
+    let deliveries = if has_mail && expects_new {
         fetch_new(session, folder, &maildir, known_uid)?
     } else {
         Vec::new()
@@ -89,8 +94,11 @@ fn sync_folder(
     } else {
         0
     };
-    let last_uid =
-        new_messages.iter().copied().max().unwrap_or(known_uid);
+    let last_uid = deliveries
+        .iter()
+        .map(|delivery| delivery.uid)
+        .max()
+        .unwrap_or(known_uid);
     state.set_folder(
         &folder.name,
         FolderState {
@@ -100,8 +108,12 @@ fn sync_folder(
     );
     Ok(FolderReport {
         folder: folder.name.clone(),
-        new_messages: new_messages.len(),
+        new_messages: deliveries.len(),
         updated_messages,
+        delivered: deliveries
+            .into_iter()
+            .map(|delivery| delivery.path)
+            .collect(),
     })
 }
 
@@ -151,7 +163,7 @@ fn fetch_new(
     folder: &RemoteFolder,
     maildir: &MaildirFolder,
     known_uid: u32,
-) -> Result<Vec<u32>, SyncError> {
+) -> Result<Vec<Delivery>, SyncError> {
     let fetched =
         session.fetch_new(known_uid + 1).map_err(SyncError::imap(
             format!("fetching new mail in {}", folder.name),
@@ -170,10 +182,13 @@ fn fetch_new(
                 ),
             });
         };
-        maildir
+        let path = maildir
             .deliver(message.uid, message.seen, &body)
             .map_err(SyncError::io(maildir.root()))?;
-        delivered.push(message.uid);
+        delivered.push(Delivery {
+            uid: message.uid,
+            path,
+        });
     }
     Ok(delivered)
 }
