@@ -5,7 +5,7 @@ it logs to stdout/stderr, and it shuts down cleanly (sealing
 the vault) on SIGHUP, SIGINT or SIGTERM. That makes it a
 first-class citizen under any supervisor, and trivially
 scriptable everywhere else. Ready-made service files live in
-[dist/](../dist/).
+[dist/](https://git.sr.ht/~donquinleone/antiphon/tree/master/item/dist).
 
 The units below assume `antiphond` on your PATH or at the path
 named in the file; adjust the path if you installed elsewhere
