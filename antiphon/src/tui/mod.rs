@@ -22,6 +22,7 @@ use ratatui::crossterm::event::{
 use antiphon_ipc::{
     IpcClient, OpId, OpKind, Operation, Request, socket_path,
 };
+use antiphon_pgp::Keyring;
 
 use app::{
     App, DEFAULT_QUERY, KeyRoute, OpIntent, PromptKind, View,
@@ -38,6 +39,7 @@ const LIST_WINDOW: usize = 500;
 const DAEMON_ASSIGNS_ID: u64 = 0;
 const UNREAD_QUERY: &str = "tag:unread";
 const DRAFTS_DIR: &str = "drafts";
+const PGP_KEYRING_DIR: &str = "pgp";
 const CONVENTION_NEW: &str = "new";
 const CONVENTION_REPLY: &str = "reply";
 const FALLBACK_EDITOR: &str = "vi";
@@ -76,7 +78,8 @@ pub fn run(
         }
     };
     let context = ComposeContext::from_loaded(loaded, dirs);
-    let mut app = App::new(loaded, messages, total);
+    let keyring = Keyring::from_dir(dirs.config.join(PGP_KEYRING_DIR));
+    let mut app = App::new(loaded, messages, total, keyring);
     let mut terminal = ratatui::init();
     let outcome =
         event_loop(&mut terminal, &mut app, keymap, layout, &context);
@@ -407,14 +410,17 @@ fn dispatch(
         app.apply(action);
         return None;
     }
-    let message = app.selected_message()?;
-    match std::fs::read(&message.path) {
-        Ok(raw) => app.open_pager(body_text(&raw)),
+    let path = app.selected_message()?.path.clone();
+    match std::fs::read(&path) {
+        Ok(raw) => {
+            let signature = antiphon_pgp::verify(&raw, &app.keyring);
+            app.open_pager(body_text(&raw), signature);
+        }
         Err(error) => {
-            app.open_pager(format!(
-                "cannot read {}: {error}",
-                message.path.display()
-            ));
+            app.open_pager(
+                format!("cannot read {}: {error}", path.display()),
+                antiphon_pgp::Signature::none(),
+            );
         }
     }
     None

@@ -1,5 +1,6 @@
 use antiphon_config::{Composer, Loaded, ReadingPane};
 use antiphon_core::Action;
+use antiphon_pgp::{Keyring, Signature};
 use antiphon_store::MessageSummary;
 use antiphon_ui::{Theme, VESPERS};
 
@@ -126,7 +127,9 @@ pub struct App {
     pub selected: usize,
     pub view: View,
     pub pager_body: String,
+    pub pager_signature: Signature,
     pub pager_scroll: u16,
+    pub keyring: Keyring,
     pub reading_pane: ReadingPane,
     pub sidebar: bool,
     pub theme: &'static Theme,
@@ -149,6 +152,7 @@ impl App {
         loaded: &Loaded,
         messages: Vec<MessageSummary>,
         total_messages: u32,
+        keyring: Keyring,
     ) -> App {
         let accounts = account_names(loaded);
         let sidebar_entries =
@@ -166,7 +170,9 @@ impl App {
             selected: 0,
             view: View::List,
             pager_body: String::new(),
+            pager_signature: Signature::none(),
             pager_scroll: 0,
+            keyring,
             reading_pane: loaded.config.ui.reading_pane,
             sidebar: true,
             theme,
@@ -220,9 +226,10 @@ impl App {
         Some(pane)
     }
 
-    pub fn open_pager(&mut self, body: String) {
+    pub fn open_pager(&mut self, body: String, signature: Signature) {
         self.set_unread(false);
         self.pager_body = body;
+        self.pager_signature = signature;
         self.pager_scroll = 0;
         self.view = View::Pager;
     }
@@ -513,7 +520,9 @@ mod tests {
             selected: 0,
             view: View::List,
             pager_body: String::new(),
+            pager_signature: Signature::none(),
             pager_scroll: 0,
+            keyring: Keyring::default(),
             reading_pane: ReadingPane::Below,
             sidebar: true,
             theme: &VESPERS,
@@ -603,7 +612,10 @@ mod tests {
     #[test]
     fn pager_scrolls_clamped_and_returns_to_the_list() {
         let mut app = app_with_messages(1);
-        app.open_pager("one\ntwo\nthree\n".to_string());
+        app.open_pager(
+            "one\ntwo\nthree\n".to_string(),
+            Signature::none(),
+        );
         assert_eq!(app.view, View::Pager);
         app.apply(Action::MoveUp);
         assert_eq!(app.pager_scroll, 0);
@@ -635,7 +647,7 @@ mod tests {
     #[test]
     fn opening_the_pager_marks_the_message_read() {
         let mut app = app_with_messages(1);
-        app.open_pager(String::new());
+        app.open_pager(String::new(), Signature::none());
         assert!(!app.messages[0].unread);
         assert_eq!(app.pending_ops.len(), 1);
     }

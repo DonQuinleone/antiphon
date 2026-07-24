@@ -1,4 +1,5 @@
 use antiphon_config::ReadingPane;
+use antiphon_pgp::{Signature, SignatureStatus};
 use antiphon_store::MessageSummary;
 use antiphon_ui::Theme;
 use chrono::{DateTime, Local};
@@ -325,8 +326,11 @@ fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
         ),
         header_line(theme, "Subject:", message.subject.clone()),
         header_line(theme, "Tags:", message.tags.join(", ")),
-        Line::default(),
     ];
+    if let Some(line) = signature_line(theme, &app.pager_signature) {
+        lines.push(line);
+    }
+    lines.push(Line::default());
     lines.extend(app.pager_body.lines().map(|body_line| {
         Line::from(Span::styled(
             body_line.to_string(),
@@ -347,6 +351,28 @@ fn pager_line_colour(
         theme.text_muted
     } else {
         theme.text_primary
+    }
+}
+
+fn signature_line(
+    theme: &Theme,
+    signature: &Signature,
+) -> Option<Line<'static>> {
+    let text = signature.header_line()?;
+    let colour = signature_colour(theme, &signature.status);
+    Some(Line::from(Span::styled(text, Style::new().fg(colour))))
+}
+
+fn signature_colour(
+    theme: &Theme,
+    status: &SignatureStatus,
+) -> ratatui::style::Color {
+    match status {
+        SignatureStatus::Good { .. } => theme.status_ok,
+        SignatureStatus::Bad { .. } => theme.status_error,
+        SignatureStatus::Unknown { .. } | SignatureStatus::None => {
+            theme.text_muted
+        }
     }
 }
 
@@ -449,6 +475,8 @@ pub(super) fn format_date(unix: i64, format: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use antiphon_ui::VESPERS;
+
     use super::*;
 
     #[test]
@@ -469,5 +497,55 @@ mod tests {
         let formatted = format_date(1_764_671_045, "%Y");
         assert_eq!(formatted, "2025");
         assert_eq!(format_date(i64::MAX, "%Y"), "");
+    }
+
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
+    }
+
+    #[test]
+    fn signature_line_renders_and_colours_per_status() {
+        let theme = &VESPERS;
+        let cases = [
+            (
+                SignatureStatus::Good {
+                    signer: "Alice <alice@example.com>".to_string(),
+                    key_id: "1A2B3C4D5E6F7A8B".to_string(),
+                },
+                theme.status_ok,
+                "Good signature from Alice \
+                 <alice@example.com> (0x1A2B3C4D5E6F7A8B)",
+            ),
+            (
+                SignatureStatus::Bad {
+                    key_id: "0BADC0DE0BADC0DE".to_string(),
+                },
+                theme.status_error,
+                "BAD signature (0x0BADC0DE0BADC0DE)",
+            ),
+            (
+                SignatureStatus::Unknown {
+                    key_id: "DEADBEEFDEADBEEF".to_string(),
+                },
+                theme.text_muted,
+                "Unknown signature from key \
+                 0xDEADBEEFDEADBEEF (not in keyring)",
+            ),
+        ];
+        for (status, colour, expected) in cases {
+            let signature = Signature::from_status(status);
+            let line =
+                signature_line(theme, &signature).expect("a line");
+            assert_eq!(line_text(&line), expected);
+            assert_eq!(line.spans[0].style.fg, Some(colour));
+        }
+    }
+
+    #[test]
+    fn unsigned_message_shows_no_signature_line() {
+        assert!(signature_line(&VESPERS, &Signature::none()).is_none());
     }
 }
