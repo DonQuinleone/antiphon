@@ -1,0 +1,28 @@
+[package]
+name = "antiphon-pgp-agent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "gpg-agent bridge for OpenPGP signing and decryption"
+
+[dependencies]
+anyhow = "=1.0.104"
+sequoia-gpg-agent = "=0.6.2"
+# 0.36.1 needs the system capnp compiler at build time
+sequoia-ipc = { version = "=0.36.0", default-features = false }
+sequoia-openpgp = { version = "=2.4.1", default-features = false, features = [
+    "allow-experimental-crypto",
+    "allow-variable-time-crypto",
+    "compression",
+    "crypto-rust",
+] }
+tokio = { version = "=1.53.1", default-features = false, features = [
+    "net",
+    "rt",
+] }
+
+[dev-dependencies]
+tempfile = "=3.27.0"
