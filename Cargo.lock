@@ -109,6 +109,7 @@ dependencies = [
 name = "antiphon-core"
 version = "0.0.0"
 dependencies = [
+ "antiphon-config",
  "crossterm",
 ]
 
