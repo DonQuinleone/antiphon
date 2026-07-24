@@ -1,4 +1,6 @@
+mod actions;
 mod app;
+mod commands;
 mod compose;
 mod crypto;
 mod draw;
@@ -25,10 +27,9 @@ use antiphon_ipc::{
 };
 use antiphon_pgp::Keyring;
 
-use app::{
-    App, DEFAULT_QUERY, KeyRoute, OpIntent, PromptKind, View,
-    account_names, account_of,
-};
+use actions::{OpIntent, account_names, account_of};
+use app::{App, DEFAULT_QUERY, KeyRoute, View};
+use commands::PromptKind;
 use compose::{
     ComposeContext, ComposeIdentity, ParsedDraft, ReplySource,
 };

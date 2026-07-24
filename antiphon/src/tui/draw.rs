@@ -13,7 +13,8 @@ use ratatui::widgets::{
 };
 use tui_term::widget::PseudoTerminal;
 
-use super::app::{App, DEFAULT_QUERY, Prompt, PromptKind, View};
+use super::app::{App, DEFAULT_QUERY, View};
+use super::commands::{Prompt, PromptKind};
 use super::scope::ViewScope;
 use super::sidebar::SidebarEntry;
 
