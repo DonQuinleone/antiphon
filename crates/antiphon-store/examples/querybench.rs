@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use antiphon_store::{SearchIndex, StoreLayout};
+use antiphon_store::{Scope, SearchIndex, StoreLayout};
 
 const LIST_WINDOW: usize = 500;
 const RUNS: usize = 20;
@@ -35,6 +35,9 @@ fn main() {
         let mean = bench(&index, label, query, Some(LIST_WINDOW));
         worst = worst.max(mean);
     }
+    let scope = Scope::one("acct0");
+    let mean = bench_scoped(&index, "scope api window", &scope, "*");
+    worst = worst.max(mean);
     let Some(budget_ms) = budget_ms else {
         return;
     };
@@ -72,4 +75,24 @@ fn bench(
 
 fn report(label: &str, ms: f64) {
     println!("{label}: {ms:.1} ms");
+}
+
+fn bench_scoped(
+    index: &SearchIndex,
+    label: &str,
+    scope: &Scope,
+    query: &str,
+) -> f64 {
+    let mut total_rows = 0;
+    let started = Instant::now();
+    for _ in 0..RUNS {
+        total_rows += index
+            .query_scoped(scope, query, Some(LIST_WINDOW))
+            .unwrap()
+            .len();
+    }
+    let mean_ms =
+        started.elapsed().as_secs_f64() * 1000.0 / RUNS as f64;
+    report(&format!("{label} ({} rows)", total_rows / RUNS), mean_ms);
+    mean_ms
 }

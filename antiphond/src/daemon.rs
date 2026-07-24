@@ -114,6 +114,7 @@ fn smtp_accounts(loaded: &Loaded) -> Vec<(String, SmtpAccount)> {
 
 const SUBMISSION_PORT: u16 = 587;
 const ACCEPT_POLL: Duration = Duration::from_millis(200);
+const CLIENT_READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn sync_interval(loaded: &Loaded) -> Option<Duration> {
     let minutes = loaded.config.sync.interval_minutes;
@@ -138,6 +139,9 @@ fn serve_with_timer(
         match server.accept() {
             Ok(stream) => {
                 stream.set_nonblocking(false)?;
+                // A silent client must not starve the accept
+                // loop and the sync timer behind it.
+                stream.set_read_timeout(Some(CLIENT_READ_TIMEOUT))?;
                 daemon.serve_connection(stream);
             }
             Err(error)
