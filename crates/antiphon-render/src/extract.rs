@@ -1,5 +1,6 @@
 use mail_parser::{
-    ContentType, MessageParser, MessagePart, MimeHeaders, PartType,
+    ContentType, HeaderName, HeaderValue, MessageParser, MessagePart,
+    MimeHeaders, PartType,
 };
 
 use crate::flowed::unflow;
@@ -236,5 +237,57 @@ mod tests {
         let body = body_text(&message);
         assert_eq!(body.kind, BodyKind::Plain);
         assert_eq!(body.text, "caf\u{e9} na\u{ef}ve\n");
+    }
+}
+
+pub fn delivered_addresses(raw: &[u8]) -> Vec<String> {
+    let Some(message) = MessageParser::default().parse(raw) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for header in [HeaderName::To, HeaderName::Cc] {
+        let Some(addresses) = message.header(header) else {
+            continue;
+        };
+        collect_addresses(addresses, &mut out);
+    }
+    out
+}
+
+fn collect_addresses(value: &HeaderValue<'_>, out: &mut Vec<String>) {
+    let HeaderValue::Address(address) = value else {
+        return;
+    };
+    for entry in address.iter() {
+        let Some(email) = entry.address.as_ref() else {
+            continue;
+        };
+        out.push(email.to_string());
+    }
+}
+
+#[cfg(test)]
+mod delivered_tests {
+    use super::delivered_addresses;
+
+    #[test]
+    fn to_and_cc_addresses_come_back_bare() {
+        let raw = b"From: a@example.com\r\n\
+            To: Mara Voss <mara@example.com>, b@example.com\r\n\
+            Cc: shop-orders@quin.example.com\r\n\
+            Subject: x\r\n\r\nbody";
+        assert_eq!(
+            delivered_addresses(raw),
+            vec![
+                "mara@example.com".to_string(),
+                "b@example.com".to_string(),
+                "shop-orders@quin.example.com".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn garbage_yields_nothing() {
+        assert!(delivered_addresses(b"").is_empty());
     }
 }

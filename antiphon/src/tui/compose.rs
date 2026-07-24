@@ -1,4 +1,5 @@
 use antiphon_config::{AccountFile, Dirs, Loaded};
+use antiphon_core::{Addr, ParsedIdentity, reply_identity};
 use antiphon_render::{Draft, build_message};
 use antiphon_store::Envelope;
 
@@ -15,6 +16,8 @@ pub struct ComposeIdentity {
 
 pub struct ComposeContext {
     entries: Vec<(String, ComposeIdentity)>,
+    parsed: Vec<(String, Vec<ParsedIdentity>)>,
+    dirs: Dirs,
 }
 
 impl ComposeContext {
@@ -27,7 +30,21 @@ impl ComposeContext {
                 Some((named.account.account.name.clone(), identity))
             })
             .collect();
-        ComposeContext { entries }
+        let parsed = loaded
+            .accounts
+            .iter()
+            .map(|named| {
+                (
+                    named.account.account.name.clone(),
+                    parsed_identities(&named.account),
+                )
+            })
+            .collect();
+        ComposeContext {
+            entries,
+            parsed,
+            dirs: dirs.clone(),
+        }
     }
 
     /// The named account's identity, or the first configured
@@ -42,6 +59,65 @@ impl ComposeContext {
             .or_else(|| self.entries.first())
             .map(|(name, identity)| (name.as_str(), identity))
     }
+
+    /// The identity a reply sends from: the resolution engine
+    /// over the delivered addresses (verbatim From on pattern
+    /// hits), falling back to the account default.
+    pub fn reply_identity_for(
+        &self,
+        account: &str,
+        delivered: &[String],
+    ) -> Option<(String, ComposeIdentity)> {
+        if let Some(identity) = self.resolve(account, delivered) {
+            return Some((account.to_string(), identity));
+        }
+        self.identity_for(account).map(|(name, identity)| {
+            (
+                name.to_string(),
+                ComposeIdentity {
+                    name: identity.name.clone(),
+                    address: identity.address.clone(),
+                    signature: identity.signature.clone(),
+                },
+            )
+        })
+    }
+
+    fn resolve(
+        &self,
+        account: &str,
+        delivered: &[String],
+    ) -> Option<ComposeIdentity> {
+        let (_, identities) =
+            self.parsed.iter().find(|(name, _)| name == account)?;
+        let addrs: Vec<Addr> =
+            delivered.iter().map(|a| Addr::new(a)).collect();
+        let resolved = reply_identity(identities, &addrs)?;
+        Some(ComposeIdentity {
+            name: resolved.identity.name.clone(),
+            address: resolved.from.clone(),
+            signature: resolved.identity.signature.as_deref().and_then(
+                |name| {
+                    antiphon_config::signature_text(&self.dirs, name)
+                },
+            ),
+        })
+    }
+}
+
+fn parsed_identities(file: &AccountFile) -> Vec<ParsedIdentity> {
+    file.identities
+        .iter()
+        .filter_map(|identity| {
+            ParsedIdentity::new(
+                &identity.address,
+                identity.name.as_deref(),
+                identity.signature.as_deref(),
+                &identity.matches,
+            )
+            .ok()
+        })
+        .collect()
 }
 
 fn account_identity(

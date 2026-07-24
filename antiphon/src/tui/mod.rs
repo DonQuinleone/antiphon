@@ -305,12 +305,6 @@ fn reply_request(
         app.notice = Some("no message selected".into());
         return None;
     };
-    let Some((account, identity)) =
-        context.identity_for(&account_of(&message.path))
-    else {
-        app.notice = Some("no compose identity configured".into());
-        return None;
-    };
     let raw = match std::fs::read(&message.path) {
         Ok(raw) => raw,
         Err(error) => {
@@ -320,6 +314,13 @@ fn reply_request(
             ));
             return None;
         }
+    };
+    let delivered = antiphon_render::delivered_addresses(&raw);
+    let Some((account, identity)) = context
+        .reply_identity_for(&account_of(&message.path), &delivered)
+    else {
+        app.notice = Some("no compose identity configured".into());
+        return None;
     };
     let source = ReplySource {
         from: &message.from,
@@ -332,8 +333,8 @@ fn reply_request(
         body: &body_text(&raw),
     };
     Some(EditorRequest {
-        account: account.to_string(),
-        text: compose::reply_draft(identity, &source),
+        account,
+        text: compose::reply_draft(&identity, &source),
     })
 }
 
