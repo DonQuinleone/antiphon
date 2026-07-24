@@ -1,4 +1,5 @@
 use antiphon_pgp::{Signature, SignatureStatus};
+use antiphon_render::PatchLine;
 use antiphon_ui::Theme;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -28,12 +29,20 @@ pub(super) fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
         lines.push(line);
     }
     lines.push(Line::default());
-    lines.extend(app.pager_body.lines().map(|body_line| {
-        Line::from(Span::styled(
-            body_line.to_string(),
-            Style::new().fg(pager_line_colour(theme, body_line)),
-        ))
-    }));
+    lines.extend(app.pager_body.lines().enumerate().map(
+        |(index, body_line)| {
+            let kind = app
+                .pager_patch
+                .get(index)
+                .copied()
+                .unwrap_or(PatchLine::Text);
+            Line::from(Span::styled(
+                body_line.to_string(),
+                Style::new()
+                    .fg(pager_line_colour(theme, kind, body_line)),
+            ))
+        },
+    ));
     let paragraph = Paragraph::new(lines)
         .wrap(Wrap { trim: false })
         .scroll((app.pager_scroll, 0));
@@ -42,8 +51,20 @@ pub(super) fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
 
 fn pager_line_colour(
     theme: &Theme,
+    kind: PatchLine,
     line: &str,
 ) -> ratatui::style::Color {
+    match kind {
+        PatchLine::Addition => theme.diff_add,
+        PatchLine::Removal => theme.diff_remove,
+        PatchLine::FileHeader => theme.accent_strong,
+        PatchLine::HunkHeader => theme.accent,
+        PatchLine::NoNewline | PatchLine::Envelope => theme.text_muted,
+        PatchLine::Text => prose_colour(theme, line),
+    }
+}
+
+fn prose_colour(theme: &Theme, line: &str) -> ratatui::style::Color {
     if line.trim_start().starts_with('>') {
         theme.text_muted
     } else {
@@ -127,5 +148,35 @@ mod tests {
     #[test]
     fn unsigned_message_shows_no_signature_line() {
         assert!(signature_line(&VESPERS, &Signature::none()).is_none());
+    }
+
+    #[test]
+    fn patch_classifications_map_to_theme_roles() {
+        let theme = &VESPERS;
+        let cases = [
+            (PatchLine::Addition, "+new", theme.diff_add),
+            (PatchLine::Removal, "-old", theme.diff_remove),
+            (
+                PatchLine::FileHeader,
+                "diff --git a/f b/f",
+                theme.accent_strong,
+            ),
+            (PatchLine::HunkHeader, "@@ -1 +1 @@", theme.accent),
+            (
+                PatchLine::NoNewline,
+                "\\ No newline at end of file",
+                theme.text_muted,
+            ),
+            (PatchLine::Envelope, "---", theme.text_muted),
+            (PatchLine::Text, "prose", theme.text_primary),
+            (PatchLine::Text, "> quoted", theme.text_muted),
+        ];
+        for (kind, line, expected) in cases {
+            assert_eq!(
+                pager_line_colour(theme, kind, line),
+                expected,
+                "{kind:?} `{line}`"
+            );
+        }
     }
 }

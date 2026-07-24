@@ -43,6 +43,7 @@ pub struct App {
     pub selected: usize,
     pub view: View,
     pub pager_body: String,
+    pub pager_patch: Vec<antiphon_render::PatchLine>,
     pub pager_signature: Signature,
     pub pager_scroll: u16,
     pub keyring: Keyring,
@@ -88,6 +89,7 @@ impl App {
             selected: 0,
             view: View::List,
             pager_body: String::new(),
+            pager_patch: Vec::new(),
             pager_signature: Signature::none(),
             pager_scroll: 0,
             keyring,
@@ -148,6 +150,7 @@ impl App {
 
     pub fn open_pager(&mut self, body: String, signature: Signature) {
         self.set_unread(false);
+        self.pager_patch = patch_lines(self.selected_message(), &body);
         self.pager_body = body;
         self.pager_signature = signature;
         self.pager_scroll = 0;
@@ -222,6 +225,19 @@ impl App {
     }
 }
 
+fn patch_lines(
+    selected: Option<&MessageSummary>,
+    body: &str,
+) -> Vec<antiphon_render::PatchLine> {
+    let subject = selected
+        .map(|message| message.subject.as_str())
+        .unwrap_or_default();
+    if !antiphon_render::is_patch(subject, body) {
+        return Vec::new();
+    }
+    antiphon_render::classify_patch(body)
+}
+
 #[cfg(test)]
 pub(super) fn app_with_messages(count: usize) -> App {
     let messages = (0..count)
@@ -247,6 +263,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         selected: 0,
         view: View::List,
         pager_body: String::new(),
+        pager_patch: Vec::new(),
         pager_signature: Signature::none(),
         pager_scroll: 0,
         keyring: Keyring::default(),
@@ -320,6 +337,22 @@ mod tests {
         app.apply(Action::Quit);
         assert_eq!(app.view, View::List);
         assert!(!app.quit);
+    }
+
+    #[test]
+    fn pager_classification_follows_patch_detection() {
+        use antiphon_render::PatchLine;
+
+        let diff = "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-a\n+b\n";
+        let mut app = app_with_messages(1);
+        app.open_pager("plain words\n".into(), Signature::none());
+        assert!(app.pager_patch.is_empty());
+        app.open_pager(diff.into(), Signature::none());
+        assert_eq!(app.pager_patch[3], PatchLine::Removal);
+        assert_eq!(app.pager_patch[4], PatchLine::Addition);
+        app.messages[0].subject = "[PATCH] prose only".into();
+        app.open_pager("no diff here\n".into(), Signature::none());
+        assert_eq!(app.pager_patch, [PatchLine::Text]);
     }
 
     #[test]
