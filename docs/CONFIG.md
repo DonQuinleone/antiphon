@@ -123,8 +123,10 @@ match = [
     "you+*@example.com",   # plus-addressing
     "*@you.example.com",   # catch-all domain
 ]
-pgp_sign = false
-pgp_key = "0xDEADBEEF"     # optional
+pgp_sign = false           # sign mail from this identity
+# optional; the full fingerprint (gpg --fingerprint shows it),
+# otherwise the key is picked by the identity address
+pgp_key = "8F0EA48BF8BE9D3B9E1B2B9C6E5F0D3A1C2B4D5E"
 
 [[rules]]
 match_list = "~lists/somewhere"   # or match_sender
