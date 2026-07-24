@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=antiphond
+Comment=Antiphon mail sync daemon
+Exec=antiphond
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

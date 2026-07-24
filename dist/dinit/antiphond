@@ -1,0 +1,4 @@
+type = process
+command = antiphond
+restart = true
+smooth-recovery = true

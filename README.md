@@ -60,6 +60,14 @@ cd antiphon
 cargo build --workspace
 ```
 
+Launching `antiphon` starts the sync daemon automatically when
+none is running; to run antiphond under launchd, systemd,
+dinit, runit or a desktop's autostart instead, see
+[docs/DAEMON.md](docs/DAEMON.md) and the ready-made units in
+[dist/](dist/). The configuration reference is
+[docs/CONFIG.md](docs/CONFIG.md) and the encrypted store is
+covered in [docs/VAULT.md](docs/VAULT.md).
+
 ## Contributing
 
 Development happens on SourceHut: patches go to the

@@ -46,6 +46,9 @@ unlock = ["touchid", "yubikey", "passphrase"]
 [sync]
 interval_minutes = 5       # periodic daemon sync; 0 disables
 
+[daemon]
+autostart = true           # client starts antiphond if absent
+
 [notifications]
 enabled = true
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Antiphon mail sync daemon
+Documentation=https://git.sr.ht/~donquinleone/antiphon
+
+[Service]
+ExecStart=%h/.cargo/bin/antiphond
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
