@@ -150,6 +150,9 @@ name = "antiphond"
 version = "0.0.0"
 dependencies = [
  "antiphon-buildinfo",
+ "antiphon-config",
+ "antiphon-ipc",
+ "antiphon-store",
 ]
 
 [[package]]

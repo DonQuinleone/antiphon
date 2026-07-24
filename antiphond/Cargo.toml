@@ -8,5 +8,10 @@ repository.workspace = true
 authors.workspace = true
 description = "Sync daemon for the antiphon mail client"
 
+[dependencies]
+antiphon-config = { path = "../crates/antiphon-config" }
+antiphon-ipc = { path = "../crates/antiphon-ipc" }
+antiphon-store = { path = "../crates/antiphon-store" }
+
 [build-dependencies]
 antiphon-buildinfo = { path = "../crates/antiphon-buildinfo" }
