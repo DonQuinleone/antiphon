@@ -163,7 +163,7 @@ address.
 
 Encryption requires a cert for every To and Cc address in the
 trusted keyring (`.asc`/`.pgp` files under the config
-directory's `pgp/`). If a cert is missing, signing fails, or
+directory's `pgp/`; see [PGP.md](PGP.md)). If a cert is missing, signing fails, or
 the agent refuses, nothing is sent: the message stays in
 `store/drafts/` and the statusline names the problem. Received
 `multipart/encrypted` mail is decrypted through gpg-agent when
