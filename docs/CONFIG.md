@@ -39,6 +39,7 @@ composer = "embedded"      # embedded terminal pane for the
 
 [vault]
 backend = "auto"           # auto | luks2 | apfs | gocryptfs
+passphrase_cmd = "pass show antiphon/vault"  # unlock secret
 idle_lock_minutes = 0      # 0 = open until logout/suspend
 unlock = ["touchid", "yubikey", "passphrase"]
 
@@ -62,9 +63,11 @@ Gallery themes: `vespers` (default), `kanagawa-wave`,
 `catppuccin-mocha`, `gruvbox-dark`, `tokyo-night`, `nord`,
 `rose-pine`. Truecolor terminal required.
 
-The `[vault]` table is parsed and validated today; the vault
-itself arrives at milestone M6 (DESIGN.md), until which the
-store lives unencrypted at `$XDG_DATA_HOME/antiphon/store`.
+The vault seals the store at rest (see [VAULT.md](VAULT.md)):
+`antiphon vault create` sets it up, `passphrase_cmd` supplies
+the unlock secret to antiphond, and an absent vault leaves the
+store an ordinary directory. `touchid` and `yubikey` in
+`unlock` are declared but not yet wired.
 
 ### Key sequences
 
