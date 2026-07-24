@@ -10,3 +10,4 @@ description = "Message body extraction and display transforms"
 
 [dependencies]
 mail-parser = "=0.11.5"
+mail-builder = "=0.4.4"

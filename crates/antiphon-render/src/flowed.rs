@@ -160,3 +160,120 @@ mod tests {
         }
     }
 }
+
+const FLOW_WIDTH: usize = 72;
+
+pub fn flow(text: &str) -> String {
+    let mut out: Vec<String> = Vec::new();
+    for line in text.split('\n') {
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        if line == SIGNATURE_SEPARATOR {
+            out.push(line.to_string());
+            continue;
+        }
+        flow_line(line, &mut out);
+    }
+    out.join("\r\n")
+}
+
+fn flow_line(line: &str, out: &mut Vec<String>) {
+    let (depth, body) = split_quotes(line);
+    let prefix = quote_prefix(depth);
+    let mut remaining = body.trim_end();
+    loop {
+        let room = FLOW_WIDTH.saturating_sub(prefix.len());
+        let Some(cut) = wrap_point(remaining, room) else {
+            out.push(stuff(&prefix, remaining));
+            return;
+        };
+        let (head, rest) = remaining.split_at(cut);
+        out.push(stuff(&prefix, &format!("{head} ")));
+        remaining = rest.trim_start();
+    }
+}
+
+fn split_quotes(line: &str) -> (usize, &str) {
+    let (depth, marked) = strip_quote_marks(line);
+    if depth == 0 {
+        return (0, marked);
+    }
+    (depth, marked.strip_prefix(' ').unwrap_or(marked))
+}
+
+fn quote_prefix(depth: usize) -> String {
+    ">".repeat(depth)
+}
+
+fn wrap_point(text: &str, room: usize) -> Option<usize> {
+    if text.chars().count() <= room {
+        return None;
+    }
+    let mut last_space = None;
+    for (index, (position, ch)) in text.char_indices().enumerate() {
+        if index >= room {
+            break;
+        }
+        if ch == ' ' {
+            last_space = Some(position);
+        }
+    }
+    last_space
+}
+
+fn stuff(prefix: &str, body: &str) -> String {
+    let stuffed = body.starts_with(' ')
+        || body.starts_with("From ")
+        || (prefix.is_empty() && body.starts_with('>'));
+    match (prefix.is_empty(), stuffed) {
+        (true, true) => format!(" {body}"),
+        (true, false) => body.to_string(),
+        (false, _) => format!("{prefix} {body}"),
+    }
+}
+
+#[cfg(test)]
+mod flow_tests {
+    use super::*;
+
+    #[test]
+    fn short_lines_pass_through_untouched() {
+        assert_eq!(flow("hello\nworld"), "hello\r\nworld");
+    }
+
+    #[test]
+    fn long_lines_soft_wrap_inside_the_width() {
+        let word = "alder ";
+        let long = word.repeat(20).trim_end().to_string();
+        let flowed = flow(&long);
+        for line in flowed.split("\r\n") {
+            assert!(line.len() <= FLOW_WIDTH, "{line:?}");
+        }
+        assert!(flowed.matches("\r\n").count() >= 1);
+        let joined = unflow(&flowed.replace("\r\n", "\n"), false);
+        assert_eq!(joined, long);
+    }
+
+    #[test]
+    fn signature_separator_stays_hard() {
+        let flowed = flow("body\n-- \nQ");
+        assert_eq!(flowed, "body\r\n-- \r\nQ");
+    }
+
+    #[test]
+    fn space_stuffing_protects_special_starts() {
+        assert_eq!(flow("From here"), " From here");
+        assert_eq!(flow(" indented"), "  indented");
+    }
+
+    #[test]
+    fn quoted_lines_keep_their_depth() {
+        let long_quote =
+            format!("> {}", "rowan ".repeat(20).trim_end());
+        let flowed = flow(&long_quote);
+        for line in flowed.split("\r\n") {
+            assert!(line.starts_with("> "), "{line:?}");
+        }
+        let joined = unflow(&flowed.replace("\r\n", "\n"), false);
+        assert_eq!(joined, long_quote);
+    }
+}
