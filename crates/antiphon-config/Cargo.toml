@@ -7,3 +7,8 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 description = "Configuration schema and strict TOML loading"
+
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+strsim = "=0.11.1"
+toml = "=1.1.3"
