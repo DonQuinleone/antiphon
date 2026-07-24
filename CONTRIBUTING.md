@@ -1,15 +1,36 @@
 # Contributing to antiphon
 
-Development happens on
-[GitHub](https://github.com/DonQuinleone/antiphon); issues and
-pull requests are welcome there. The
-[SourceHut repository](https://git.sr.ht/~donquinleone/antiphon)
+antiphon is developed on SourceHut with the e-mail-based patch
+workflow; there are no pull requests. The
+[GitHub repository](https://github.com/DonQuinleone/antiphon)
 is a read-only mirror.
 
-Antiphon is pre-alpha and built milestone by milestone against
+- Source: https://git.sr.ht/~donquinleone/antiphon
+- Patches and discussion:
+  https://lists.sr.ht/~donquinleone/antiphon-devel
+- Bugs and feature requests:
+  https://todo.sr.ht/~donquinleone/antiphon
+- Builds: https://builds.sr.ht/~donquinleone/antiphon
+
+antiphon is pre-alpha and built milestone by milestone against
 [DESIGN.md](DESIGN.md). Before proposing a feature, check the
 design document: if it is listed as deferred or out of scope,
-open an issue to argue the case rather than a pull request.
+open a ticket to argue the case rather than sending a patch.
+
+## Sending patches
+
+```bash
+git config sendemail.to \
+    '~donquinleone/antiphon-devel@lists.sr.ht'
+git send-email --annotate origin/master..HEAD
+```
+
+New to `git send-email`? The tutorial at
+[git-send-email.io](https://git-send-email.io) covers setup,
+and [git.sr.ht's web UI](https://git.sr.ht) offers a
+"Prepare a patchset" alternative that needs no local mail
+configuration. Revise a series after review with
+`git send-email -v2 --annotate origin/master..HEAD`.
 
 ## Ground rules for patches
 
@@ -39,8 +60,11 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-CI runs exactly these on Linux and macOS, plus a release build;
-green CI is a precondition for review, not a substitute for it.
+CI on [builds.sr.ht](https://builds.sr.ht/~donquinleone/antiphon)
+runs these on Arch (stable toolchain, plus the query
+performance smoke test) and Alpine (MSRV floor and musl);
+macOS is tested by the maintainer before releases. Green CI is
+a precondition for review, not a substitute for it.
 
 ## Licence
 

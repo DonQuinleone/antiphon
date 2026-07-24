@@ -2,8 +2,8 @@
 # see packaging/README.md.
 class Antiphon < Formula
   desc "Modern mail client for the terminal"
-  homepage "https://github.com/DonQuinleone/antiphon"
-  url "https://github.com/DonQuinleone/antiphon/archive/v@VERSION@.tar.gz"
+  homepage "https://git.sr.ht/~donquinleone/antiphon"
+  url "https://git.sr.ht/~donquinleone/antiphon/archive/v@VERSION@.tar.gz"
   sha256 "@SHA256@"
   license "GPL-3.0-or-later"
 

@@ -7,6 +7,13 @@
   </picture>
 </p>
 
+[![builds.sr.ht status](https://builds.sr.ht/~donquinleone/antiphon.svg)](https://builds.sr.ht/~donquinleone/antiphon)
+
+[Source](https://git.sr.ht/~donquinleone/antiphon) |
+[Mailing list](https://lists.sr.ht/~donquinleone/antiphon-devel) |
+[Tracker](https://todo.sr.ht/~donquinleone/antiphon) |
+[Builds](https://builds.sr.ht/~donquinleone/antiphon)
+
 > Pre-alpha, built milestone by milestone against
 > [DESIGN.md](DESIGN.md). Already working: `antiphon doctor`
 > (setup preflight with `--init-store`), the themed client over
@@ -45,19 +52,20 @@ Planned for v1 (see [DESIGN.md](DESIGN.md) for the full scope):
 Requires stable Rust (MSRV 1.95).
 
 ```bash
-git clone https://github.com/DonQuinleone/antiphon
+git clone https://git.sr.ht/~donquinleone/antiphon
 cd antiphon
 cargo build --workspace
 ```
 
 ## Contributing
 
-Development happens on
-[GitHub](https://github.com/DonQuinleone/antiphon), where issues
-and pull requests are welcome; see
-[CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules. The
-repository is mirrored at
-[git.sr.ht/~donquinleone/antiphon](https://git.sr.ht/~donquinleone/antiphon).
+Development happens on SourceHut: patches go to the
+[mailing list](https://lists.sr.ht/~donquinleone/antiphon-devel)
+with `git send-email`, and bugs to the
+[tracker](https://todo.sr.ht/~donquinleone/antiphon); see
+[CONTRIBUTING.md](CONTRIBUTING.md) for the workflow. The
+[GitHub repository](https://github.com/DonQuinleone/antiphon)
+is a read-only mirror.
 
 ## Licence
 

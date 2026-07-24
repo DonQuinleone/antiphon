@@ -8,7 +8,7 @@ platform: linux
 version: ${VERSION}
 maintainer: DonQuinleone <don@donquinleone.com>
 description: A modern mail client for the terminal
-homepage: https://github.com/DonQuinleone/antiphon
+homepage: https://git.sr.ht/~donquinleone/antiphon
 license: GPL-3.0-or-later
 depends:
   - notmuch

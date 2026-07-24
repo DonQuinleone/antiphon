@@ -1,0 +1,28 @@
+image: archlinux
+packages:
+  - rust
+  - notmuch
+sources:
+  - https://git.sr.ht/~donquinleone/antiphon
+tasks:
+  - fmt: |
+      cd antiphon
+      cargo fmt --all --check
+  - clippy: |
+      cd antiphon
+      cargo clippy --workspace --all-targets --locked -- -D warnings
+  - test: |
+      cd antiphon
+      cargo test --workspace --locked
+  - build: |
+      cd antiphon
+      cargo build --workspace --locked --release
+  - perf-smoke: |
+      cd antiphon
+      cargo build --release -p antiphon-store --example mailgen --example querybench
+      ./target/release/examples/mailgen --root /tmp/perf-store --messages 20000 --seed 1
+      ./target/release/examples/querybench /tmp/perf-store --assert-under 200
+triggers:
+  - action: email
+    condition: failure
+    to: ~donquinleone/antiphon-devel@lists.sr.ht

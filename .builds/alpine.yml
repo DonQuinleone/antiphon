@@ -1,0 +1,24 @@
+image: alpine/latest
+packages:
+  - rustup
+  - notmuch-dev
+  - notmuch
+  - build-base
+sources:
+  - https://git.sr.ht/~donquinleone/antiphon
+environment:
+  MSRV: "1.95"
+tasks:
+  - toolchain: |
+      rustup-init -y --profile minimal --default-toolchain "$MSRV" \
+          --component clippy >/dev/null
+  - msrv-check: |
+      cd antiphon
+      PATH="$HOME/.cargo/bin:$PATH" cargo check --workspace --locked
+  - test-musl: |
+      cd antiphon
+      PATH="$HOME/.cargo/bin:$PATH" cargo test --workspace --locked
+triggers:
+  - action: email
+    condition: failure
+    to: ~donquinleone/antiphon-devel@lists.sr.ht
