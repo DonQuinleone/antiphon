@@ -1,31 +1,22 @@
 use antiphon_config::ReadingPane;
-use antiphon_store::MessageSummary;
 use antiphon_ui::Theme;
-use chrono::{DateTime, Local};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{
-    Block, Borders, List, ListItem, Paragraph, Row, Table, TableState,
-};
+use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 use tui_term::widget::PseudoTerminal;
 
 use super::app::{App, View};
+use super::message_list::{draw_list, format_date};
 use super::pager::draw_pager;
 use super::scope::ViewScope;
 use super::sidebar::SidebarEntry;
 use super::status::draw_status;
 
 const SIDEBAR_WIDTH: u16 = 20;
-const DATE_WIDTH: u16 = 13;
-const FROM_WIDTH: u16 = 24;
 const STATUS_HEIGHT: u16 = 1;
 const READING_PANE_SHARE: u16 = 40;
-pub(super) const UNREAD_MARK: &str = "\u{25c6} ";
-const READ_MARK: &str = "  ";
-const FLAG_MARK: &str = "\u{2691} ";
-const NO_FLAG_MARK: &str = "  ";
 const ACTIVE_MARK: &str = "\u{25b8} ";
 const INACTIVE_MARK: &str = "  ";
 const SIDEBAR_BORDER_COLS: usize = 1;
@@ -177,79 +168,6 @@ fn entry_active(app: &App, entry: &SidebarEntry) -> bool {
     }
 }
 
-fn draw_list(frame: &mut Frame, app: &App, area: Rect) {
-    let theme = app.theme;
-    let rows = app.messages.iter().map(|message| {
-        Row::new(vec![
-            Line::from(Span::styled(
-                format_date(message.date_unix, &app.date_format),
-                Style::new().fg(theme.text_muted),
-            )),
-            Line::from(Span::styled(
-                sender_name(&message.from),
-                Style::new().fg(row_colour(theme, message)),
-            )),
-            subject_line(theme, message),
-        ])
-    });
-    let header = Row::new(vec!["DATE", "FROM", "SUBJECT"]).style(
-        Style::new()
-            .fg(theme.text_muted)
-            .add_modifier(Modifier::BOLD),
-    );
-    let table = Table::new(
-        rows,
-        [
-            Constraint::Length(DATE_WIDTH),
-            Constraint::Length(FROM_WIDTH),
-            Constraint::Min(0),
-        ],
-    )
-    .header(header)
-    .row_highlight_style(
-        Style::new().bg(theme.selection_bg).fg(theme.selection_fg),
-    );
-    let mut state =
-        TableState::default().with_selected(Some(app.selected));
-    frame.render_stateful_widget(table, area, &mut state);
-}
-
-fn subject_line(
-    theme: &Theme,
-    message: &MessageSummary,
-) -> Line<'static> {
-    let unread = if message.unread {
-        Span::styled(UNREAD_MARK, Style::new().fg(theme.unread_marker))
-    } else {
-        Span::raw(READ_MARK)
-    };
-    let flagged = if is_flagged(message) {
-        Span::styled(FLAG_MARK, Style::new().fg(theme.accent_strong))
-    } else {
-        Span::raw(NO_FLAG_MARK)
-    };
-    let subject = Span::styled(
-        message.subject.clone(),
-        Style::new().fg(row_colour(theme, message)),
-    );
-    Line::from(vec![unread, flagged, subject])
-}
-
-fn is_flagged(message: &MessageSummary) -> bool {
-    message.tags.iter().any(|tag| tag == "flagged")
-}
-
-fn row_colour(
-    theme: &Theme,
-    message: &MessageSummary,
-) -> ratatui::style::Color {
-    if message.unread {
-        theme.text_primary
-    } else {
-        theme.text_muted
-    }
-}
-
 fn draw_reading_pane(frame: &mut Frame, app: &App, area: Rect) {
     let theme = app.theme;
     let block = Block::new()
@@ -310,45 +228,4 @@ fn draw_editor(frame: &mut Frame, app: &App, area: Rect) {
         PseudoTerminal::new(pane.session.screen()),
         area,
     );
-}
-
-pub(super) fn sender_name(from: &str) -> String {
-    let name = from.split('<').next().unwrap_or("").trim();
-    let name = name.trim_matches('"');
-    if name.is_empty() {
-        return from.trim().to_string();
-    }
-    name.to_string()
-}
-
-pub(super) fn format_date(unix: i64, format: &str) -> String {
-    let Some(utc) = DateTime::from_timestamp(unix, 0) else {
-        return String::new();
-    };
-    utc.with_timezone(&Local).format(format).to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sender_names_prefer_the_display_part() {
-        let cases = [
-            ("Mara Voss <mara@example.com>", "Mara Voss"),
-            ("\"Voss, Mara\" <mara@example.com>", "Voss, Mara"),
-            ("mara@example.com", "mara@example.com"),
-            ("<mara@example.com>", "<mara@example.com>"),
-        ];
-        for (from, expected) in cases {
-            assert_eq!(sender_name(from), expected, "{from}");
-        }
-    }
-
-    #[test]
-    fn dates_format_per_the_config_pattern() {
-        let formatted = format_date(1_764_671_045, "%Y");
-        assert_eq!(formatted, "2025");
-        assert_eq!(format_date(i64::MAX, "%Y"), "");
-    }
 }

@@ -7,7 +7,7 @@ use ratatui::widgets::Paragraph;
 
 use super::app::{App, DEFAULT_QUERY};
 use super::commands::{Prompt, PromptKind};
-use super::draw::UNREAD_MARK;
+use super::message_list::UNREAD_MARK;
 
 pub(super) fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     let theme = app.theme;

@@ -8,7 +8,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use super::app::App;
-use super::draw::{format_date, header_line};
+use super::draw::header_line;
+use super::message_list::format_date;
 
 pub(super) fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
     let lines = pager_lines(app);

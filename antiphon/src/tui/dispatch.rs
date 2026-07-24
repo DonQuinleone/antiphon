@@ -6,9 +6,9 @@ use super::app::{App, View};
 use super::compose::{self, ReplySource};
 use super::crypto::ComposeCrypto;
 use super::decrypt;
-use super::draw;
 use super::identity::{ComposeContext, ComposeIdentity};
 use super::lists;
+use super::message_list;
 
 const CONVENTION_NEW: &str = "new";
 const CONVENTION_REPLY: &str = "reply";
@@ -233,7 +233,7 @@ fn finish_reply(
         from: &basis.message.from,
         subject: &basis.message.subject,
         message_id: &basis.message.id,
-        date: &draw::format_date(
+        date: &message_list::format_date(
             basis.message.date_unix,
             compose::ATTRIBUTION_DATE_FORMAT,
         ),

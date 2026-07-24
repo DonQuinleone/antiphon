@@ -9,6 +9,7 @@ mod draw;
 mod editor;
 mod identity;
 mod lists;
+mod message_list;
 mod pager;
 mod patches;
 mod scope;

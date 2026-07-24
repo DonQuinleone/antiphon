@@ -1,8 +1,8 @@
 use antiphon_render::{Draft, build_message};
 use antiphon_store::Envelope;
 
-use super::draw::sender_name;
 use super::identity::ComposeIdentity;
+use super::message_list::sender_name;
 
 pub const ATTRIBUTION_DATE_FORMAT: &str = "%a, %d %b %Y at %H:%M";
 const REPLY_PREFIX: &str = "re:";
