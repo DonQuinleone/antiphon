@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use notmuch::{Database, DatabaseMode, Message, Sort};
 
 use crate::layout::StoreLayout;
+use crate::scope::{Scope, ScopeError, scoped_query};
 
 const UNREAD_TAG: &str = "unread";
 
@@ -30,6 +31,9 @@ pub enum SearchError {
         query: String,
         source: notmuch::Error,
     },
+    Scope {
+        source: ScopeError,
+    },
 }
 
 impl fmt::Display for SearchError {
@@ -43,6 +47,9 @@ impl fmt::Display for SearchError {
             Self::Query { query, source } => {
                 write!(out, "notmuch query `{query}`: {source}")
             }
+            Self::Scope { source } => {
+                write!(out, "building scoped query: {source}")
+            }
         }
     }
 }
@@ -52,6 +59,7 @@ impl std::error::Error for SearchError {
         match self {
             Self::Open { source, .. } => Some(source),
             Self::Query { source, .. } => Some(source),
+            Self::Scope { source } => Some(source),
         }
     }
 }
@@ -119,6 +127,27 @@ impl SearchIndex {
             .take(limit.unwrap_or(usize::MAX))
             .map(|message| summarise(&message).map_err(wrap))
             .collect()
+    }
+
+    pub fn query_scoped(
+        &self,
+        scope: &Scope,
+        user_query: &str,
+        limit: Option<usize>,
+    ) -> Result<Vec<MessageSummary>, SearchError> {
+        let query = scoped_query(scope, user_query)
+            .map_err(|source| SearchError::Scope { source })?;
+        self.query(&query, limit)
+    }
+
+    pub fn count_scoped(
+        &self,
+        scope: &Scope,
+        user_query: &str,
+    ) -> Result<u32, SearchError> {
+        let query = scoped_query(scope, user_query)
+            .map_err(|source| SearchError::Scope { source })?;
+        self.count(&query)
     }
 }
 
