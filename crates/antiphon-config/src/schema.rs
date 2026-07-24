@@ -72,6 +72,7 @@ pub struct Vault {
     pub backend: VaultBackend,
     pub idle_lock_minutes: u32,
     pub unlock: Vec<Unlock>,
+    pub passphrase_cmd: Option<String>,
 }
 
 impl Default for Vault {
@@ -84,6 +85,7 @@ impl Default for Vault {
                 Unlock::Yubikey,
                 Unlock::Passphrase,
             ],
+            passphrase_cmd: None,
         }
     }
 }
