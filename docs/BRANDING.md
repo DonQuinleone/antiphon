@@ -48,9 +48,10 @@ diamond as its dot, centred on the stem (subtract any tracking
 before centring) and raised above x-height. Tagline, always
 plain: "A modern mail client for the terminal."
 
-Pending assets: outlined-path wordmark and README banner
-(blocked on choosing and fetching an open-licensed geometric
-face), and the demo GIF.
+The production wordmark is set in Outfit (SIL OFL) at weight
+500, converted to outline paths; the banner (assets/
+banner-dark.svg, banner-light.svg) embeds no font. The demo GIF
+remains pending until there is a product to record.
 
 ## In the product
 

@@ -1,15 +1,11 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)"
-            srcset="assets/logo.svg">
-    <img src="assets/logo-light.svg" width="96"
-         alt="antiphon mark: a podatus, two notes on a stem">
+            srcset="assets/banner-dark.svg">
+    <img src="assets/banner-light.svg" width="480"
+         alt="antiphon: a modern mail client for the terminal">
   </picture>
 </p>
-
-# antiphon
-
-A modern mail client for the terminal.
 
 > Pre-alpha. Nothing here is usable yet; the design is settled
 > and the code is being built milestone by milestone. Read
