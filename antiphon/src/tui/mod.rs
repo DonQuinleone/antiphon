@@ -3,19 +3,20 @@ mod app;
 mod commands;
 mod compose;
 mod crypto;
+mod dispatch;
 mod draw;
 mod editor;
 mod scope;
+mod session;
 mod sidebar;
 
-use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
-use antiphon_config::{Composer, Dirs, Loaded};
-use antiphon_core::{Action, Keymap, Resolution};
+use antiphon_config::{Dirs, Loaded};
+use antiphon_core::{Keymap, Resolution};
 use antiphon_store::{
-    MessageSummary, Outbox, SearchError, SearchIndex, StoreLayout,
+    MessageSummary, SearchError, SearchIndex, StoreLayout,
 };
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{
@@ -27,15 +28,13 @@ use antiphon_ipc::{
 };
 use antiphon_pgp::Keyring;
 
-use actions::{OpIntent, account_names, account_of};
+use actions::{OpIntent, account_names};
 use app::{App, DEFAULT_QUERY, KeyRoute, View};
 use commands::PromptKind;
-use compose::{
-    ComposeContext, ComposeIdentity, ParsedDraft, ReplySource,
-};
-use crypto::ComposeCrypto;
-use editor::{EditorPane, EditorSession};
+use compose::ComposeContext;
+use dispatch::{dispatch, pending_template_request};
 use scope::ViewScope;
+use session::{begin_compose, finish_compose};
 
 const INPUT_POLL: Duration = Duration::from_millis(250);
 const EDITOR_POLL: Duration = Duration::from_millis(20);
@@ -43,12 +42,7 @@ const REFRESH_EVERY: Duration = Duration::from_secs(2);
 const LIST_WINDOW: usize = 500;
 const DAEMON_ASSIGNS_ID: u64 = 0;
 const UNREAD_QUERY: &str = "tag:unread";
-const DRAFTS_DIR: &str = "drafts";
 const PGP_KEYRING_DIR: &str = "pgp";
-const CONVENTION_NEW: &str = "new";
-const CONVENTION_REPLY: &str = "reply";
-const FALLBACK_EDITOR: &str = "vi";
-const COMPOSE_ABORTED: &str = "compose aborted";
 
 pub fn run(
     loaded: &Loaded,
@@ -363,348 +357,4 @@ fn run_query(app: &mut App, layout: &StoreLayout, query: String) {
         }
         Err(error) => app.notice = Some(error.to_string()),
     }
-}
-
-fn now_attribution() -> String {
-    chrono::Local::now()
-        .format(compose::ATTRIBUTION_DATE_FORMAT)
-        .to_string()
-}
-
-fn pending_template_request(
-    app: &mut App,
-    context: &ComposeContext,
-) -> Option<EditorRequest> {
-    let name = app.pending_template.take()?;
-    let Some(template) = context.template(&name) else {
-        app.notice = Some(format!("no template named {name}"));
-        return None;
-    };
-    let first = app.accounts.first().cloned().unwrap_or_default();
-    let (account, identity) = context.identity_for(&first)?;
-    Some(EditorRequest {
-        account: account.to_string(),
-        text: compose::fresh_draft(
-            identity,
-            Some(&template),
-            &now_attribution(),
-        ),
-        crypto: compose_crypto(app, identity),
-    })
-}
-
-/// A draft ready for the user's editor; the event loop owns
-/// the terminal hand-off, so app state never touches it.
-struct EditorRequest {
-    account: String,
-    text: String,
-    crypto: ComposeCrypto,
-}
-
-/// The seal settings a compose starts with: the identity's
-/// defaults with any armed per-message overrides consumed.
-fn compose_crypto(
-    app: &mut App,
-    identity: &ComposeIdentity,
-) -> ComposeCrypto {
-    ComposeCrypto {
-        plan: app.take_pgp_plan(identity.pgp_sign),
-        key: identity.pgp_key.clone(),
-        address: identity.address.clone(),
-    }
-}
-
-fn dispatch(
-    app: &mut App,
-    action: Action,
-    context: &ComposeContext,
-) -> Option<EditorRequest> {
-    if action == Action::Compose && app.view == View::List {
-        app.notice = None;
-        return fresh_request(app, context);
-    }
-    if action == Action::Reply {
-        app.notice = None;
-        return reply_request(app, context);
-    }
-    let opening = action == Action::Open && app.view == View::List;
-    if !opening {
-        app.apply(action);
-        return None;
-    }
-    let path = app.selected_message()?.path.clone();
-    match std::fs::read(&path) {
-        Ok(raw) => {
-            let opened = crypto::read_message(&raw, &app.keyring, None);
-            app.open_pager(opened.body, opened.signature);
-        }
-        Err(error) => {
-            app.open_pager(
-                format!("cannot read {}: {error}", path.display()),
-                antiphon_pgp::Signature::none(),
-            );
-        }
-    }
-    None
-}
-
-fn body_text(raw: &[u8]) -> String {
-    antiphon_render::body_text(raw).text
-}
-
-fn fresh_request(
-    app: &mut App,
-    context: &ComposeContext,
-) -> Option<EditorRequest> {
-    let first = app.accounts.first().cloned().unwrap_or_default();
-    let Some((account, identity)) = context.identity_for(&first) else {
-        app.notice = Some("no compose identity configured".into());
-        return None;
-    };
-    Some(EditorRequest {
-        account: account.to_string(),
-        text: compose::fresh_draft(
-            identity,
-            context.template(CONVENTION_NEW).as_deref(),
-            &now_attribution(),
-        ),
-        crypto: compose_crypto(app, identity),
-    })
-}
-
-fn reply_request(
-    app: &mut App,
-    context: &ComposeContext,
-) -> Option<EditorRequest> {
-    let Some(message) = app.selected_message().cloned() else {
-        app.notice = Some("no message selected".into());
-        return None;
-    };
-    let raw = match std::fs::read(&message.path) {
-        Ok(raw) => raw,
-        Err(error) => {
-            app.notice = Some(format!(
-                "cannot read {}: {error}",
-                message.path.display()
-            ));
-            return None;
-        }
-    };
-    let delivered = antiphon_render::delivered_addresses(&raw);
-    let Some((account, identity)) = context
-        .reply_identity_for(&account_of(&message.path), &delivered)
-    else {
-        app.notice = Some("no compose identity configured".into());
-        return None;
-    };
-    let source = ReplySource {
-        from: &message.from,
-        subject: &message.subject,
-        message_id: &message.id,
-        date: &draw::format_date(
-            message.date_unix,
-            compose::ATTRIBUTION_DATE_FORMAT,
-        ),
-        body: &body_text(&raw),
-    };
-    let text = compose::reply_draft(
-        &identity,
-        &source,
-        context.template(CONVENTION_REPLY).as_deref(),
-    );
-    Some(EditorRequest {
-        account,
-        text,
-        crypto: compose_crypto(app, &identity),
-    })
-}
-
-fn begin_compose(
-    terminal: &mut DefaultTerminal,
-    app: &mut App,
-    layout: &StoreLayout,
-    request: EditorRequest,
-) -> std::io::Result<()> {
-    let path = match write_draft(layout, &request.text) {
-        Ok(path) => path,
-        Err(error) => {
-            app.notice = Some(format!("draft: {error}"));
-            return Ok(());
-        }
-    };
-    let embedded = app.composer == Composer::Embedded
-        && open_embedded(terminal, app, &request, &path)?;
-    if embedded {
-        return Ok(());
-    }
-    suspend_compose(terminal, app, layout, &request, &path)
-}
-
-/// The embedded default: the editor child runs on a pty and
-/// its screen renders inside the client. Returns false when
-/// the pty cannot be created, handing over to the suspend
-/// fallback.
-fn open_embedded(
-    terminal: &mut DefaultTerminal,
-    app: &mut App,
-    request: &EditorRequest,
-    path: &Path,
-) -> std::io::Result<bool> {
-    let size = terminal.size()?;
-    let session = EditorSession::spawn(
-        &editor_command(),
-        path,
-        draw::editor_rows(size.height),
-        size.width,
-    );
-    let Ok(session) = session else {
-        return Ok(false);
-    };
-    app.open_editor(EditorPane {
-        account: request.account.clone(),
-        written: request.text.clone(),
-        path: path.to_path_buf(),
-        crypto: request.crypto.clone(),
-        session,
-    });
-    Ok(true)
-}
-
-fn suspend_compose(
-    terminal: &mut DefaultTerminal,
-    app: &mut App,
-    layout: &StoreLayout,
-    request: &EditorRequest,
-    path: &Path,
-) -> std::io::Result<()> {
-    let status = run_editor(terminal, path);
-    terminal.clear()?;
-    app.notice = Some(match status {
-        Ok(status) => finish_compose(
-            layout,
-            &app.keyring,
-            &request.account,
-            &request.text,
-            path,
-            &request.crypto,
-            status.success(),
-        ),
-        Err(error) => format!("editor: {error}"),
-    });
-    nudge_daemon();
-    Ok(())
-}
-
-/// The one place the terminal leaves ratatui's hands: restore,
-/// run $EDITOR inheriting the tty, then take the screen back.
-fn run_editor(
-    terminal: &mut DefaultTerminal,
-    path: &Path,
-) -> std::io::Result<std::process::ExitStatus> {
-    ratatui::restore();
-    let status = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(format!("{} \"$0\"", editor_command()))
-        .arg(path)
-        .status();
-    *terminal = ratatui::init();
-    status
-}
-
-fn editor_command() -> String {
-    std::env::var("EDITOR")
-        .ok()
-        .filter(|editor| !editor.trim().is_empty())
-        .unwrap_or_else(|| FALLBACK_EDITOR.to_string())
-}
-
-fn write_draft(
-    layout: &StoreLayout,
-    text: &str,
-) -> std::io::Result<PathBuf> {
-    let dir = layout.root().join(DRAFTS_DIR);
-    std::fs::create_dir_all(&dir)?;
-    let name =
-        format!("draft-{}-{}.eml", unix_now(), std::process::id());
-    let path = dir.join(name);
-    std::fs::write(&path, text)?;
-    Ok(path)
-}
-
-fn finish_compose(
-    layout: &StoreLayout,
-    keyring: &Keyring,
-    account: &str,
-    written: &str,
-    path: &Path,
-    crypto: &ComposeCrypto,
-    success: bool,
-) -> String {
-    if !success {
-        let _ = std::fs::remove_file(path);
-        return COMPOSE_ABORTED.to_string();
-    }
-    let edited = match std::fs::read_to_string(path) {
-        Ok(edited) => edited,
-        Err(error) => return format!("draft: {error}"),
-    };
-    if compose::draft_unchanged(written, &edited) {
-        let _ = std::fs::remove_file(path);
-        return COMPOSE_ABORTED.to_string();
-    }
-    match compose::parse_draft(&edited) {
-        Ok(parsed) => queue_message(
-            layout, keyring, account, &parsed, path, crypto,
-        ),
-        Err(error) => error,
-    }
-}
-
-/// Seals (signs and/or encrypts) the assembled message per the
-/// compose plan and enqueues it. Any pgp failure aborts the
-/// send: the draft stays on disk and nothing reaches the
-/// outbox, so a message is never sent unprotected by accident.
-fn queue_message(
-    layout: &StoreLayout,
-    keyring: &Keyring,
-    account: &str,
-    parsed: &ParsedDraft,
-    path: &Path,
-    crypto: &ComposeCrypto,
-) -> String {
-    let raw = compose::assemble(parsed, unix_now());
-    let envelope = compose::envelope(account, parsed);
-    let sealed = match crypto::seal(
-        &raw,
-        &envelope.recipients,
-        crypto,
-        keyring,
-        None,
-    ) {
-        Ok(sealed) => sealed,
-        Err(error) => {
-            return format!(
-                "not sent: {error}; draft kept: {}",
-                path.display()
-            );
-        }
-    };
-    match Outbox::open(layout).enqueue(&envelope, &sealed) {
-        Ok(_) => {
-            let _ = std::fs::remove_file(path);
-            format!(
-                "queued: {} to {} recipient(s)",
-                parsed.subject,
-                envelope.recipients.len()
-            )
-        }
-        Err(error) => format!("outbox: {error}"),
-    }
-}
-
-fn unix_now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_secs() as i64)
-        .unwrap_or_default()
 }
