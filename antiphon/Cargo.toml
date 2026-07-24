@@ -13,6 +13,7 @@ antiphon-config = { path = "../crates/antiphon-config" }
 antiphon-core = { path = "../crates/antiphon-core" }
 antiphon-ipc = { path = "../crates/antiphon-ipc" }
 antiphon-pgp = { path = "../crates/antiphon-pgp" }
+antiphon-pgp-agent = { path = "../crates/antiphon-pgp-agent" }
 antiphon-render = { path = "../crates/antiphon-render" }
 antiphon-store = { path = "../crates/antiphon-store" }
 antiphon-vault = { path = "../crates/antiphon-vault" }

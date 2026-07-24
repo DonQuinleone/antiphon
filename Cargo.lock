@@ -136,6 +136,7 @@ dependencies = [
  "antiphon-core",
  "antiphon-ipc",
  "antiphon-pgp",
+ "antiphon-pgp-agent",
  "antiphon-render",
  "antiphon-store",
  "antiphon-ui",

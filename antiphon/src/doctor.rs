@@ -63,6 +63,16 @@ const CHECKS: &[Check] = &[
         run: tool_version,
     },
     Check {
+        name: "pgp keyring",
+        arg: "",
+        run: pgp_keyring,
+    },
+    Check {
+        name: "gpg-agent",
+        arg: "",
+        run: gpg_agent,
+    },
+    Check {
         name: "editor",
         arg: "EDITOR",
         run: env_var_set,
@@ -269,6 +279,35 @@ fn vault(context: &Context, _: &str) -> Outcome {
         VaultStatus::Absent => {
             Outcome::ok("none; the store is a plain directory")
         }
+    }
+}
+
+fn pgp_keyring(context: &Context, _: &str) -> Outcome {
+    let Some(dirs) = &context.dirs else {
+        return Outcome::fail("cannot resolve the home directory");
+    };
+    let dir = dirs.config.join("pgp");
+    let keyring = antiphon_pgp::Keyring::from_dir(&dir);
+    if keyring.is_empty() {
+        return Outcome::ok(format!(
+            "no certs in {}; signed mail shows as unknown",
+            dir.display()
+        ));
+    }
+    Outcome::ok(format!("{} cert(s)", keyring.certs().len()))
+}
+
+fn gpg_agent(_: &Context, _: &str) -> Outcome {
+    let agent = match antiphon_pgp_agent::GpgAgent::connect(None) {
+        Ok(agent) => agent,
+        Err(error) => return Outcome::fail(error.to_string()),
+    };
+    match agent.signing_certs() {
+        Ok(certs) => Outcome::ok(format!(
+            "reachable; {} signing key(s)",
+            certs.len()
+        )),
+        Err(error) => Outcome::fail(error.to_string()),
     }
 }
 
