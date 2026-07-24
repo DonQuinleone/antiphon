@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use notmuch::{Database, DatabaseMode, Message, Sort};
 
@@ -66,6 +66,7 @@ impl std::error::Error for SearchError {
 
 pub struct SearchIndex {
     db: Database,
+    maildir_root: PathBuf,
 }
 
 impl SearchIndex {
@@ -82,7 +83,10 @@ impl SearchIndex {
             None,
         )
         .map_err(|source| SearchError::Open { path, source })?;
-        Ok(Self { db })
+        Ok(Self {
+            db,
+            maildir_root: layout.maildir_root(),
+        })
     }
 
     pub fn count(&self, query: &str) -> Result<u32, SearchError> {
@@ -137,7 +141,31 @@ impl SearchIndex {
     ) -> Result<Vec<MessageSummary>, SearchError> {
         let query = scoped_query(scope, user_query)
             .map_err(|source| SearchError::Scope { source })?;
-        self.query(&query, limit)
+        let hits = self.query(&query, limit)?;
+        // The textual scope holds only as far as the index is
+        // honest: a message-id duplicated across accounts, or a
+        // file moved since the last reindex, can surface with a
+        // filename outside the scope. Anything not on disk
+        // under a permitted account is dropped rather than
+        // shown.
+        Ok(hits
+            .into_iter()
+            .filter(|hit| self.path_in_scope(scope, &hit.path))
+            .collect())
+    }
+
+    fn path_in_scope(&self, scope: &Scope, path: &Path) -> bool {
+        let Ok(relative) = path.strip_prefix(&self.maildir_root) else {
+            return false;
+        };
+        let Some(account) = relative
+            .components()
+            .next()
+            .map(|c| c.as_os_str().to_string_lossy())
+        else {
+            return false;
+        };
+        scope.permits(&account)
     }
 
     pub fn count_scoped(

@@ -14,6 +14,10 @@ impl Scope {
         }
     }
 
+    pub fn permits(&self, account: &str) -> bool {
+        self.accounts.iter().any(|name| name == account)
+    }
+
     pub fn one(account: &str) -> Self {
         Self {
             accounts: vec![account.to_owned()],

@@ -171,3 +171,38 @@ fn unified_scope_covers_every_account() {
         index.query_scoped(&scope, "tag:unread", Some(3)).unwrap();
     assert_eq!(unread.len(), 3, "limit still applies");
 }
+
+#[test]
+fn duplicated_message_ids_cannot_cross_accounts() {
+    if !notmuch_available_or_skip() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let layout = StoreLayout::new(dir.path().join("store"));
+    layout.init().unwrap();
+    let twin = "From: Twin <twin@example.com>\n\
+        To: you@example.com\n\
+        Subject: duplicated across accounts\n\
+        Message-ID: <twin@example.com>\n\
+        Date: Mon, 01 Jun 2026 10:00:00 +0000\n\n\
+        Same id in both maildirs.\n";
+    for account in ["visible", "hidden"] {
+        let cur = layout.account_maildir(account).join("cur");
+        std::fs::create_dir_all(&cur).unwrap();
+        std::fs::write(cur.join("1000.twin.host:2,S"), twin).unwrap();
+    }
+    run_notmuch_new(&layout.notmuch_config_path());
+
+    let index = SearchIndex::open(&layout).unwrap();
+    let scope = Scope::one("visible");
+    let hits = index
+        .query_scoped(&scope, "id:twin@example.com", None)
+        .unwrap();
+    for hit in &hits {
+        assert!(
+            hit.path.starts_with(layout.account_maildir("visible")),
+            "leaked path {}",
+            hit.path.display()
+        );
+    }
+}
