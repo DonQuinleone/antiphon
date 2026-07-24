@@ -1,5 +1,4 @@
 use antiphon_config::ReadingPane;
-use antiphon_pgp::{Signature, SignatureStatus};
 use antiphon_store::MessageSummary;
 use antiphon_ui::Theme;
 use chrono::{DateTime, Local};
@@ -9,21 +8,21 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
     Block, Borders, List, ListItem, Paragraph, Row, Table, TableState,
-    Wrap,
 };
 use tui_term::widget::PseudoTerminal;
 
-use super::app::{App, DEFAULT_QUERY, View};
-use super::commands::{Prompt, PromptKind};
+use super::app::{App, View};
+use super::pager::draw_pager;
 use super::scope::ViewScope;
 use super::sidebar::SidebarEntry;
+use super::status::draw_status;
 
 const SIDEBAR_WIDTH: u16 = 20;
 const DATE_WIDTH: u16 = 13;
 const FROM_WIDTH: u16 = 24;
 const STATUS_HEIGHT: u16 = 1;
 const READING_PANE_SHARE: u16 = 40;
-const UNREAD_MARK: &str = "\u{25c6} ";
+pub(super) const UNREAD_MARK: &str = "\u{25c6} ";
 const READ_MARK: &str = "  ";
 const FLAG_MARK: &str = "\u{2691} ";
 const NO_FLAG_MARK: &str = "  ";
@@ -283,7 +282,7 @@ fn draw_reading_pane(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
-fn header_line(
+pub(super) fn header_line(
     theme: &Theme,
     label: &'static str,
     value: String,
@@ -313,171 +312,6 @@ fn draw_editor(frame: &mut Frame, app: &App, area: Rect) {
     );
 }
 
-fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
-    let theme = app.theme;
-    let Some(message) = app.selected_message() else {
-        return;
-    };
-    let mut lines = vec![
-        header_line(theme, "From:", message.from.clone()),
-        header_line(
-            theme,
-            "Date:",
-            format_date(message.date_unix, &app.date_format),
-        ),
-        header_line(theme, "Subject:", message.subject.clone()),
-        header_line(theme, "Tags:", message.tags.join(", ")),
-    ];
-    if let Some(line) = signature_line(theme, &app.pager_signature) {
-        lines.push(line);
-    }
-    lines.push(Line::default());
-    lines.extend(app.pager_body.lines().map(|body_line| {
-        Line::from(Span::styled(
-            body_line.to_string(),
-            Style::new().fg(pager_line_colour(theme, body_line)),
-        ))
-    }));
-    let paragraph = Paragraph::new(lines)
-        .wrap(Wrap { trim: false })
-        .scroll((app.pager_scroll, 0));
-    frame.render_widget(paragraph, area);
-}
-
-fn pager_line_colour(
-    theme: &Theme,
-    line: &str,
-) -> ratatui::style::Color {
-    if line.trim_start().starts_with('>') {
-        theme.text_muted
-    } else {
-        theme.text_primary
-    }
-}
-
-fn signature_line(
-    theme: &Theme,
-    signature: &Signature,
-) -> Option<Line<'static>> {
-    let text = signature.header_line()?;
-    let colour = signature_colour(theme, &signature.status);
-    Some(Line::from(Span::styled(text, Style::new().fg(colour))))
-}
-
-fn signature_colour(
-    theme: &Theme,
-    status: &SignatureStatus,
-) -> ratatui::style::Color {
-    match status {
-        SignatureStatus::Good { .. } => theme.status_ok,
-        SignatureStatus::Bad { .. } => theme.status_error,
-        SignatureStatus::Unknown { .. } | SignatureStatus::None => {
-            theme.text_muted
-        }
-    }
-}
-
-fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
-    let theme = app.theme;
-    let line = match &app.prompt {
-        Some(prompt) => prompt_line(theme, prompt),
-        None => status_line(app),
-    };
-    frame.render_widget(
-        Paragraph::new(line).style(Style::new().bg(theme.surface)),
-        area,
-    );
-}
-
-fn prompt_line(theme: &Theme, prompt: &Prompt) -> Line<'static> {
-    let sigil = match prompt.kind {
-        PromptKind::Search => "/",
-        PromptKind::Command => ":",
-    };
-    Line::from(vec![
-        Span::styled(
-            sigil.to_string(),
-            Style::new().fg(theme.accent_strong),
-        ),
-        Span::styled(
-            prompt.buffer.clone(),
-            Style::new().fg(theme.text_primary),
-        ),
-        Span::styled(
-            "\u{258c}".to_string(),
-            Style::new().fg(theme.accent),
-        ),
-    ])
-}
-
-fn status_line(app: &App) -> Line<'static> {
-    let theme = app.theme;
-    if let Some(pane) = &app.editor {
-        return compose_status(theme, pane);
-    }
-    let text = match &app.notice {
-        Some(notice) => notice.clone(),
-        None => format!(
-            "{}{} of {} messages \u{b7} {} unread shown \u{b7} \
-             theme {}{}",
-            context_prefix(app),
-            app.messages.len(),
-            app.total_messages,
-            app.unread_count(),
-            app.theme.name,
-            queued_suffix(app.pending_ops.len()),
-        ),
-    };
-    Line::from(vec![
-        Span::styled(UNREAD_MARK, Style::new().fg(theme.accent)),
-        Span::styled(text, Style::new().fg(theme.text_muted)),
-    ])
-}
-
-fn compose_status(
-    theme: &Theme,
-    pane: &super::editor::EditorPane,
-) -> Line<'static> {
-    let mut spans = vec![Span::styled(
-        format!("compose \u{b7} {}", pane.account),
-        Style::new().fg(theme.text_muted),
-    )];
-    if let Some(label) = pane.crypto.plan.label() {
-        spans.push(Span::styled(
-            format!(" {label}"),
-            Style::new().fg(theme.accent),
-        ));
-    }
-    Line::from(spans)
-}
-
-fn context_prefix(app: &App) -> String {
-    let scope = app.scope.label();
-    match &app.active_search {
-        Some(name) => format!("{scope} \u{b7} {name} \u{b7} "),
-        None => {
-            format!(
-                "{scope} \u{b7} {}",
-                query_prefix(&app.current_query)
-            )
-        }
-    }
-}
-
-fn query_prefix(query: &str) -> String {
-    if query == DEFAULT_QUERY {
-        return String::new();
-    }
-    format!("{query} \u{b7} ")
-}
-
-fn queued_suffix(pending: usize) -> String {
-    if pending == 0 {
-        return String::new();
-    }
-    format!(" \u{b7} {pending} queued for antiphond")
-}
-
 pub(super) fn sender_name(from: &str) -> String {
     let name = from.split('<').next().unwrap_or("").trim();
     let name = name.trim_matches('"');
@@ -496,8 +330,6 @@ pub(super) fn format_date(unix: i64, format: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use antiphon_ui::VESPERS;
-
     use super::*;
 
     #[test]
@@ -518,55 +350,5 @@ mod tests {
         let formatted = format_date(1_764_671_045, "%Y");
         assert_eq!(formatted, "2025");
         assert_eq!(format_date(i64::MAX, "%Y"), "");
-    }
-
-    fn line_text(line: &Line<'_>) -> String {
-        line.spans
-            .iter()
-            .map(|span| span.content.as_ref())
-            .collect()
-    }
-
-    #[test]
-    fn signature_line_renders_and_colours_per_status() {
-        let theme = &VESPERS;
-        let cases = [
-            (
-                SignatureStatus::Good {
-                    signer: "Alice <alice@example.com>".to_string(),
-                    key_id: "1A2B3C4D5E6F7A8B".to_string(),
-                },
-                theme.status_ok,
-                "Good signature from Alice \
-                 <alice@example.com> (0x1A2B3C4D5E6F7A8B)",
-            ),
-            (
-                SignatureStatus::Bad {
-                    key_id: "0BADC0DE0BADC0DE".to_string(),
-                },
-                theme.status_error,
-                "BAD signature (0x0BADC0DE0BADC0DE)",
-            ),
-            (
-                SignatureStatus::Unknown {
-                    key_id: "DEADBEEFDEADBEEF".to_string(),
-                },
-                theme.text_muted,
-                "Unknown signature from key \
-                 0xDEADBEEFDEADBEEF (not in keyring)",
-            ),
-        ];
-        for (status, colour, expected) in cases {
-            let signature = Signature::from_status(status);
-            let line =
-                signature_line(theme, &signature).expect("a line");
-            assert_eq!(line_text(&line), expected);
-            assert_eq!(line.spans[0].style.fg, Some(colour));
-        }
-    }
-
-    #[test]
-    fn unsigned_message_shows_no_signature_line() {
-        assert!(signature_line(&VESPERS, &Signature::none()).is_none());
     }
 }

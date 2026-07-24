@@ -7,9 +7,11 @@ mod dispatch;
 mod draw;
 mod editor;
 mod identity;
+mod pager;
 mod scope;
 mod session;
 mod sidebar;
+mod status;
 
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
