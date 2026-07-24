@@ -65,8 +65,10 @@ none is running; to run antiphond under launchd, systemd,
 dinit, runit or a desktop's autostart instead, see
 [docs/DAEMON.md](docs/DAEMON.md) and the ready-made units in
 [dist/](dist/). The configuration reference is
-[docs/CONFIG.md](docs/CONFIG.md) and the encrypted store is
-covered in [docs/VAULT.md](docs/VAULT.md).
+[docs/CONFIG.md](docs/CONFIG.md), the encrypted store is
+covered in [docs/VAULT.md](docs/VAULT.md), and
+[docs/MIGRATING.md](docs/MIGRATING.md) maps the way over
+from NeoMutt.
 
 ## Contributing
 
