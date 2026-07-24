@@ -48,6 +48,9 @@ use session::{begin_compose, finish_compose};
 
 const INPUT_POLL: Duration = Duration::from_millis(250);
 const EDITOR_POLL: Duration = Duration::from_millis(20);
+/// A busy daemon (mid sync pass) answers nothing; the UI must
+/// never hang on it. Queued work is durable either way.
+const IPC_WAIT: Duration = Duration::from_secs(2);
 const REFRESH_EVERY: Duration = Duration::from_secs(2);
 const LIST_WINDOW: usize = 500;
 const DAEMON_ASSIGNS_ID: u64 = 0;
@@ -289,6 +292,7 @@ fn drain_ops(app: &mut App) {
     let Ok(mut client) = IpcClient::connect(&path) else {
         return;
     };
+    let _ = client.set_read_timeout(IPC_WAIT);
     while let Some(intent) = app.pending_ops.first().cloned() {
         let request = Request::EnqueueOp(wire_op(intent));
         let Ok(_) = client.request(&request) else {
@@ -303,7 +307,8 @@ fn nudge_daemon() {
     let Ok(mut client) = IpcClient::connect(&path) else {
         return;
     };
-    let _ = client.request(&Request::SyncNow);
+    let _ = client.set_read_timeout(IPC_WAIT);
+    let _ = client.request(&Request::DrainOutbox);
 }
 
 fn wire_op(intent: OpIntent) -> Operation {
