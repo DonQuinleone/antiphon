@@ -1,0 +1,34 @@
+image: archlinux
+packages:
+  - rust
+  - notmuch
+  - hut
+oauth: git.sr.ht/OBJECTS:RW
+sources:
+  - https://git.sr.ht/~donquinleone/antiphon
+environment:
+  target: x86_64-linux-gnu
+tasks:
+  - tag-only: |
+      cd antiphon
+      git describe --exact-match --tags HEAD >/dev/null 2>&1 \
+        || complete-build
+  - build: |
+      cd antiphon
+      cargo build --release --locked -p antiphon -p antiphond
+  - package: |
+      cd antiphon
+      tag="$(git describe --exact-match --tags HEAD)"
+      name="antiphon-$tag-$target"
+      mkdir "$name"
+      cp target/release/antiphon target/release/antiphond "$name/"
+      cp -R dist/systemd dist/dinit dist/runit dist/autostart \
+        COPYING README.md "$name/"
+      tar -czf "$name.tar.gz" "$name"
+      sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+  - publish: |
+      cd antiphon
+      tag="$(git describe --exact-match --tags HEAD)"
+      name="antiphon-$tag-$target"
+      hut git artifact upload "$name.tar.gz" --rev "$tag"
+      hut git artifact upload "$name.tar.gz.sha256" --rev "$tag"
