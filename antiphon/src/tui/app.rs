@@ -5,8 +5,8 @@ use antiphon_ui::{Theme, VESPERS};
 
 use super::editor::EditorPane;
 use super::scope::{self, ViewScope};
-use super::scope_shim::ScopeError;
 use super::sidebar::{self, SidebarEntry};
+use antiphon_store::ScopeError;
 
 const HALF_PAGE_ROWS: usize = 10;
 const PAGER_SCROLL_ROWS: u16 = 1;

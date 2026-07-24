@@ -1,4 +1,4 @@
-use super::scope_shim::{Scope, ScopeError, scoped_query};
+use antiphon_store::{Scope, ScopeError, scoped_query};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ViewScope {

@@ -3,7 +3,6 @@ mod compose;
 mod draw;
 mod editor;
 mod scope;
-mod scope_shim;
 mod sidebar;
 
 use std::path::{Path, PathBuf};
