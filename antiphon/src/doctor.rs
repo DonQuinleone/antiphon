@@ -33,6 +33,11 @@ const CHECKS: &[Check] = &[
         run: accounts,
     },
     Check {
+        name: "identities",
+        arg: "",
+        run: identities,
+    },
+    Check {
         name: "store",
         arg: "",
         run: store,
@@ -169,6 +174,33 @@ fn accounts(context: &Context, _: &str) -> Outcome {
         .map(|entry| entry.account.account.name.as_str())
         .collect();
     Outcome::ok(format!("{} found: {}", names.len(), names.join(", ")))
+}
+
+fn identities(context: &Context, _: &str) -> Outcome {
+    let Some(Ok(loaded)) = &context.loaded else {
+        return Outcome::fail(
+            "unavailable until the configuration parses",
+        );
+    };
+    let mut counted = 0;
+    for entry in &loaded.accounts {
+        for identity in &entry.account.identities {
+            counted += 1;
+            let patterns = &identity.matches;
+            let Err(error) = antiphon_core::validate_patterns(patterns)
+            else {
+                continue;
+            };
+            return Outcome::fail(format!(
+                "account {}: {error}",
+                entry.account.account.name
+            ));
+        }
+    }
+    if counted == 0 {
+        return Outcome::ok("none configured yet");
+    }
+    Outcome::ok(format!("{counted} valid"))
 }
 
 fn store(context: &Context, _: &str) -> Outcome {
