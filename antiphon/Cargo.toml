@@ -10,7 +10,11 @@ description = "A modern mail client for the terminal"
 
 [dependencies]
 antiphon-config = { path = "../crates/antiphon-config" }
+antiphon-core = { path = "../crates/antiphon-core" }
 antiphon-store = { path = "../crates/antiphon-store" }
+antiphon-ui = { path = "../crates/antiphon-ui" }
+chrono = "=0.4.45"
+ratatui = "=0.30.2"
 clap = { version = "=4.6.4", features = ["derive"] }
 
 [build-dependencies]
