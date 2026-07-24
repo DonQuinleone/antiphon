@@ -13,6 +13,7 @@ use crate::progress::{SyncProgress, write_progress};
 use crate::report::{FolderReport, SyncReport};
 use crate::session::ImapSession;
 use crate::state::{AccountState, FolderState};
+use crate::tagging::retag_folders;
 
 const FIRST_UID: u32 = 1;
 const STATE_FILE_EXTENSION: &str = "state";
@@ -52,7 +53,7 @@ pub fn sync(
     ensure_dir(state_path.parent().unwrap_or(layout.root()))?;
     let mut state = AccountState::load(&state_path)?;
     let mut report = SyncReport::default();
-    let indexer = Indexer::start(layout);
+    let indexer = Indexer::start(layout, &account.name);
     let outcome = (|| {
         for folder in folders {
             let folder_report = sync_folder(
@@ -72,6 +73,7 @@ pub fn sync(
     indexer.finish()?;
     outcome?;
     run_notmuch_new(&layout.notmuch_config_path())?;
+    retag_folders(&layout.notmuch_config_path(), &account.name)?;
     Ok(report)
 }
 
@@ -84,13 +86,15 @@ struct Indexer {
 }
 
 impl Indexer {
-    fn start(layout: &StoreLayout) -> Indexer {
+    fn start(layout: &StoreLayout, account: &str) -> Indexer {
         let config = layout.notmuch_config_path();
+        let account = account.to_owned();
         let (sender, receiver) = mpsc::channel::<()>();
         let handle = std::thread::spawn(move || {
             while receiver.recv().is_ok() {
                 while receiver.try_recv().is_ok() {}
                 run_notmuch_new(&config)?;
+                retag_folders(&config, &account)?;
             }
             Ok(())
         });

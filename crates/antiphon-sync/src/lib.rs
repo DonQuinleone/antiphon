@@ -10,6 +10,7 @@ mod rules;
 mod session;
 mod smtp;
 mod state;
+mod tagging;
 
 pub use auth::Auth;
 pub use engine::{SyncAccount, sync};
@@ -21,3 +22,10 @@ pub use replay::{ReplayReport, replay};
 pub use report::{FolderReport, SyncReport};
 pub use rules::{DeliveryRule, RuleOutcome, apply_rules};
 pub use smtp::{SmtpAccount, send};
+
+pub fn test_retag(
+    config: &std::path::Path,
+    account: &str,
+) -> Result<(), SyncError> {
+    tagging::retag_folders(config, account)
+}
