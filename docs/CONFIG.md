@@ -32,7 +32,7 @@ where both set a value; defects in it are reported against
 [ui]
 theme = "vespers"          # or a gallery name, see below
 reading_pane = "below"     # below | right | off
-date_format = "%d %b %H:%M"  # chrono strftime
+date_format = "%Y-%m-%d %H:%M"  # chrono strftime
 composer = "embedded"      # embedded terminal pane for the
                            # editor, or "suspend" to hand the
                            # whole screen over
@@ -71,6 +71,11 @@ query = "tag:unread"
 Gallery themes: `vespers` (default), `kanagawa-wave`,
 `catppuccin-mocha`, `gruvbox-dark`, `tokyo-night`, `nord`,
 `rose-pine`. Truecolor terminal required.
+
+In the message list the rendered `date_format` splits at its
+last space: the left part wears the theme's date colour, the
+right its time colour, whatever strftime pattern you set; a
+single-token format is coloured entirely as a date.
 
 The vault seals the store at rest (see [VAULT.md](VAULT.md)):
 `antiphon vault create` sets it up, `passphrase_cmd` supplies

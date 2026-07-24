@@ -189,6 +189,7 @@ mod tests {
         assert_eq!(config.ui.composer, Composer::Embedded);
         assert_eq!(config.ui.list_rows, 7);
         assert_eq!(config.ui.sidebar_width, 16);
+        assert_eq!(config.ui.date_format, "%Y-%m-%d %H:%M");
         assert!(config.notifications.enabled);
     }
 

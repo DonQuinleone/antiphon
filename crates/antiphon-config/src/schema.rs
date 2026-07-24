@@ -58,7 +58,7 @@ impl Default for Ui {
         Ui {
             theme: "vespers".to_string(),
             reading_pane: ReadingPane::Below,
-            date_format: "%d %b %H:%M".to_string(),
+            date_format: "%Y-%m-%d %H:%M".to_string(),
             composer: Composer::Embedded,
             list_rows: DEFAULT_LIST_ROWS,
             sidebar_width: DEFAULT_SIDEBAR_WIDTH,
