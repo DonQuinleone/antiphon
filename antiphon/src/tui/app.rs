@@ -49,6 +49,7 @@ pub struct App {
     pub pager_invite: Vec<String>,
     pub pager_scroll: u16,
     pub keyring: Keyring,
+    pub own_addresses: Vec<String>,
     pub reading_pane: ReadingPane,
     pub sidebar: bool,
     pub list_rows: u16,
@@ -83,6 +84,7 @@ impl App {
         keyring: Keyring,
     ) -> App {
         let accounts = account_names(loaded);
+        let own_addresses = own_addresses(loaded);
         let sidebar_entries =
             sidebar::entries(folders, &loaded.config.saved_searches);
         let sidebar_selected =
@@ -105,6 +107,7 @@ impl App {
             pager_invite: Vec::new(),
             pager_scroll: 0,
             keyring,
+            own_addresses,
             reading_pane: loaded.config.ui.reading_pane,
             sidebar: true,
             list_rows: loaded.config.ui.list_rows,
@@ -281,6 +284,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
             thread_id: String::new(),
             subject: String::new(),
             from: String::new(),
+            to: String::new(),
             date_unix: index as i64,
             tags: Vec::new(),
             unread: index % 2 == 0,
@@ -298,6 +302,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         selected: 0,
         view: View::List,
         sync_progress: None,
+        own_addresses: Vec::new(),
         pager_body: String::new(),
         pager_patch: Vec::new(),
         pager_signature: Signature::none(),
@@ -358,6 +363,26 @@ pub(super) fn app_with_folders(accounts: &[(&str, &[&str])]) -> App {
         .collect();
     app.sidebar_entries = sidebar::entries(&entries, &[]);
     app
+}
+
+fn own_addresses(loaded: &Loaded) -> Vec<String> {
+    loaded
+        .accounts
+        .iter()
+        .flat_map(|entry| entry.account.identities.iter())
+        .map(|identity| identity.address.to_lowercase())
+        .collect()
+}
+
+impl App {
+    /// Own mail shows who it went to, not who sent it, the
+    /// way every sent folder is expected to read.
+    pub fn is_own(&self, from: &str) -> bool {
+        let lowered = from.to_lowercase();
+        self.own_addresses
+            .iter()
+            .any(|address| lowered.contains(address.as_str()))
+    }
 }
 
 #[cfg(test)]

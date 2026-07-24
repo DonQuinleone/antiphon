@@ -20,6 +20,7 @@ const ELLIPSIS: char = '\u{2026}';
 const DATE_HEADING: &str = "DATE";
 const FROM_HEADING: &str = "FROM";
 const SUBJECT_HEADING: &str = "SUBJECT";
+const OWN_MAIL_PREFIX: &str = "\u{2192} ";
 const FLAGGED_TAG: &str = "flagged";
 
 /// One column layout shared by the header row and every
@@ -61,15 +62,23 @@ pub(super) fn draw_list(frame: &mut Frame, app: &App, area: Rect) {
     let theme = app.theme;
     let columns = columns(area.width, &app.messages, &app.date_format);
     let rows = app.messages.iter().map(|message| {
-        message_row(theme, &columns, message, &app.date_format)
+        message_row(app, &columns, message, &app.date_format)
     });
-    let header =
-        Row::new(vec![DATE_HEADING, FROM_HEADING, SUBJECT_HEADING])
-            .style(
-                Style::new()
-                    .fg(theme.text_muted)
-                    .add_modifier(Modifier::BOLD),
-            );
+    // The subject cell opens with the unread/flag gutter; the
+    // heading shifts by the same width so the word sits over
+    // the text, not the markers.
+    let subject_heading =
+        format!("{:1$}{SUBJECT_HEADING}", "", MARK_COLS as usize);
+    let header = Row::new(vec![
+        DATE_HEADING.to_string(),
+        FROM_HEADING.to_string(),
+        subject_heading,
+    ])
+    .style(
+        Style::new()
+            .fg(theme.text_muted)
+            .add_modifier(Modifier::BOLD),
+    );
     let table = Table::new(
         rows,
         [
@@ -89,14 +98,15 @@ pub(super) fn draw_list(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn message_row(
-    theme: &Theme,
+    app: &App,
     columns: &Columns,
     message: &MessageSummary,
     format: &str,
 ) -> Row<'static> {
+    let theme = app.theme;
     Row::new(vec![
         date_cell(theme, format_date(message.date_unix, format)),
-        from_cell(theme, columns, message),
+        from_cell(app, columns, message),
         subject_cell(theme, columns, message),
     ])
 }
@@ -121,11 +131,17 @@ fn date_cell(theme: &Theme, rendered: String) -> Line<'static> {
 }
 
 fn from_cell(
-    theme: &Theme,
+    app: &App,
     columns: &Columns,
     message: &MessageSummary,
 ) -> Line<'static> {
-    let name = truncate(&sender_name(&message.from), columns.from);
+    let theme = app.theme;
+    let text = if app.is_own(&message.from) {
+        format!("{OWN_MAIL_PREFIX}{}", sender_name(&message.to))
+    } else {
+        sender_name(&message.from)
+    };
+    let name = truncate(&text, columns.from);
     let style = Style::new().fg(theme.list_from);
     Line::from(Span::styled(name, unread_weight(style, message)))
 }
@@ -279,7 +295,7 @@ mod tests {
         assert_eq!(column_of(&header, FROM_HEADING), Some(from_x));
         assert_eq!(
             column_of(&header, SUBJECT_HEADING),
-            Some(subject_x)
+            Some(subject_x + MARK_COLS as usize)
         );
 
         let names = ["Mara Voss", "Bo"];
