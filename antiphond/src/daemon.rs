@@ -12,9 +12,9 @@ use antiphon_ipc::{
     read_frame, socket_path, write_frame,
 };
 use antiphon_store::{
-    Op, OpKind, OpLog, SearchIndex, StoreLayout, apply_op,
+    Op, OpKind, OpLog, Outbox, SearchIndex, StoreLayout, apply_op,
 };
-use antiphon_sync::{SyncAccount, replay, sync};
+use antiphon_sync::{SmtpAccount, SyncAccount, replay, send, sync};
 
 pub fn run() -> ExitCode {
     let Some(dirs) = Dirs::from_process() else {
@@ -38,6 +38,7 @@ pub fn run() -> ExitCode {
         }
     };
     let accounts = sync_accounts(&loaded);
+    let smtp = smtp_accounts(&loaded);
     let log = match OpLog::open(&layout) {
         Ok(log) => log,
         Err(error) => {
@@ -62,6 +63,7 @@ pub fn run() -> ExitCode {
         layout,
         log,
         accounts,
+        smtp,
         last_sync_unix: None,
     };
     daemon.sync_pass();
@@ -82,8 +84,40 @@ struct Daemon {
     layout: StoreLayout,
     log: OpLog,
     accounts: Vec<SyncAccount>,
+    smtp: Vec<(String, SmtpAccount)>,
     last_sync_unix: Option<u64>,
 }
+
+fn smtp_accounts(loaded: &Loaded) -> Vec<(String, SmtpAccount)> {
+    loaded
+        .accounts
+        .iter()
+        .filter_map(|entry| {
+            let account = &entry.account;
+            let smtp = account.smtp.as_ref()?;
+            let user = smtp
+                .user
+                .clone()
+                .unwrap_or_else(|| account.imap.user.clone());
+            let command = smtp
+                .password_cmd
+                .as_deref()
+                .or(account.imap.password_cmd.as_deref())?;
+            let password = resolve_password(command)?;
+            Some((
+                account.account.name.clone(),
+                SmtpAccount {
+                    host: smtp.host.clone(),
+                    port: smtp.port.unwrap_or(SUBMISSION_PORT),
+                    user,
+                    password,
+                },
+            ))
+        })
+        .collect()
+}
+
+const SUBMISSION_PORT: u16 = 587;
 
 fn sync_accounts(loaded: &Loaded) -> Vec<SyncAccount> {
     loaded
@@ -191,6 +225,80 @@ impl Daemon {
         Response::Ack
     }
 
+    fn drain_outbox(&mut self) {
+        let outbox = Outbox::open(&self.layout);
+        let pending = match outbox.pending() {
+            Ok(pending) => pending,
+            Err(error) => {
+                eprintln!("outbox: {error}");
+                return;
+            }
+        };
+        for queued in pending {
+            self.send_queued(&outbox, queued);
+        }
+    }
+
+    fn send_queued(
+        &self,
+        outbox: &Outbox,
+        queued: antiphon_store::QueuedMessage,
+    ) {
+        let account = queued.envelope.account.clone();
+        let Some((_, smtp)) =
+            self.smtp.iter().find(|(name, _)| *name == account)
+        else {
+            eprintln!(
+                "outbox {}: no smtp account for {account}",
+                queued.id
+            );
+            return;
+        };
+        let raw = match std::fs::read(&queued.message_path) {
+            Ok(raw) => raw,
+            Err(error) => {
+                eprintln!("outbox {}: {error}", queued.id);
+                return;
+            }
+        };
+        if let Err(error) = send(smtp, &raw) {
+            eprintln!("send {}: {error}", queued.id);
+            return;
+        }
+        if let Err(error) = self.file_sent(&account, &raw) {
+            eprintln!("sent copy {}: {error}", queued.id);
+        }
+        if let Err(error) = outbox.remove(queued.id) {
+            eprintln!("outbox {}: {error}", queued.id);
+            return;
+        }
+        println!("sent outbox message {}", queued.id);
+    }
+
+    fn file_sent(
+        &self,
+        account: &str,
+        raw: &[u8],
+    ) -> std::io::Result<()> {
+        let sent =
+            self.layout.account_maildir(account).join("sent/cur");
+        std::fs::create_dir_all(&sent)?;
+        let name = format!(
+            "{}.P{}.antiphon:2,S",
+            now_unix(),
+            std::process::id()
+        );
+        std::fs::write(sent.join(name), raw)?;
+        let status = Command::new("notmuch")
+            .arg("new")
+            .env("NOTMUCH_CONFIG", self.layout.notmuch_config_path())
+            .output()?;
+        if !status.status.success() {
+            eprintln!("notmuch new failed after sent copy");
+        }
+        Ok(())
+    }
+
     fn sync_all(&mut self) -> usize {
         let mut failures = 0;
         for account in &self.accounts {
@@ -223,6 +331,7 @@ impl Daemon {
     }
 
     fn sync_pass(&mut self) -> usize {
+        self.drain_outbox();
         let failures = self.sync_all();
         self.drain_ops();
         failures

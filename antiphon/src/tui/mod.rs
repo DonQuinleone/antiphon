@@ -114,6 +114,7 @@ fn event_loop(
             let request = dispatch(app, action, context);
             if let Some(request) = request {
                 edit_and_queue(terminal, app, layout, request)?;
+                nudge_daemon();
             }
         }
         drain_ops(app);
@@ -174,6 +175,14 @@ fn drain_ops(app: &mut App) {
         };
         app.pending_ops.remove(0);
     }
+}
+
+fn nudge_daemon() {
+    let path = socket_path(|var| std::env::var_os(var));
+    let Ok(mut client) = IpcClient::connect(&path) else {
+        return;
+    };
+    let _ = client.request(&Request::SyncNow);
 }
 
 fn wire_op(intent: OpIntent) -> Operation {
