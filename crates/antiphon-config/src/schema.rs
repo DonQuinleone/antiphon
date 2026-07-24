@@ -49,6 +49,8 @@ pub struct Ui {
     pub reading_pane: ReadingPane,
     pub date_format: String,
     pub composer: Composer,
+    pub list_rows: u16,
+    pub sidebar_width: u16,
 }
 
 impl Default for Ui {
@@ -58,9 +60,14 @@ impl Default for Ui {
             reading_pane: ReadingPane::Below,
             date_format: "%d %b %H:%M".to_string(),
             composer: Composer::Embedded,
+            list_rows: DEFAULT_LIST_ROWS,
+            sidebar_width: DEFAULT_SIDEBAR_WIDTH,
         }
     }
 }
+
+const DEFAULT_LIST_ROWS: u16 = 7;
+const DEFAULT_SIDEBAR_WIDTH: u16 = 16;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]

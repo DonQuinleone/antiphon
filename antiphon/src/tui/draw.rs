@@ -14,14 +14,14 @@ use super::scope::ViewScope;
 use super::sidebar::SidebarEntry;
 use super::status::draw_status;
 
-const SIDEBAR_WIDTH: u16 = 20;
 const STATUS_HEIGHT: u16 = 1;
 const READING_PANE_SHARE: u16 = 40;
+const LIST_HEADER_ROWS: u16 = 1;
+const SIDEBAR_WIDTH_MIN: u16 = 10;
+const SIDEBAR_WIDTH_MAX: u16 = 40;
 const ACTIVE_MARK: &str = "\u{25b8} ";
 const INACTIVE_MARK: &str = "  ";
 const SIDEBAR_BORDER_COLS: usize = 1;
-const SIDEBAR_RULE_COLS: usize =
-    SIDEBAR_WIDTH as usize - SIDEBAR_BORDER_COLS;
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
@@ -40,11 +40,13 @@ pub fn draw(frame: &mut Frame, app: &App) {
         draw_status(frame, app, status);
         return;
     }
-    let (sidebar, main) = split_sidebar(content, app.sidebar);
+    let (sidebar, main) =
+        split_sidebar(content, app.sidebar, app.sidebar_width);
     if let Some(sidebar) = sidebar {
         draw_sidebar(frame, app, sidebar);
     }
-    let (list, pane) = split_reading_pane(main, app.reading_pane);
+    let (list, pane) =
+        split_reading_pane(main, app.reading_pane, app.list_rows);
     draw_list(frame, app, list);
     if let Some(pane) = pane {
         draw_reading_pane(frame, app, pane);
@@ -61,28 +63,37 @@ fn split_status(area: Rect) -> (Rect, Rect) {
     (content, status)
 }
 
-fn split_sidebar(area: Rect, shown: bool) -> (Option<Rect>, Rect) {
+fn split_sidebar(
+    area: Rect,
+    shown: bool,
+    width: u16,
+) -> (Option<Rect>, Rect) {
     if !shown {
         return (None, area);
     }
+    let width = width.clamp(SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX);
     let [sidebar, main] = Layout::horizontal([
-        Constraint::Length(SIDEBAR_WIDTH),
+        Constraint::Length(width),
         Constraint::Min(0),
     ])
     .areas(area);
     (Some(sidebar), main)
 }
 
+/// With the pane below, the list holds exactly the configured
+/// row count (plus its header) and the pane takes the rest;
+/// right or off, the list keeps filling the height.
 fn split_reading_pane(
     area: Rect,
     pane: ReadingPane,
+    list_rows: u16,
 ) -> (Rect, Option<Rect>) {
     match pane {
         ReadingPane::Off => (area, None),
         ReadingPane::Below => {
             let [list, pane] = Layout::vertical([
+                Constraint::Length(list_rows + LIST_HEADER_ROWS),
                 Constraint::Min(0),
-                Constraint::Percentage(READING_PANE_SHARE),
             ])
             .areas(area);
             (list, Some(pane))
@@ -103,7 +114,7 @@ fn draw_sidebar(frame: &mut Frame, app: &App, area: Rect) {
     let mut items = Vec::new();
     for (index, entry) in app.sidebar_entries.iter().enumerate() {
         if saved_section_starts(&app.sidebar_entries, index) {
-            items.push(sidebar_separator(theme));
+            items.push(sidebar_separator(theme, area.width));
         }
         items.push(sidebar_item(app, index, entry));
     }
@@ -123,8 +134,9 @@ fn saved_section_starts(
     index == 0 || !entries[index - 1].is_saved()
 }
 
-fn sidebar_separator(theme: &Theme) -> ListItem<'static> {
-    let rule = "\u{2500}".repeat(SIDEBAR_RULE_COLS);
+fn sidebar_separator(theme: &Theme, width: u16) -> ListItem<'static> {
+    let cols = (width as usize).saturating_sub(SIDEBAR_BORDER_COLS);
+    let rule = "\u{2500}".repeat(cols);
     ListItem::new(Line::from(Span::styled(
         rule,
         Style::new().fg(theme.border),
@@ -245,13 +257,41 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::buffer::Buffer;
 
-    use super::super::app::app_with_folders;
+    use super::super::app::{app_with_folders, app_with_messages};
     use super::*;
 
     fn row_text(buffer: &Buffer, y: u16) -> String {
         (0..buffer.area.width)
             .map(|x| buffer.cell((x, y)).unwrap().symbol().to_string())
             .collect()
+    }
+
+    fn rendered(app: &App, width: u16, height: u16) -> Buffer {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| draw(frame, app)).unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    /// List rows only: the reading pane's own header line
+    /// ("Subject: ...") starts the row and is not counted.
+    fn subject_rows(buffer: &Buffer) -> usize {
+        (0..buffer.area.height)
+            .map(|y| row_text(buffer, y))
+            .filter(|row| {
+                row.contains("subject-")
+                    && !row.trim_start().starts_with("Subject:")
+            })
+            .count()
+    }
+
+    fn crowded_app(count: usize) -> App {
+        let mut app = app_with_messages(count);
+        for (index, message) in app.messages.iter_mut().enumerate() {
+            message.subject = format!("subject-{index}");
+        }
+        app.sidebar = false;
+        app
     }
 
     #[test]
@@ -271,5 +311,55 @@ mod tests {
         assert!(rows[2].starts_with("    inbox"), "{:?}", rows[2]);
         assert!(rows[3].starts_with("    archive"), "{:?}", rows[3]);
         assert!(rows[4].starts_with("    lists/aerc"), "{:?}", rows[4]);
+    }
+
+    #[test]
+    fn pane_below_shows_exactly_list_rows_messages() {
+        let mut app = crowded_app(40);
+        app.list_rows = 7;
+        let buffer = rendered(&app, 80, 30);
+        assert_eq!(subject_rows(&buffer), 7);
+        let border = row_text(&buffer, 1 + 7);
+        assert!(
+            border.contains("\u{2500}"),
+            "pane border expected below the list: {border:?}"
+        );
+    }
+
+    #[test]
+    fn without_a_pane_below_the_list_fills_the_height() {
+        let mut app = crowded_app(40);
+        app.list_rows = 7;
+        app.reading_pane = ReadingPane::Off;
+        let full_height = rendered(&app, 80, 30);
+        let expected =
+            30 - STATUS_HEIGHT as usize - LIST_HEADER_ROWS as usize;
+        assert_eq!(subject_rows(&full_height), expected);
+
+        app.reading_pane = ReadingPane::Right;
+        let split_right = rendered(&app, 80, 30);
+        assert_eq!(subject_rows(&split_right), expected);
+    }
+
+    #[test]
+    fn the_sidebar_is_as_wide_as_configured_and_clamped() {
+        let cases = [
+            (12u16, 12u16),
+            (2, SIDEBAR_WIDTH_MIN),
+            (200, SIDEBAR_WIDTH_MAX),
+        ];
+        for (configured, effective) in cases {
+            let mut app = crowded_app(3);
+            app.sidebar = true;
+            app.sidebar_width = configured;
+            let buffer = rendered(&app, 80, 12);
+            let border_x = effective - 1;
+            let row = row_text(&buffer, 0);
+            let border_col: Vec<char> = row.chars().collect();
+            assert_eq!(
+                border_col[border_x as usize], '\u{2502}',
+                "width {configured}: {row:?}"
+            );
+        }
     }
 }

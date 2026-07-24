@@ -36,6 +36,11 @@ date_format = "%d %b %H:%M"  # chrono strftime
 composer = "embedded"      # embedded terminal pane for the
                            # editor, or "suspend" to hand the
                            # whole screen over
+list_rows = 7              # message rows when the reading
+                           # pane is below; with "right" or
+                           # "off" the list fills the height
+                           # and this key does not apply
+sidebar_width = 16         # columns, clamped to 10-40
 
 [vault]
 backend = "auto"           # auto | luks2 | apfs | gocryptfs

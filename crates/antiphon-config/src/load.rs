@@ -187,7 +187,25 @@ mod tests {
         assert_eq!(config.ui.theme, "vespers");
         assert_eq!(config.ui.reading_pane, ReadingPane::Below);
         assert_eq!(config.ui.composer, Composer::Embedded);
+        assert_eq!(config.ui.list_rows, 7);
+        assert_eq!(config.ui.sidebar_width, 16);
         assert!(config.notifications.enabled);
+    }
+
+    #[test]
+    fn list_rows_and_sidebar_width_parse_from_the_ui_table() {
+        let config: Config = parse(
+            "[ui]\nlist_rows = 12\nsidebar_width = 24\n",
+            Path::new("config.toml"),
+        )
+        .unwrap();
+        assert_eq!(config.ui.list_rows, 12);
+        assert_eq!(config.ui.sidebar_width, 24);
+        assert!(
+            config_error("[ui]\nlist_rows = -3\n")
+                .message
+                .contains("invalid value")
+        );
     }
 
     #[test]
