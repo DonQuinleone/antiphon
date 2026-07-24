@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use notmuch::{Database, DatabaseMode, Message, Sort};
 
@@ -63,13 +63,14 @@ pub struct SearchIndex {
 impl SearchIndex {
     pub fn open(layout: &StoreLayout) -> Result<Self, SearchError> {
         let path = layout.notmuch_dir();
+        // The store's own config supplies mail_root, so message
+        // filenames resolve under maildir/ for every opener;
+        // None here would read the user's configuration
+        // instead.
         let db = Database::open_with_config(
             Some(&path),
             DatabaseMode::ReadOnly,
-            // An empty config path stops libnotmuch reading the
-            // user's own configuration; None would go looking
-            // for it.
-            Some(Path::new("")),
+            Some(layout.notmuch_config_path()),
             None,
         )
         .map_err(|source| SearchError::Open { path, source })?;

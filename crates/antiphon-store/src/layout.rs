@@ -46,16 +46,40 @@ impl StoreLayout {
         self.root.join("contacts")
     }
 
+    pub fn notmuch_config_path(&self) -> PathBuf {
+        self.root.join("notmuch.conf")
+    }
+
     pub fn exists(&self) -> bool {
         self.directories().iter().all(|dir| dir.is_dir())
     }
 
-    /// Idempotent; re-runs also repair drifted permissions.
+    /// Idempotent; re-runs also repair drifted permissions and
+    /// rewrite the store's notmuch config, which pins mail_root
+    /// so message filenames resolve identically for every
+    /// opener.
     pub fn init(&self) -> io::Result<()> {
         for dir in self.directories() {
             create_private_dir(&dir)?;
         }
-        Ok(())
+        std::fs::write(
+            self.notmuch_config_path(),
+            self.notmuch_config(),
+        )
+    }
+
+    fn notmuch_config(&self) -> String {
+        format!(
+            "[database]\n\
+             path={}\n\
+             mail_root={}\n\
+             [new]\n\
+             tags=unread;inbox\n\
+             [maildir]\n\
+             synchronize_flags=true\n",
+            self.notmuch_dir().display(),
+            self.maildir_root().display(),
+        )
     }
 
     fn directories(&self) -> [PathBuf; 7] {

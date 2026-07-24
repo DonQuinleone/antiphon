@@ -409,9 +409,8 @@ fn run(config: &Config) -> Result<(), String> {
     let generating = Instant::now();
     let written = generate(&layout, config)?;
     let generated_in = generating.elapsed();
-    let notmuch_config = write_notmuch_config(&layout)?;
     let indexing = Instant::now();
-    run_notmuch_new(&notmuch_config)?;
+    run_notmuch_new(&layout.notmuch_config_path())?;
     let indexed_in = indexing.elapsed();
     println!(
         "wrote {written} messages across {} accounts \
@@ -741,30 +740,6 @@ fn civil_from_days(days: i64) -> (i64, i64, i64) {
     };
     let year = if month <= 2 { year + 1 } else { year };
     (year, month, day)
-}
-
-fn write_notmuch_config(
-    layout: &StoreLayout,
-) -> Result<PathBuf, String> {
-    let path = layout.root().join("notmuch-config");
-    let config = format!(
-        "[database]\n\
-         path={}\n\
-         mail_root={}\n\
-         [new]\n\
-         tags=unread;inbox\n\
-         [maildir]\n\
-         synchronize_flags=true\n\
-         [user]\n\
-         name=Mailgen Synthetic\n\
-         primary_email=mailgen@example.com\n",
-        layout.notmuch_dir().display(),
-        layout.maildir_root().display(),
-    );
-    fs::write(&path, config).map_err(|source| {
-        format!("writing {}: {source}", path.display())
-    })?;
-    Ok(path)
 }
 
 fn run_notmuch_new(config: &Path) -> Result<(), String> {

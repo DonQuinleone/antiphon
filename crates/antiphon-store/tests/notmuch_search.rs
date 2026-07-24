@@ -58,24 +58,6 @@ fn write_fixture_maildir(layout: &StoreLayout) {
     }
 }
 
-fn write_notmuch_config(path: &Path, layout: &StoreLayout) {
-    let config = format!(
-        "[database]\n\
-         path={}\n\
-         mail_root={}\n\
-         [new]\n\
-         tags=unread;inbox\n\
-         [maildir]\n\
-         synchronize_flags=true\n\
-         [user]\n\
-         name=Test User\n\
-         primary_email=test@example.com\n",
-        layout.notmuch_dir().display(),
-        layout.maildir_root().display(),
-    );
-    fs::write(path, config).unwrap();
-}
-
 fn run_notmuch_new(config: &Path) {
     let out = Command::new("notmuch")
         .arg("new")
@@ -104,9 +86,7 @@ fn wrapper_reads_an_index_built_by_notmuch_new() {
     layout.init().unwrap();
     write_fixture_maildir(&layout);
 
-    let config = dir.path().join("notmuch-config");
-    write_notmuch_config(&config, &layout);
-    run_notmuch_new(&config);
+    run_notmuch_new(&layout.notmuch_config_path());
 
     let index = SearchIndex::open(&layout).unwrap();
     let all = index.query("*", None).unwrap();
