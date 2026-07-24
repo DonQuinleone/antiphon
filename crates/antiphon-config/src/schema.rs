@@ -35,6 +35,7 @@ pub struct Ui {
     pub theme: String,
     pub reading_pane: ReadingPane,
     pub date_format: String,
+    pub composer: Composer,
 }
 
 impl Default for Ui {
@@ -43,8 +44,17 @@ impl Default for Ui {
             theme: "vespers".to_string(),
             reading_pane: ReadingPane::Below,
             date_format: "%d %b %H:%M".to_string(),
+            composer: Composer::Embedded,
         }
     }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Composer {
+    #[default]
+    Embedded,
+    Suspend,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]

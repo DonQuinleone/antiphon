@@ -18,6 +18,9 @@ antiphon-ui = { path = "../crates/antiphon-ui" }
 chrono = "=0.4.45"
 ratatui = "=0.30.2"
 clap = { version = "=4.6.4", features = ["derive"] }
+portable-pty = "=0.9.0"
+tui-term = "=0.3.4"
+vt100 = "=0.16.2"
 
 [build-dependencies]
 antiphon-buildinfo = { path = "../crates/antiphon-buildinfo" }

@@ -27,6 +27,9 @@ where both set a value; defects in it are reported against
 theme = "vespers"          # or a gallery name, see below
 reading_pane = "below"     # below | right | off
 date_format = "%d %b %H:%M"  # chrono strftime
+composer = "embedded"      # embedded terminal pane for the
+                           # editor, or "suspend" to hand the
+                           # whole screen over
 
 [vault]
 backend = "auto"           # auto | luks2 | apfs | gocryptfs

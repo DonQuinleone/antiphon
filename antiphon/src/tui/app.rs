@@ -1,7 +1,9 @@
-use antiphon_config::{Loaded, ReadingPane};
+use antiphon_config::{Composer, Loaded, ReadingPane};
 use antiphon_core::Action;
 use antiphon_store::MessageSummary;
 use antiphon_ui::{Theme, VESPERS};
+
+use super::editor::EditorPane;
 
 const HALF_PAGE_ROWS: usize = 10;
 const PAGER_SCROLL_ROWS: u16 = 1;
@@ -15,6 +17,16 @@ const FLAGGED_TAG: &str = "flagged";
 pub enum View {
     List,
     Pager,
+    Editor,
+}
+
+/// Where the next key event goes; resolved before the keymap
+/// so an open editor swallows everything raw.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyRoute {
+    Prompt,
+    Editor,
+    Keymap,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -108,6 +120,9 @@ pub struct App {
     pub current_query: String,
     pub pending_ops: Vec<OpIntent>,
     pub frame_stats: FrameStats,
+    pub composer: Composer,
+    pub editor: Option<EditorPane>,
+    editor_return: View,
     pub quit: bool,
 }
 
@@ -141,8 +156,33 @@ impl App {
             current_query: DEFAULT_QUERY.to_string(),
             pending_ops: Vec::new(),
             frame_stats: FrameStats::default(),
+            composer: loaded.config.ui.composer,
+            editor: None,
+            editor_return: View::List,
             quit: false,
         }
+    }
+
+    pub fn key_route(&self) -> KeyRoute {
+        if self.prompt.is_some() {
+            return KeyRoute::Prompt;
+        }
+        if self.view == View::Editor {
+            return KeyRoute::Editor;
+        }
+        KeyRoute::Keymap
+    }
+
+    pub fn open_editor(&mut self, pane: EditorPane) {
+        self.editor_return = self.view;
+        self.editor = Some(pane);
+        self.view = View::Editor;
+    }
+
+    pub fn close_editor(&mut self) -> Option<EditorPane> {
+        let pane = self.editor.take()?;
+        self.view = self.editor_return;
+        Some(pane)
     }
 
     pub fn open_pager(&mut self, body: String) {
@@ -168,6 +208,7 @@ impl App {
         match self.view {
             View::List => self.apply_in_list(action),
             View::Pager => self.apply_in_pager(action),
+            View::Editor => {}
         }
     }
 
@@ -390,8 +431,31 @@ mod tests {
             current_query: DEFAULT_QUERY.to_string(),
             pending_ops: Vec::new(),
             frame_stats: FrameStats::default(),
+            composer: Composer::Embedded,
+            editor: None,
+            editor_return: View::List,
             quit: false,
         }
+    }
+
+    #[test]
+    fn keys_route_to_the_editor_view_before_the_keymap() {
+        let mut app = app_with_messages(1);
+        assert_eq!(app.key_route(), KeyRoute::Keymap);
+        app.view = View::Editor;
+        assert_eq!(app.key_route(), KeyRoute::Editor);
+        app.view = View::List;
+        app.apply(Action::Search);
+        assert_eq!(app.key_route(), KeyRoute::Prompt);
+    }
+
+    #[test]
+    fn editor_view_swallows_actions_unchanged() {
+        let mut app = app_with_messages(1);
+        app.view = View::Editor;
+        app.apply(Action::Quit);
+        assert!(!app.quit);
+        assert_eq!(app.view, View::Editor);
     }
 
     #[test]

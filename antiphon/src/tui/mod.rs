@@ -1,12 +1,13 @@
 mod app;
 mod compose;
 mod draw;
+mod editor;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use antiphon_config::{Dirs, Loaded};
+use antiphon_config::{Composer, Dirs, Loaded};
 use antiphon_core::{Action, Keymap, Resolution};
 use antiphon_store::{
     MessageSummary, Outbox, SearchError, SearchIndex, StoreLayout,
@@ -20,10 +21,15 @@ use antiphon_ipc::{
     IpcClient, OpId, OpKind, Operation, Request, socket_path,
 };
 
-use app::{App, DEFAULT_QUERY, OpIntent, PromptKind, View, account_of};
+use app::{
+    App, DEFAULT_QUERY, KeyRoute, OpIntent, PromptKind, View,
+    account_of,
+};
 use compose::{ComposeContext, ParsedDraft, ReplySource};
+use editor::{EditorPane, EditorSession};
 
 const INPUT_POLL: Duration = Duration::from_millis(250);
+const EDITOR_POLL: Duration = Duration::from_millis(20);
 const REFRESH_EVERY: Duration = Duration::from_secs(2);
 const LIST_WINDOW: usize = 500;
 const DAEMON_ASSIGNS_ID: u64 = 0;
@@ -87,10 +93,11 @@ fn event_loop(
     let mut last_refresh = Instant::now();
     let mut last_unread: Option<u32> = None;
     while !app.quit {
+        tick_editor(terminal, app, layout)?;
         let drawing = Instant::now();
         terminal.draw(|frame| draw::draw(frame, app))?;
         app.frame_stats.record(drawing.elapsed());
-        if !event::poll(INPUT_POLL)? {
+        if !event::poll(poll_interval(app))? {
             drain_ops(app);
             maybe_refresh(
                 app,
@@ -106,19 +113,80 @@ fn event_loop(
         if key.kind != KeyEventKind::Press {
             continue;
         }
-        if app.prompt.is_some() {
-            prompt_key(app, layout, key);
-            continue;
-        }
-        if let Resolution::Match(action) = keymap.feed(key) {
-            let request = dispatch(app, action, context);
-            if let Some(request) = request {
-                edit_and_queue(terminal, app, layout, request)?;
-                nudge_daemon();
-            }
+        match app.key_route() {
+            KeyRoute::Editor => editor_key(app, key),
+            KeyRoute::Prompt => prompt_key(app, layout, key),
+            KeyRoute::Keymap => keymap_key(
+                terminal,
+                app,
+                &mut keymap,
+                layout,
+                context,
+                key,
+            )?,
         }
         drain_ops(app);
     }
+    Ok(())
+}
+
+fn poll_interval(app: &App) -> Duration {
+    if app.editor.is_some() {
+        EDITOR_POLL
+    } else {
+        INPUT_POLL
+    }
+}
+
+fn editor_key(app: &mut App, key: KeyEvent) {
+    if let Some(pane) = app.editor.as_mut() {
+        pane.session.send_key(key);
+    }
+}
+
+fn keymap_key(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    keymap: &mut Keymap,
+    layout: &StoreLayout,
+    context: &ComposeContext,
+    key: KeyEvent,
+) -> std::io::Result<()> {
+    let Resolution::Match(action) = keymap.feed(key) else {
+        return Ok(());
+    };
+    let Some(request) = dispatch(app, action, context) else {
+        return Ok(());
+    };
+    begin_compose(terminal, app, layout, request)
+}
+
+/// Pump pty output into the parser, keep the pty sized to the
+/// pane, and settle the compose once the child has exited.
+fn tick_editor(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    layout: &StoreLayout,
+) -> std::io::Result<()> {
+    let Some(pane) = app.editor.as_mut() else {
+        return Ok(());
+    };
+    pane.session.pump();
+    let size = terminal.size()?;
+    pane.session
+        .resize(draw::editor_rows(size.height), size.width);
+    let Some(success) = pane.session.exit_success() else {
+        return Ok(());
+    };
+    let pane = app.close_editor().expect("editor pane present");
+    app.notice = Some(finish_compose(
+        layout,
+        &pane.account,
+        &pane.written,
+        &pane.path,
+        success,
+    ));
+    nudge_daemon();
     Ok(())
 }
 
@@ -338,7 +406,7 @@ fn reply_request(
     })
 }
 
-fn edit_and_queue(
+fn begin_compose(
     terminal: &mut DefaultTerminal,
     app: &mut App,
     layout: &StoreLayout,
@@ -351,12 +419,63 @@ fn edit_and_queue(
             return Ok(());
         }
     };
-    let status = run_editor(terminal, &path);
+    let embedded = app.composer == Composer::Embedded
+        && open_embedded(terminal, app, &request, &path)?;
+    if embedded {
+        return Ok(());
+    }
+    suspend_compose(terminal, app, layout, &request, &path)
+}
+
+/// The embedded default: the editor child runs on a pty and
+/// its screen renders inside the client. Returns false when
+/// the pty cannot be created, handing over to the suspend
+/// fallback.
+fn open_embedded(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    request: &EditorRequest,
+    path: &Path,
+) -> std::io::Result<bool> {
+    let size = terminal.size()?;
+    let session = EditorSession::spawn(
+        &editor_command(),
+        path,
+        draw::editor_rows(size.height),
+        size.width,
+    );
+    let Ok(session) = session else {
+        return Ok(false);
+    };
+    app.open_editor(EditorPane {
+        account: request.account.clone(),
+        written: request.text.clone(),
+        path: path.to_path_buf(),
+        session,
+    });
+    Ok(true)
+}
+
+fn suspend_compose(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    layout: &StoreLayout,
+    request: &EditorRequest,
+    path: &Path,
+) -> std::io::Result<()> {
+    let status = run_editor(terminal, path);
     terminal.clear()?;
     app.notice = Some(match status {
-        Ok(status) => finish_compose(layout, &request, &path, status),
+        Ok(status) => finish_compose(
+            layout,
+            &request.account,
+            &request.text,
+            path,
+            status.success(),
+        ),
         Err(error) => format!("editor: {error}"),
     });
+    nudge_daemon();
     Ok(())
 }
 
@@ -398,11 +517,12 @@ fn write_draft(
 
 fn finish_compose(
     layout: &StoreLayout,
-    request: &EditorRequest,
+    account: &str,
+    written: &str,
     path: &Path,
-    status: std::process::ExitStatus,
+    success: bool,
 ) -> String {
-    if !status.success() {
+    if !success {
         let _ = std::fs::remove_file(path);
         return COMPOSE_ABORTED.to_string();
     }
@@ -410,14 +530,12 @@ fn finish_compose(
         Ok(edited) => edited,
         Err(error) => return format!("draft: {error}"),
     };
-    if compose::draft_unchanged(&request.text, &edited) {
+    if compose::draft_unchanged(written, &edited) {
         let _ = std::fs::remove_file(path);
         return COMPOSE_ABORTED.to_string();
     }
     match compose::parse_draft(&edited) {
-        Ok(parsed) => {
-            queue_message(layout, &request.account, &parsed, path)
-        }
+        Ok(parsed) => queue_message(layout, account, &parsed, path),
         Err(error) => error,
     }
 }

@@ -228,7 +228,7 @@ fn named_file(dirs: &Dirs, kind: &str, name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::ReadingPane;
+    use crate::schema::{Composer, ReadingPane};
 
     fn config_error(text: &str) -> ConfigError {
         parse::<Config>(text, Path::new("config.toml"))
@@ -315,7 +315,23 @@ mod tests {
         assert_eq!(config, Config::default());
         assert_eq!(config.ui.theme, "vespers");
         assert_eq!(config.ui.reading_pane, ReadingPane::Below);
+        assert_eq!(config.ui.composer, Composer::Embedded);
         assert!(config.notifications.enabled);
+    }
+
+    #[test]
+    fn composer_accepts_the_suspend_fallback() {
+        let config: Config = parse(
+            "[ui]\ncomposer = \"suspend\"\n",
+            Path::new("config.toml"),
+        )
+        .unwrap();
+        assert_eq!(config.ui.composer, Composer::Suspend);
+        assert!(
+            config_error("[ui]\ncomposer = \"floating\"\n")
+                .message
+                .contains("unknown variant")
+        );
     }
 
     #[test]

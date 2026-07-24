@@ -13,7 +13,7 @@ pub use load::{
     Loaded, NamedAccount, load, signature_text, template_text,
 };
 pub use schema::{
-    Config, Notifications, ReadingPane, SavedSearch, Sync, Ui, Unlock,
-    Vault, VaultBackend,
+    Composer, Config, Notifications, ReadingPane, SavedSearch, Sync,
+    Ui, Unlock, Vault, VaultBackend,
 };
 pub use xdg::{Dirs, resolve};

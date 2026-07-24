@@ -10,6 +10,7 @@ use ratatui::widgets::{
     Block, Borders, List, ListItem, Paragraph, Row, Table, TableState,
     Wrap,
 };
+use tui_term::widget::PseudoTerminal;
 
 use super::app::{App, DEFAULT_QUERY, Prompt, PromptKind, View};
 
@@ -30,6 +31,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
         area,
     );
     let (content, status) = split_status(area);
+    if app.view == View::Editor {
+        draw_editor(frame, app, content);
+        draw_status(frame, app, status);
+        return;
+    }
     if app.view == View::Pager {
         draw_pager(frame, app, content);
         draw_status(frame, app, status);
@@ -233,6 +239,22 @@ fn header_line(
         ),
         Span::styled(value, Style::new().fg(theme.text_primary)),
     ])
+}
+
+/// Rows left for the editor pane once the statusline has
+/// taken its line; the pty is kept exactly this size.
+pub(super) fn editor_rows(height: u16) -> u16 {
+    height.saturating_sub(STATUS_HEIGHT)
+}
+
+fn draw_editor(frame: &mut Frame, app: &App, area: Rect) {
+    let Some(pane) = &app.editor else {
+        return;
+    };
+    frame.render_widget(
+        PseudoTerminal::new(pane.session.screen()),
+        area,
+    );
 }
 
 fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
