@@ -11,9 +11,20 @@ use super::app::App;
 use super::draw::{format_date, header_line};
 
 pub(super) fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
+    let lines = pager_lines(app);
+    if lines.is_empty() {
+        return;
+    }
+    let paragraph = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .scroll((app.pager_scroll, 0));
+    frame.render_widget(paragraph, area);
+}
+
+fn pager_lines(app: &App) -> Vec<Line<'static>> {
     let theme = app.theme;
     let Some(message) = app.selected_message() else {
-        return;
+        return Vec::new();
     };
     let mut lines = vec![
         header_line(theme, "From:", message.from.clone()),
@@ -27,6 +38,14 @@ pub(super) fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
     ];
     if let Some(line) = signature_line(theme, &app.pager_signature) {
         lines.push(line);
+    }
+    if !app.pager_invite.is_empty() {
+        lines.push(Line::default());
+        lines.extend(
+            app.pager_invite
+                .iter()
+                .map(|text| invite_line(theme, text)),
+        );
     }
     lines.push(Line::default());
     lines.extend(app.pager_body.lines().enumerate().map(
@@ -43,10 +62,14 @@ pub(super) fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
             ))
         },
     ));
-    let paragraph = Paragraph::new(lines)
-        .wrap(Wrap { trim: false })
-        .scroll((app.pager_scroll, 0));
-    frame.render_widget(paragraph, area);
+    lines
+}
+
+fn invite_line(theme: &Theme, text: &str) -> Line<'static> {
+    Line::from(Span::styled(
+        text.to_string(),
+        Style::new().fg(theme.accent),
+    ))
 }
 
 fn pager_line_colour(
@@ -148,6 +171,55 @@ mod tests {
     #[test]
     fn unsigned_message_shows_no_signature_line() {
         assert!(signature_line(&VESPERS, &Signature::none()).is_none());
+    }
+
+    #[test]
+    fn invite_blocks_sit_between_headers_and_body() {
+        use super::super::app::app_with_messages;
+
+        let mut app = app_with_messages(1);
+        app.theme = &VESPERS;
+        app.open_pager(
+            "body line\n".to_string(),
+            Signature::none(),
+            vec![
+                "calendar invite: Stand-up".to_string(),
+                "  reply:     accept/decline not yet wired".to_string(),
+            ],
+        );
+        let lines = pager_lines(&app);
+        let texts: Vec<String> = lines.iter().map(line_text).collect();
+        let invite = texts
+            .iter()
+            .position(|text| text == "calendar invite: Stand-up")
+            .expect("the invite block is injected");
+        let body = texts
+            .iter()
+            .position(|text| text == "body line")
+            .expect("the body still renders");
+        assert!(invite < body, "{texts:?}");
+        assert_eq!(
+            lines[invite].spans[0].style.fg,
+            Some(VESPERS.accent)
+        );
+        assert_eq!(
+            texts[invite + 1],
+            "  reply:     \
+             accept/decline not yet wired"
+        );
+
+        app.open_pager(
+            "plain\n".to_string(),
+            Signature::none(),
+            Vec::new(),
+        );
+        let texts: Vec<String> =
+            pager_lines(&app).iter().map(line_text).collect();
+        assert!(
+            !texts
+                .iter()
+                .any(|text| text.starts_with("calendar invite"))
+        );
     }
 
     #[test]

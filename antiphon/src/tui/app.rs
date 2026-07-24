@@ -46,6 +46,7 @@ pub struct App {
     pub pager_body: String,
     pub pager_patch: Vec<antiphon_render::PatchLine>,
     pub pager_signature: Signature,
+    pub pager_invite: Vec<String>,
     pub pager_scroll: u16,
     pub keyring: Keyring,
     pub reading_pane: ReadingPane,
@@ -95,6 +96,7 @@ impl App {
             pager_body: String::new(),
             pager_patch: Vec::new(),
             pager_signature: Signature::none(),
+            pager_invite: Vec::new(),
             pager_scroll: 0,
             keyring,
             reading_pane: loaded.config.ui.reading_pane,
@@ -155,11 +157,17 @@ impl App {
         Some(pane)
     }
 
-    pub fn open_pager(&mut self, body: String, signature: Signature) {
+    pub fn open_pager(
+        &mut self,
+        body: String,
+        signature: Signature,
+        invite: Vec<String>,
+    ) {
         self.set_unread(false);
         self.pager_patch = patch_lines(self.selected_message(), &body);
         self.pager_body = body;
         self.pager_signature = signature;
+        self.pager_invite = invite;
         self.pager_scroll = 0;
         self.view = View::Pager;
     }
@@ -272,6 +280,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         pager_body: String::new(),
         pager_patch: Vec::new(),
         pager_signature: Signature::none(),
+        pager_invite: Vec::new(),
         pager_scroll: 0,
         keyring: Keyring::default(),
         reading_pane: ReadingPane::Below,
@@ -336,6 +345,7 @@ mod tests {
         app.open_pager(
             "one\ntwo\nthree\n".to_string(),
             Signature::none(),
+            Vec::new(),
         );
         assert_eq!(app.view, View::Pager);
         app.apply(Action::MoveUp);
@@ -355,20 +365,28 @@ mod tests {
 
         let diff = "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-a\n+b\n";
         let mut app = app_with_messages(1);
-        app.open_pager("plain words\n".into(), Signature::none());
+        app.open_pager(
+            "plain words\n".into(),
+            Signature::none(),
+            Vec::new(),
+        );
         assert!(app.pager_patch.is_empty());
-        app.open_pager(diff.into(), Signature::none());
+        app.open_pager(diff.into(), Signature::none(), Vec::new());
         assert_eq!(app.pager_patch[3], PatchLine::Removal);
         assert_eq!(app.pager_patch[4], PatchLine::Addition);
         app.messages[0].subject = "[PATCH] prose only".into();
-        app.open_pager("no diff here\n".into(), Signature::none());
+        app.open_pager(
+            "no diff here\n".into(),
+            Signature::none(),
+            Vec::new(),
+        );
         assert_eq!(app.pager_patch, [PatchLine::Text]);
     }
 
     #[test]
     fn opening_the_pager_marks_the_message_read() {
         let mut app = app_with_messages(1);
-        app.open_pager(String::new(), Signature::none());
+        app.open_pager(String::new(), Signature::none(), Vec::new());
         assert!(!app.messages[0].unread);
         assert_eq!(app.pending_ops.len(), 1);
     }

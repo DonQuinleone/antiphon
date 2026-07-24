@@ -102,12 +102,17 @@ pub(super) fn dispatch(
         Ok(raw) => {
             let opened =
                 decrypt::read_message(&raw, &app.keyring, None);
-            app.open_pager(opened.body, opened.signature);
+            app.open_pager(
+                opened.body,
+                opened.signature,
+                opened.invite,
+            );
         }
         Err(error) => {
             app.open_pager(
                 format!("cannot read {}: {error}", path.display()),
                 antiphon_pgp::Signature::none(),
+                Vec::new(),
             );
         }
     }

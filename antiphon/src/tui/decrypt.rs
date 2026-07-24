@@ -3,11 +3,12 @@ use std::path::Path;
 use antiphon_pgp::{Keyring, Signature, mime};
 use antiphon_pgp_agent::GpgAgent;
 
-/// A message opened for reading: the rendered body and its
-/// signature verdict.
+/// A message opened for reading: the rendered body, its
+/// signature verdict, and any calendar invite block.
 pub struct Opened {
     pub body: String,
     pub signature: Signature,
+    pub invite: Vec<String>,
 }
 
 /// Renders a stored message for the pager. An encrypted
@@ -23,6 +24,7 @@ pub fn read_message(
         return Opened {
             body: antiphon_render::body_text(raw).text,
             signature: antiphon_pgp::verify(raw, keyring),
+            invite: antiphon_render::invite_lines(raw),
         };
     };
     let decrypted = GpgAgent::connect(gnupg_home)
@@ -33,6 +35,7 @@ pub fn read_message(
             return Opened {
                 body: format!("cannot decrypt: {error}"),
                 signature: Signature::none(),
+                invite: Vec::new(),
             };
         }
     };
@@ -40,6 +43,7 @@ pub fn read_message(
     Opened {
         body: antiphon_render::body_text(&merged).text,
         signature: antiphon_pgp::verify(&merged, keyring),
+        invite: antiphon_render::invite_lines(&merged),
     }
 }
 
@@ -67,6 +71,46 @@ mod tests {
         );
         assert!(opened.body.contains(BODY));
         assert_eq!(opened.signature.status, SignatureStatus::None);
+        assert!(opened.invite.is_empty());
+    }
+
+    #[test]
+    fn a_calendar_part_yields_an_invite_block() {
+        let raw = concat!(
+            "From: alba@example.com\r\n",
+            "Subject: invite\r\n",
+            "MIME-Version: 1.0\r\n",
+            "Content-Type: text/calendar; method=REQUEST\r\n",
+            "\r\n",
+            "BEGIN:VCALENDAR\r\n",
+            "VERSION:2.0\r\n",
+            "PRODID:-//Example//EN\r\n",
+            "METHOD:REQUEST\r\n",
+            "BEGIN:VEVENT\r\n",
+            "UID:2@example.com\r\n",
+            "DTSTAMP:20260720T090000Z\r\n",
+            "DTSTART:20260805T130000Z\r\n",
+            "SUMMARY:Stand-up\r\n",
+            "END:VEVENT\r\n",
+            "END:VCALENDAR\r\n",
+        );
+        let dir = TempDir::new();
+        let keyring = Keyring::from_dir(&dir.path);
+        let opened = read_message(
+            raw.as_bytes(),
+            &keyring,
+            Some(Path::new("/nonexistent")),
+        );
+        assert_eq!(
+            opened.invite.first().map(String::as_str),
+            Some("calendar invite: Stand-up")
+        );
+        assert!(
+            opened
+                .invite
+                .last()
+                .is_some_and(|line| line.contains("not yet wired"))
+        );
     }
 
     #[test]
