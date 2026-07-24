@@ -4,6 +4,7 @@ use std::process::Command;
 
 use antiphon_store::StoreLayout;
 
+use crate::auth::Auth;
 use crate::error::SyncError;
 use crate::folders::folder_subdir;
 use crate::maildir::MaildirFolder;
@@ -20,7 +21,7 @@ pub struct SyncAccount {
     pub host: String,
     pub port: u16,
     pub user: String,
-    pub password: String,
+    pub auth: Auth,
 }
 
 pub(crate) struct RemoteFolder {

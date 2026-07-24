@@ -21,6 +21,7 @@ use imap_client::tasks::tasks::logout::LogoutTask;
 use imap_client::tasks::tasks::select::SelectDataUnvalidated;
 use tokio::runtime::{Builder, Runtime};
 
+use crate::auth::Auth;
 use crate::engine::{RemoteFolder, SyncAccount};
 use crate::error::SyncError;
 
@@ -62,15 +63,21 @@ impl ImapSession {
                 port: account.port,
                 source: Box::new(source),
             })?;
-        runtime
-            .block_on(client.login(
-                account.user.as_str(),
-                account.password.as_str(),
-            ))
-            .map_err(|source| SyncError::Login {
-                user: account.user.clone(),
-                source: Box::new(source),
-            })?;
+        let authenticated = match &account.auth {
+            Auth::Password(password) => runtime.block_on(
+                client.login(account.user.as_str(), password.as_str()),
+            ),
+            Auth::XOauth2 { user, access_token } => {
+                runtime.block_on(client.authenticate_xoauth2(
+                    user.as_str(),
+                    access_token.as_str(),
+                ))
+            }
+        };
+        authenticated.map_err(|source| SyncError::Login {
+            user: account.user.clone(),
+            source: Box::new(source),
+        })?;
         Ok(Self { runtime, client })
     }
 
@@ -310,4 +317,57 @@ fn items_body(
         };
         data.into_option().map(|content| content.into_owned())
     })
+}
+
+/// connect() delegates the XOAUTH2 exchange to imap-client's
+/// AuthenticateTask; these tests pin the SASL line and SASL-IR
+/// behaviour that delegation relies on.
+#[cfg(test)]
+mod tests {
+    use imap_client::imap_types::auth::AuthMechanism;
+    use imap_client::imap_types::command::CommandBody;
+    use imap_client::tasks::Task;
+    use imap_client::tasks::tasks::authenticate::AuthenticateTask;
+
+    fn body_of(
+        task: &AuthenticateTask,
+    ) -> (AuthMechanism<'static>, Option<Vec<u8>>) {
+        let CommandBody::Authenticate {
+            mechanism,
+            initial_response,
+        } = task.command_body()
+        else {
+            panic!("not an AUTHENTICATE command");
+        };
+        let line = initial_response
+            .map(|secret| secret.declassify().clone().into_owned());
+        (mechanism, line)
+    }
+
+    #[test]
+    fn xoauth2_task_sends_the_sasl_line_inline_with_ir() {
+        let task = AuthenticateTask::xoauth2(
+            "quin@example.com",
+            "token-1",
+            true,
+        );
+        let (mechanism, line) = body_of(&task);
+        assert_eq!(mechanism, AuthMechanism::XOAuth2);
+        assert_eq!(
+            line.expect("initial response"),
+            b"user=quin@example.com\x01auth=Bearer token-1\x01\x01"
+        );
+    }
+
+    #[test]
+    fn xoauth2_task_waits_for_the_challenge_without_ir() {
+        let task = AuthenticateTask::xoauth2(
+            "quin@example.com",
+            "token-1",
+            false,
+        );
+        let (mechanism, line) = body_of(&task);
+        assert_eq!(mechanism, AuthMechanism::XOAuth2);
+        assert!(line.is_none());
+    }
 }

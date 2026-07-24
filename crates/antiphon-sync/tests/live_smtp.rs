@@ -4,7 +4,9 @@ use std::thread::sleep;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use antiphon_store::{Op, OpKind, SearchIndex, StoreLayout};
-use antiphon_sync::{SmtpAccount, SyncAccount, replay, send, sync};
+use antiphon_sync::{
+    Auth, SmtpAccount, SyncAccount, replay, send, sync,
+};
 
 const SMTP_HOST_VAR: &str = "ANTIPHON_TEST_SMTP_HOST";
 const SMTP_PORT_VAR: &str = "ANTIPHON_TEST_SMTP_PORT";
@@ -32,7 +34,7 @@ fn smtp_account() -> Option<SmtpAccount> {
         host: env::var(SMTP_HOST_VAR).ok()?,
         port: env::var(SMTP_PORT_VAR).ok()?.parse().unwrap(),
         user: env::var(USER_VAR).ok()?,
-        password: password()?,
+        auth: Auth::Password(password()?),
     })
 }
 
@@ -42,7 +44,7 @@ fn imap_account() -> Option<SyncAccount> {
         host: env::var(IMAP_HOST_VAR).ok()?,
         port: IMAPS_PORT,
         user: env::var(USER_VAR).ok()?,
-        password: password()?,
+        auth: Auth::Password(password()?),
     })
 }
 

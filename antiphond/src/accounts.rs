@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use antiphon_config::{Loaded, Rule};
-use antiphon_sync::{DeliveryRule, SmtpAccount, SyncAccount};
+use antiphon_sync::{Auth, DeliveryRule, SmtpAccount, SyncAccount};
 
 const IMAPS_PORT: u16 = 993;
 const SUBMISSION_PORT: u16 = 587;
@@ -19,7 +19,7 @@ pub fn sync_accounts(loaded: &Loaded) -> Vec<SyncAccount> {
                 host: account.imap.host.clone(),
                 port: account.imap.port.unwrap_or(IMAPS_PORT),
                 user: account.imap.user.clone(),
-                password,
+                auth: Auth::Password(password),
             })
         })
         .collect()
@@ -47,7 +47,7 @@ pub fn smtp_accounts(loaded: &Loaded) -> Vec<(String, SmtpAccount)> {
                     host: smtp.host.clone(),
                     port: smtp.port.unwrap_or(SUBMISSION_PORT),
                     user,
-                    password,
+                    auth: Auth::Password(password),
                 },
             ))
         })

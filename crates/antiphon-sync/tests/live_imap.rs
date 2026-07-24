@@ -5,7 +5,7 @@ use std::num::NonZeroU32;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use antiphon_store::{Op, OpKind, SearchIndex, StoreLayout};
-use antiphon_sync::{SyncAccount, replay, sync};
+use antiphon_sync::{Auth, SyncAccount, replay, sync};
 use imap_client::client::tokio::Client;
 use imap_client::imap_types::core::Vec1;
 use imap_client::imap_types::fetch::{
@@ -40,8 +40,15 @@ fn live_account() -> Option<SyncAccount> {
         host,
         port: IMAPS_PORT,
         user,
-        password,
+        auth: Auth::Password(password),
     })
+}
+
+fn plain_password(account: &SyncAccount) -> &str {
+    let Auth::Password(password) = &account.auth else {
+        panic!("live tests authenticate with a password");
+    };
+    password
 }
 
 fn block_on<T>(future: impl Future<Output = T>) -> T {
@@ -62,7 +69,7 @@ async fn open_client(account: &SyncAccount) -> Client {
     .await
     .unwrap();
     client
-        .login(account.user.as_str(), account.password.as_str())
+        .login(account.user.as_str(), plain_password(account))
         .await
         .unwrap();
     client

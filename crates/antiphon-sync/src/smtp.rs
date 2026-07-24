@@ -2,17 +2,19 @@ use lettre::address::{Address, Envelope};
 use lettre::transport::smtp::authentication::{Credentials, Mechanism};
 use lettre::{SmtpTransport, Transport};
 
+use crate::auth::Auth;
 use crate::error::SyncError;
 
-const AUTH_MECHANISMS: [Mechanism; 2] =
+const PASSWORD_MECHANISMS: [Mechanism; 2] =
     [Mechanism::Plain, Mechanism::Login];
+const XOAUTH2_MECHANISMS: [Mechanism; 1] = [Mechanism::Xoauth2];
 
 #[derive(Clone, Debug)]
 pub struct SmtpAccount {
     pub host: String,
     pub port: u16,
     pub user: String,
-    pub password: String,
+    pub auth: Auth,
 }
 
 /// Submits a fully formed RFC 5322 message over SMTP with
@@ -23,19 +25,32 @@ pub fn send(
     raw_message: &[u8],
 ) -> Result<(), SyncError> {
     let envelope = envelope_for(raw_message)?;
+    let (credentials, mechanisms) = transport_auth(account);
     let transport = SmtpTransport::starttls_relay(&account.host)
         .map_err(SyncError::smtp(&account.host))?
         .port(account.port)
-        .credentials(Credentials::new(
-            account.user.clone(),
-            account.password.clone(),
-        ))
-        .authentication(AUTH_MECHANISMS.to_vec())
+        .credentials(credentials)
+        .authentication(mechanisms)
         .build();
     transport
         .send_raw(&envelope, raw_message)
         .map_err(SyncError::smtp(&account.host))?;
     Ok(())
+}
+
+fn transport_auth(
+    account: &SmtpAccount,
+) -> (Credentials, Vec<Mechanism>) {
+    match &account.auth {
+        Auth::Password(password) => (
+            Credentials::new(account.user.clone(), password.clone()),
+            PASSWORD_MECHANISMS.to_vec(),
+        ),
+        Auth::XOauth2 { user, access_token } => (
+            Credentials::new(user.clone(), access_token.clone()),
+            XOAUTH2_MECHANISMS.to_vec(),
+        ),
+    }
 }
 
 fn envelope_for(raw: &[u8]) -> Result<Envelope, SyncError> {
@@ -230,6 +245,47 @@ mod tests {
             body\r\n";
         let error = envelope_for(message).unwrap_err();
         assert!(matches!(error, SyncError::SmtpMessage { .. }));
+    }
+
+    fn account_with(auth: Auth) -> SmtpAccount {
+        SmtpAccount {
+            host: "smtp.example.com".to_string(),
+            port: 587,
+            user: "quin@example.com".to_string(),
+            auth,
+        }
+    }
+
+    #[test]
+    fn password_auth_keeps_plain_then_login() {
+        let account =
+            account_with(Auth::Password("hunter2".to_string()));
+        let (credentials, mechanisms) = transport_auth(&account);
+        assert_eq!(
+            credentials,
+            Credentials::new(
+                "quin@example.com".to_string(),
+                "hunter2".to_string(),
+            )
+        );
+        assert_eq!(mechanisms, [Mechanism::Plain, Mechanism::Login]);
+    }
+
+    #[test]
+    fn xoauth2_auth_offers_only_xoauth2() {
+        let account = account_with(Auth::XOauth2 {
+            user: "quin@example.com".to_string(),
+            access_token: "token-1".to_string(),
+        });
+        let (credentials, mechanisms) = transport_auth(&account);
+        assert_eq!(
+            credentials,
+            Credentials::new(
+                "quin@example.com".to_string(),
+                "token-1".to_string(),
+            )
+        );
+        assert_eq!(mechanisms, [Mechanism::Xoauth2]);
     }
 
     #[test]

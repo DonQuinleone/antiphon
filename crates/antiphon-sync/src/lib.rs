@@ -1,3 +1,4 @@
+mod auth;
 mod engine;
 mod error;
 mod folders;
@@ -9,6 +10,7 @@ mod session;
 mod smtp;
 mod state;
 
+pub use auth::Auth;
 pub use engine::{SyncAccount, sync};
 pub use error::SyncError;
 pub use replay::{ReplayReport, replay};
