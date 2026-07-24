@@ -133,6 +133,8 @@ name = "antiphon-store"
 version = "0.0.0"
 dependencies = [
  "notmuch",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 

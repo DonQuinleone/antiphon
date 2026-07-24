@@ -1,8 +1,9 @@
+mod common;
+
 use std::fs;
-use std::path::Path;
-use std::process::Command;
 
 use antiphon_store::{SearchIndex, StoreLayout};
+use common::{notmuch_available_or_skip, run_notmuch_new};
 
 const ACCOUNT: &str = "test";
 
@@ -36,13 +37,6 @@ Date: Wed, 03 Jun 2026 12:00:00 +0000
 Filed in cur/ with the seen flag.
 ";
 
-fn notmuch_cli_available() -> bool {
-    Command::new("notmuch")
-        .arg("--version")
-        .output()
-        .is_ok_and(|out| out.status.success())
-}
-
 fn write_fixture_maildir(layout: &StoreLayout) {
     let account = layout.account_maildir(ACCOUNT);
     for sub in ["cur", "new", "tmp"] {
@@ -58,26 +52,9 @@ fn write_fixture_maildir(layout: &StoreLayout) {
     }
 }
 
-fn run_notmuch_new(config: &Path) {
-    let out = Command::new("notmuch")
-        .arg("new")
-        .env("NOTMUCH_CONFIG", config)
-        .output()
-        .expect("failed to run notmuch new");
-    assert!(
-        out.status.success(),
-        "notmuch new failed: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-}
-
 #[test]
 fn wrapper_reads_an_index_built_by_notmuch_new() {
-    if !notmuch_cli_available() {
-        eprintln!(
-            "skipping: notmuch CLI not installed \
-             (brew install notmuch / apt install notmuch)"
-        );
+    if !notmuch_available_or_skip() {
         return;
     }
 
