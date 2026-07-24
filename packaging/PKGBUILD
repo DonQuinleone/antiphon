@@ -1,0 +1,45 @@
+# Maintainer: DonQuinleone <don@donquinleone.com>
+# @VERSION@ and @SHA256@ are filled by the release pipeline;
+# see packaging/README.md.
+pkgname=antiphon
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='A modern mail client for the terminal'
+arch=('x86_64' 'aarch64')
+url='https://github.com/DonQuinleone/antiphon'
+license=('GPL-3.0-or-later')
+depends=('notmuch' 'gnupg')
+makedepends=('cargo')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('@SHA256@')
+
+prepare() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$(rustc -vV \
+        | sed -n 's/host: //p')"
+}
+
+build() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo build --frozen --release --workspace
+}
+
+check() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo test --frozen --release --workspace
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+    install -Dm755 target/release/antiphon \
+        "$pkgdir/usr/bin/antiphon"
+    install -Dm755 target/release/antiphond \
+        "$pkgdir/usr/bin/antiphond"
+    install -Dm644 COPYING \
+        "$pkgdir/usr/share/licenses/$pkgname/COPYING"
+    install -Dm644 README.md \
+        "$pkgdir/usr/share/doc/$pkgname/README.md"
+}
