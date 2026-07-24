@@ -71,8 +71,16 @@ could read.
 
 The vault opens once, when the daemon starts, and stays open so
 mail keeps arriving while the client is closed. antiphond seals
-it again on a clean stop (SIGINT or SIGTERM), so a graceful
-shutdown leaves ciphertext at rest rather than an open mount.
+it again on a clean stop (SIGHUP, SIGINT or SIGTERM), so a
+graceful shutdown leaves ciphertext at rest rather than an open
+mount.
+
+With `idle_lock_minutes` above zero, antiphond also seals the
+vault after that many minutes without a client connection and
+pauses syncing (the store only exists inside the mounted
+vault); the next client connection, including simply launching
+`antiphon`, unlocks it and syncing resumes. `0` keeps the vault
+open from daemon start to stop.
 
 ## Setting it up
 

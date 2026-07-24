@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 
 use antiphon_config::{Dirs, Loaded, load};
-use antiphon_ipc::{IpcServer, socket_path};
+use antiphon_ipc::{IpcServer, VaultState, socket_path};
 use antiphon_store::{OpLog, StoreLayout};
 use antiphon_sync::{DeliveryRule, SmtpAccount, SyncAccount};
 
@@ -25,6 +25,7 @@ pub(crate) struct Daemon {
     pub(crate) rules: Vec<(String, Vec<DeliveryRule>)>,
     pub(crate) last_sync_unix: Option<u64>,
     pub(crate) notify: bool,
+    pub(crate) vault: VaultState,
 }
 
 pub fn run() -> ExitCode {
@@ -42,10 +43,13 @@ pub fn run() -> ExitCode {
     };
     // Unlock before touching the store: behind a sealed vault
     // the store only exists once the vault is mounted.
-    if let Err(error) = vaultctl::ensure_open(&loaded, &layout) {
-        eprintln!("{error}");
-        return ExitCode::FAILURE;
-    }
+    let vault = match vaultctl::ensure_open(&loaded, &layout) {
+        Ok(state) => state,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
+    };
     if !layout.exists() {
         eprintln!(
             "no message store at {}; run \
@@ -85,12 +89,20 @@ pub fn run() -> ExitCode {
         rules,
         last_sync_unix: None,
         notify: loaded.config.notifications.enabled,
+        vault,
     };
     daemon.sync_pass(false);
     let interval = sync_interval(&loaded);
+    let idle_lock = idle_lock_interval(&loaded, daemon.vault);
     let shutdown = install_shutdown();
-    let outcome =
-        serve_with_timer(&server, &mut daemon, interval, &shutdown);
+    let outcome = serve_with_timer(
+        &server,
+        &mut daemon,
+        &loaded,
+        interval,
+        idle_lock,
+        &shutdown,
+    );
     // Seal the vault on the way out so a graceful stop leaves
     // ciphertext at rest, not an open mount.
     if let Err(error) = vaultctl::lock(&loaded, &daemon.layout) {
@@ -112,11 +124,25 @@ fn install_shutdown() -> Arc<AtomicBool> {
 }
 
 fn sync_interval(loaded: &Loaded) -> Option<Duration> {
-    let minutes = loaded.config.sync.interval_minutes;
-    if minutes == 0 {
+    minutes(loaded.config.sync.interval_minutes)
+}
+
+/// A plain store never seals, whatever the config says.
+fn idle_lock_interval(
+    loaded: &Loaded,
+    vault: VaultState,
+) -> Option<Duration> {
+    if vault != VaultState::Open {
         return None;
     }
-    Some(Duration::from_secs(u64::from(minutes) * 60))
+    minutes(loaded.config.vault.idle_lock_minutes)
+}
+
+fn minutes(count: u32) -> Option<Duration> {
+    if count == 0 {
+        return None;
+    }
+    Some(Duration::from_secs(u64::from(count) * 60))
 }
 
 fn due(last: Instant, interval: Option<Duration>) -> bool {
@@ -126,14 +152,21 @@ fn due(last: Instant, interval: Option<Duration>) -> bool {
 fn serve_with_timer(
     server: &IpcServer,
     daemon: &mut Daemon,
+    loaded: &Loaded,
     interval: Option<Duration>,
+    idle_lock: Option<Duration>,
     shutdown: &Arc<AtomicBool>,
 ) -> std::io::Result<()> {
     server.set_nonblocking(true)?;
     let mut last_sync = Instant::now();
+    let mut last_client = Instant::now();
     while !shutdown.load(Ordering::Relaxed) {
         match server.accept() {
-            Ok(stream) => serve_client(daemon, stream),
+            Ok(stream) => {
+                wake(daemon, loaded);
+                last_client = Instant::now();
+                serve_client(daemon, stream);
+            }
             Err(error)
                 if error.kind() == std::io::ErrorKind::WouldBlock =>
             {
@@ -148,13 +181,45 @@ fn serve_with_timer(
                 std::thread::sleep(ACCEPT_POLL);
             }
         }
-        if due(last_sync, interval) {
+        if daemon.vault != VaultState::Sealed
+            && due(last_sync, interval)
+        {
             daemon.sync_pass(true);
             last_sync = Instant::now();
+        }
+        if daemon.vault == VaultState::Open
+            && due(last_client, idle_lock)
+        {
+            idle_seal(daemon, loaded);
         }
     }
     println!("shutting down; sealing the vault");
     Ok(())
+}
+
+/// Sync pauses while sealed: the store only exists inside the
+/// mounted vault.
+fn idle_seal(daemon: &mut Daemon, loaded: &Loaded) {
+    match vaultctl::lock(loaded, &daemon.layout) {
+        Ok(()) => {
+            daemon.vault = VaultState::Sealed;
+            println!("idle: vault sealed, sync paused");
+        }
+        Err(error) => eprintln!("idle lock: {error}"),
+    }
+}
+
+fn wake(daemon: &mut Daemon, loaded: &Loaded) {
+    if daemon.vault != VaultState::Sealed {
+        return;
+    }
+    match vaultctl::ensure_open(loaded, &daemon.layout) {
+        Ok(state) => {
+            daemon.vault = state;
+            println!("client connected: vault unlocked");
+        }
+        Err(error) => eprintln!("wake unlock: {error}"),
+    }
 }
 
 /// A connection may die between accept and setup; a client

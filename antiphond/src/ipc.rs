@@ -1,8 +1,7 @@
 use std::os::unix::net::UnixStream;
 
 use antiphon_ipc::{
-    DaemonStatus, Operation, Request, Response, VaultState, read_frame,
-    write_frame,
+    DaemonStatus, Operation, Request, Response, read_frame, write_frame,
 };
 use antiphon_store::{OpKind, SearchIndex, apply_op};
 
@@ -72,7 +71,7 @@ impl Daemon {
     fn status(&self) -> DaemonStatus {
         DaemonStatus {
             version: env!("ANTIPHON_VERSION").to_string(),
-            vault: VaultState::Open,
+            vault: self.vault,
             last_sync_unix: self.last_sync_unix,
             pending_ops: self.log.unsynced().len() as u64,
         }

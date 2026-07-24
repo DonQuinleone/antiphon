@@ -1,4 +1,5 @@
 use antiphon_config::Loaded;
+use antiphon_ipc::VaultState;
 use antiphon_store::StoreLayout;
 use antiphon_vault::{
     Auth, Vault, VaultStatus, passphrase_command, select_backend,
@@ -12,15 +13,18 @@ use secrecy::SecretString;
 pub fn ensure_open(
     loaded: &Loaded,
     layout: &StoreLayout,
-) -> Result<(), String> {
+) -> Result<VaultState, String> {
     let vault = backend(loaded, layout)?;
     match vault.status() {
-        VaultStatus::Open => Ok(()),
+        VaultStatus::Open => Ok(VaultState::Open),
         VaultStatus::Absent => {
             println!("no vault; using the plain store");
-            Ok(())
+            Ok(VaultState::Absent)
         }
-        VaultStatus::Sealed => open_sealed(loaded, vault.as_ref()),
+        VaultStatus::Sealed => {
+            open_sealed(loaded, vault.as_ref())?;
+            Ok(VaultState::Open)
+        }
     }
 }
 

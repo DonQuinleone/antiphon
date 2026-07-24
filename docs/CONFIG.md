@@ -40,7 +40,8 @@ composer = "embedded"      # embedded terminal pane for the
 [vault]
 backend = "auto"           # auto | luks2 | apfs | gocryptfs
 passphrase_cmd = "pass show antiphon/vault"  # unlock secret
-idle_lock_minutes = 0      # 0 = open until logout/suspend
+idle_lock_minutes = 0      # seal after N client-less
+                           # minutes; 0 = never
 unlock = ["touchid", "yubikey", "passphrase"]
 
 [sync]
