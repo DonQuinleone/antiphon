@@ -83,6 +83,10 @@ impl ComposeContext {
         })
     }
 
+    pub fn template(&self, name: &str) -> Option<String> {
+        antiphon_config::template_text(&self.dirs, name)
+    }
+
     fn resolve(
         &self,
         account: &str,
@@ -152,20 +156,53 @@ pub struct ReplySource<'a> {
     pub body: &'a str,
 }
 
-pub fn fresh_draft(identity: &ComposeIdentity) -> String {
-    draft_text(identity, "", "", "", None)
+pub fn fresh_draft(
+    identity: &ComposeIdentity,
+    template: Option<&str>,
+    date: &str,
+) -> String {
+    let body = match template {
+        Some(template) => expand_for(identity, template, "", date),
+        None => String::new(),
+    };
+    draft_text(identity, "", "", &body, None)
 }
 
 pub fn reply_draft(
     identity: &ComposeIdentity,
     source: &ReplySource<'_>,
+    template: Option<&str>,
 ) -> String {
+    let quoted = quoted_body(source);
+    let body = match template {
+        Some(template) => {
+            expand_for(identity, template, &quoted, source.date)
+        }
+        None => quoted,
+    };
     draft_text(
         identity,
         &bare_address(source.from),
         &reply_subject(source.subject),
-        &quoted_body(source),
+        &body,
         Some(source.message_id),
+    )
+}
+
+fn expand_for(
+    identity: &ComposeIdentity,
+    template: &str,
+    quoted: &str,
+    date: &str,
+) -> String {
+    antiphon_render::expand_template(
+        template,
+        &antiphon_render::TemplateVars {
+            from: &identity.address,
+            name: identity.name.as_deref().unwrap_or(""),
+            date,
+            quoted,
+        },
     )
 }
 
@@ -396,8 +433,25 @@ mod tests {
     }
 
     #[test]
+    fn templates_shape_both_compose_paths() {
+        let fresh = fresh_draft(
+            &identity(),
+            Some("Dear {name} on {date}:\n{quoted}"),
+            "24 Jul",
+        );
+        assert!(fresh.contains("Dear Tester on 24 Jul:"));
+        let reply = reply_draft(
+            &identity(),
+            &source(),
+            Some("{quoted}\nRegards, {name}"),
+        );
+        assert!(reply.contains("Regards, Tester"));
+        assert!(reply.contains("> "));
+    }
+
+    #[test]
     fn reply_prefills_the_header_block() {
-        let draft = reply_draft(&identity(), &source());
+        let draft = reply_draft(&identity(), &source(), None);
         let expected = "From: Tester <tester@example.com>\n\
                         To: alba@example.com\n\
                         Cc: \n\
@@ -409,7 +463,7 @@ mod tests {
 
     #[test]
     fn reply_quotes_below_an_attribution_line() {
-        let draft = reply_draft(&identity(), &source());
+        let draft = reply_draft(&identity(), &source(), None);
         let quoted = "On Thu, 23 Jul 2026 at 09:00, \
                       Alba Fenwick wrote:\n\
                       > First line.\n\
@@ -434,7 +488,7 @@ mod tests {
 
     #[test]
     fn fresh_drafts_leave_recipients_and_subject_open() {
-        let draft = fresh_draft(&identity());
+        let draft = fresh_draft(&identity(), None, "");
         assert!(
             draft.starts_with(
                 "From: Tester <tester@example.com>\nTo: \n"
@@ -446,7 +500,7 @@ mod tests {
 
     #[test]
     fn drafts_round_trip_through_the_parser() {
-        let mut draft = reply_draft(&identity(), &source());
+        let mut draft = reply_draft(&identity(), &source(), None);
         draft.push_str("Thanks, noted.\n");
         let parsed = parse_draft(&draft).unwrap();
         assert_eq!(parsed.from, "tester@example.com");
@@ -485,7 +539,7 @@ mod tests {
 
     #[test]
     fn empty_recipients_and_headerless_drafts_fail() {
-        let unfilled = fresh_draft(&identity());
+        let unfilled = fresh_draft(&identity(), None, "");
         let error = parse_draft(&unfilled).unwrap_err();
         assert_eq!(error, "no recipients in To");
         assert!(parse_draft("no headers at all").is_err());
@@ -498,7 +552,7 @@ mod tests {
 
     #[test]
     fn unchanged_drafts_are_detected() {
-        let written = fresh_draft(&identity());
+        let written = fresh_draft(&identity(), None, "");
         assert!(draft_unchanged(&written, &written.clone()));
         let edited = format!("{written}A new body line.\n");
         assert!(!draft_unchanged(&written, &edited));

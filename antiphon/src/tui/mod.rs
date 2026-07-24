@@ -35,6 +35,8 @@ const LIST_WINDOW: usize = 500;
 const DAEMON_ASSIGNS_ID: u64 = 0;
 const UNREAD_QUERY: &str = "tag:unread";
 const DRAFTS_DIR: &str = "drafts";
+const CONVENTION_NEW: &str = "new";
+const CONVENTION_REPLY: &str = "reply";
 const FALLBACK_EDITOR: &str = "vi";
 const COMPOSE_ABORTED: &str = "compose aborted";
 
@@ -115,7 +117,14 @@ fn event_loop(
         }
         match app.key_route() {
             KeyRoute::Editor => editor_key(app, key),
-            KeyRoute::Prompt => prompt_key(app, layout, key),
+            KeyRoute::Prompt => {
+                prompt_key(app, layout, key);
+                if let Some(request) =
+                    pending_template_request(app, context)
+                {
+                    begin_compose(terminal, app, layout, request)?;
+                }
+            }
             KeyRoute::Keymap => keymap_key(
                 terminal,
                 app,
@@ -308,6 +317,33 @@ fn run_search(app: &mut App, layout: &StoreLayout, raw: String) {
     }
 }
 
+fn now_attribution() -> String {
+    chrono::Local::now()
+        .format(compose::ATTRIBUTION_DATE_FORMAT)
+        .to_string()
+}
+
+fn pending_template_request(
+    app: &mut App,
+    context: &ComposeContext,
+) -> Option<EditorRequest> {
+    let name = app.pending_template.take()?;
+    let Some(template) = context.template(&name) else {
+        app.notice = Some(format!("no template named {name}"));
+        return None;
+    };
+    let first = app.accounts.first().cloned().unwrap_or_default();
+    let (account, identity) = context.identity_for(&first)?;
+    Some(EditorRequest {
+        account: account.to_string(),
+        text: compose::fresh_draft(
+            identity,
+            Some(&template),
+            &now_attribution(),
+        ),
+    })
+}
+
 /// A draft ready for the user's editor; the event loop owns
 /// the terminal hand-off, so app state never touches it.
 struct EditorRequest {
@@ -361,7 +397,11 @@ fn fresh_request(
     };
     Some(EditorRequest {
         account: account.to_string(),
-        text: compose::fresh_draft(identity),
+        text: compose::fresh_draft(
+            identity,
+            context.template(CONVENTION_NEW).as_deref(),
+            &now_attribution(),
+        ),
     })
 }
 
@@ -402,7 +442,11 @@ fn reply_request(
     };
     Some(EditorRequest {
         account,
-        text: compose::reply_draft(&identity, &source),
+        text: compose::reply_draft(
+            &identity,
+            &source,
+            context.template(CONVENTION_REPLY).as_deref(),
+        ),
     })
 }
 

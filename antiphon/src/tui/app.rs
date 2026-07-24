@@ -10,6 +10,7 @@ const PAGER_SCROLL_ROWS: u16 = 1;
 const PAGER_HALF_PAGE_ROWS: u16 = 10;
 
 const UNREAD_TAG: &str = "unread";
+const TEMPLATE_COMMAND: &str = "template ";
 pub const DEFAULT_QUERY: &str = "*";
 const FLAGGED_TAG: &str = "flagged";
 
@@ -119,6 +120,7 @@ pub struct App {
     pub prompt: Option<Prompt>,
     pub current_query: String,
     pub pending_ops: Vec<OpIntent>,
+    pub pending_template: Option<String>,
     pub frame_stats: FrameStats,
     pub composer: Composer,
     pub editor: Option<EditorPane>,
@@ -155,6 +157,7 @@ impl App {
             prompt: None,
             current_query: DEFAULT_QUERY.to_string(),
             pending_ops: Vec::new(),
+            pending_template: None,
             frame_stats: FrameStats::default(),
             composer: loaded.config.ui.composer,
             editor: None,
@@ -276,6 +279,15 @@ impl App {
         match command.trim() {
             "q" | "quit" => self.quit = true,
             "frames" => self.notice = Some(self.frame_stats.summary()),
+            other if other.starts_with(TEMPLATE_COMMAND) => {
+                let name = other[TEMPLATE_COMMAND.len()..].trim();
+                if name.is_empty() {
+                    self.notice =
+                        Some("usage: template <name>".to_string());
+                } else {
+                    self.pending_template = Some(name.to_string());
+                }
+            }
             "" => {}
             other => {
                 self.notice = Some(format!("unknown command: {other}"))
@@ -430,6 +442,7 @@ mod tests {
             prompt: None,
             current_query: DEFAULT_QUERY.to_string(),
             pending_ops: Vec::new(),
+            pending_template: None,
             frame_stats: FrameStats::default(),
             composer: Composer::Embedded,
             editor: None,

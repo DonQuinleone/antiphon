@@ -11,6 +11,12 @@ to `~/.config/antiphon` on Linux and macOS alike):
     signatures/<name>    signature files referenced by name
     templates/<name>     compose templates referenced by name
 
+Templates named `new` and `reply`, when present, shape fresh
+composes and replies automatically; `:template <name>` opens a
+fresh compose from any named template. Tokens `{from}`,
+`{name}`, `{date}` and `{quoted}` expand; unknown braces pass
+through.
+
 Parsing is strict: an unknown key fails with the file, the
 line, and the nearest valid key. Empty or relative XDG
 variables are ignored per the specification. No secrets belong
