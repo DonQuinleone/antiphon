@@ -1,0 +1,11 @@
+<svg viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>antiphon tile icon</title>
+  <rect x="14" y="14" width="112" height="112" rx="26"
+        fill="#141a2e" stroke="#2c3860" stroke-width="2"/>
+  <line x1="70" y1="40" x2="70" y2="100" stroke="#7a86ad"
+        stroke-width="4" stroke-linecap="round"/>
+  <rect x="42" y="76" width="22" height="22" rx="5"
+        fill="#d9ad52"/>
+  <rect x="78" y="42" width="22" height="22" rx="5" fill="none"
+        stroke="#edd08a" stroke-width="4"/>
+</svg>

@@ -1,0 +1,9 @@
+<svg viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>antiphon mark (for dark backgrounds)</title>
+  <line x1="70" y1="30" x2="70" y2="110" stroke="#7a86ad"
+        stroke-width="4" stroke-linecap="round"/>
+  <rect x="34" y="78" width="26" height="26" rx="6"
+        fill="#d9ad52"/>
+  <rect x="80" y="36" width="26" height="26" rx="6" fill="none"
+        stroke="#edd08a" stroke-width="4"/>
+</svg>
