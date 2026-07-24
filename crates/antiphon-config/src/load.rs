@@ -365,6 +365,28 @@ move_to = "lists/aerc"
     }
 
     #[test]
+    fn signatures_and_templates_load_by_bare_name_only() {
+        let root = std::env::temp_dir()
+            .join(format!("antiphon-sig-test-{}", std::process::id()));
+        fs::create_dir_all(root.join("signatures")).unwrap();
+        fs::write(root.join("signatures/personal"), "Q\n").unwrap();
+        let dirs = Dirs {
+            config: root.clone(),
+            data: root.join("data"),
+            state: root.join("state"),
+            cache: root.join("cache"),
+        };
+        assert_eq!(
+            signature_text(&dirs, "personal").as_deref(),
+            Some("Q\n")
+        );
+        assert!(signature_text(&dirs, "missing").is_none());
+        assert!(signature_text(&dirs, "../secrets").is_none());
+        assert!(template_text(&dirs, "any").is_none());
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
     fn loading_a_directory_reads_accounts_sorted() {
         let root = std::env::temp_dir().join(format!(
             "antiphon-config-test-{}",
@@ -403,4 +425,21 @@ move_to = "lists/aerc"
             .collect();
         assert_eq!(stems, ["a", "b"]);
     }
+}
+
+pub fn signature_text(dirs: &Dirs, name: &str) -> Option<String> {
+    named_file(dirs, "signatures", name)
+}
+
+pub fn template_text(dirs: &Dirs, name: &str) -> Option<String> {
+    named_file(dirs, "templates", name)
+}
+
+fn named_file(dirs: &Dirs, kind: &str, name: &str) -> Option<String> {
+    let file_name = Path::new(name).file_name()?;
+    if file_name != name {
+        return None;
+    }
+    let path = dirs.config.join(kind).join(file_name);
+    fs::read_to_string(path).ok()
 }
