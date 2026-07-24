@@ -2,9 +2,8 @@ use std::collections::HashSet;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use antiphon_ipc::Response;
 use antiphon_oauth::{TokenStore, refresh};
-use antiphon_store::{Op, Outbox};
+use antiphon_store::{Op, Outbox, StoreLayout};
 use antiphon_sync::{
     DeliveryRule, RuleOutcome, SmtpAccount, SyncAccount, SyncError,
     SyncProgress, SyncReport, apply_rules, replay, send, sync,
@@ -12,51 +11,42 @@ use antiphon_sync::{
 };
 
 use crate::accounts::OauthAccount;
-use crate::daemon::Daemon;
+use crate::daemon::{SharedState, lock_state};
 use crate::notify;
 use crate::tokens;
 
-impl Daemon {
-    pub(crate) fn sync_pass(&mut self, announce: bool) -> usize {
+pub(crate) struct Mailflow {
+    pub(crate) layout: StoreLayout,
+    pub(crate) accounts: Vec<SyncAccount>,
+    pub(crate) oauth: Vec<OauthAccount>,
+    pub(crate) smtp: Vec<(String, SmtpAccount)>,
+    pub(crate) rules: Vec<(String, Vec<DeliveryRule>)>,
+    pub(crate) notify: bool,
+    pub(crate) state: SharedState,
+}
+
+impl Mailflow {
+    pub(crate) fn sync_pass(&self, announce: bool) {
         self.drain_outbox();
-        let failures = self.sync_all(announce);
+        self.sync_all(announce);
         self.drain_ops();
-        failures
     }
 
-    pub(crate) fn sync_now(&mut self) -> Response {
-        let failures = self.sync_pass(true);
-        if failures == 0 {
-            return Response::Ack;
+    fn sync_all(&self, announce: bool) {
+        for account in &self.accounts {
+            self.sync_one(account, announce);
         }
-        Response::Error(format!(
-            "sync failed for {failures} of {} accounts",
-            self.accounts.len() + self.oauth.len()
-        ))
-    }
-
-    fn sync_all(&mut self, announce: bool) -> usize {
-        let mut failures = 0;
-        for account in self.accounts.clone() {
-            failures += usize::from(!self.sync_one(&account, announce));
-        }
-        for spec in self.oauth.clone() {
-            failures += usize::from(!self.sync_oauth(&spec, announce));
+        for spec in &self.oauth {
+            self.sync_oauth(spec, announce);
         }
         write_progress(&self.layout, &SyncProgress::idle());
-        self.last_sync_unix = Some(now_unix());
-        failures
+        lock_state(&self.state).last_sync_unix = Some(now_unix());
     }
 
-    fn sync_one(
-        &mut self,
-        account: &SyncAccount,
-        announce: bool,
-    ) -> bool {
+    fn sync_one(&self, account: &SyncAccount, announce: bool) {
         match sync(account, &self.layout) {
             Ok(report) => {
                 self.after_sync(&account.name, &report, announce);
-                true
             }
             Err(error) => {
                 eprintln!(
@@ -64,23 +54,18 @@ impl Daemon {
                     account.name,
                     error_chain(&error)
                 );
-                false
             }
         }
     }
 
     /// One AUTHENTICATIONFAILED gets one forced refresh and one
     /// retry; a second failure waits for the next pass.
-    fn sync_oauth(
-        &mut self,
-        spec: &OauthAccount,
-        announce: bool,
-    ) -> bool {
+    fn sync_oauth(&self, spec: &OauthAccount, announce: bool) {
         let token = match self.oauth_token(spec, false) {
             Ok(token) => token,
             Err(message) => {
                 eprintln!("{message}");
-                return false;
+                return;
             }
         };
         let mut outcome = sync(&spec.sync_account(token), &self.layout);
@@ -97,14 +82,13 @@ impl Daemon {
                 }
                 Err(message) => {
                     eprintln!("{message}");
-                    return false;
+                    return;
                 }
             }
         }
         match outcome {
             Ok(report) => {
                 self.after_sync(&spec.name, &report, announce);
-                true
             }
             Err(error) => {
                 eprintln!(
@@ -112,7 +96,6 @@ impl Daemon {
                     spec.name,
                     error_chain(&error)
                 );
-                false
             }
         }
     }
@@ -144,7 +127,7 @@ impl Daemon {
     }
 
     fn after_sync(
-        &mut self,
+        &self,
         account: &str,
         report: &SyncReport,
         announce: bool,
@@ -157,13 +140,15 @@ impl Daemon {
         );
         let rules = account_rules(&self.rules, account);
         if !rules.is_empty() {
+            let mut state = lock_state(&self.state);
             let outcome = apply_rules(
                 account,
                 rules,
                 &report.delivered(),
                 &self.layout,
-                &mut self.log,
+                &mut state.log,
             );
+            drop(state);
             announce_rules(account, outcome);
         }
         if announce && self.notify {
@@ -171,7 +156,7 @@ impl Daemon {
         }
     }
 
-    pub(crate) fn drain_outbox(&mut self) {
+    pub(crate) fn drain_outbox(&self) {
         let outbox = Outbox::open(&self.layout);
         let pending = match outbox.pending() {
             Ok(pending) => pending,
@@ -287,8 +272,13 @@ impl Daemon {
     /// are resolved (dropped means the server won and the op is
     /// discarded); unsupported ops stay pending and hold the
     /// cursor, since mark_synced covers everything below it.
-    pub(crate) fn drain_ops(&mut self) {
-        let pending = self.log.unsynced();
+    ///
+    /// The lock is held only to snapshot and to mark: replay
+    /// itself talks to the server and must not block IPC. Ops
+    /// appended meanwhile get ids above the snapshot, so the
+    /// cursor can never advance over an op replay did not see.
+    pub(crate) fn drain_ops(&self) {
+        let pending = lock_state(&self.state).log.unsynced();
         if pending.is_empty() {
             return;
         }
@@ -337,7 +327,8 @@ impl Daemon {
         let Some(id) = cursor else {
             return;
         };
-        if let Err(error) = self.log.mark_synced(id) {
+        if let Err(error) = lock_state(&self.state).log.mark_synced(id)
+        {
             eprintln!("oplog: {error}");
         }
     }

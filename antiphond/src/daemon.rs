@@ -1,7 +1,7 @@
 use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
@@ -9,26 +9,40 @@ use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 use antiphon_config::{Dirs, Loaded, load};
 use antiphon_ipc::{IpcServer, VaultState, socket_path};
 use antiphon_store::{OpLog, StoreLayout};
-use antiphon_sync::{DeliveryRule, SmtpAccount, SyncAccount};
 
 use crate::accounts::{
-    OauthAccount, delivery_rules, oauth_accounts, smtp_accounts,
-    sync_accounts,
+    delivery_rules, oauth_accounts, smtp_accounts, sync_accounts,
 };
+use crate::mailflow::Mailflow;
 use crate::vaultctl;
+use crate::worker::{self, Job, JobQueue};
 
 const ACCEPT_POLL: Duration = Duration::from_millis(200);
 const CLIENT_READ_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// The one piece of state the serve loop and the worker both
+/// mutate. Everything else is either owned by exactly one side
+/// or cloned read-only into the worker. This is the only lock
+/// in the daemon, so no lock ordering can arise.
+pub(crate) struct MailState {
+    pub(crate) log: OpLog,
+    pub(crate) last_sync_unix: Option<u64>,
+}
+
+pub(crate) type SharedState = Arc<Mutex<MailState>>;
+
+pub(crate) fn lock_state(
+    state: &SharedState,
+) -> MutexGuard<'_, MailState> {
+    state
+        .lock()
+        .expect("a state holder panicked; cursors untrusted")
+}
+
 pub(crate) struct Daemon {
     pub(crate) layout: StoreLayout,
-    pub(crate) log: OpLog,
-    pub(crate) accounts: Vec<SyncAccount>,
-    pub(crate) oauth: Vec<OauthAccount>,
-    pub(crate) smtp: Vec<(String, SmtpAccount)>,
-    pub(crate) rules: Vec<(String, Vec<DeliveryRule>)>,
-    pub(crate) last_sync_unix: Option<u64>,
-    pub(crate) notify: bool,
+    pub(crate) state: SharedState,
+    pub(crate) jobs: JobQueue,
     pub(crate) vault: VaultState,
 }
 
@@ -62,10 +76,6 @@ pub fn run() -> ExitCode {
         );
         return ExitCode::FAILURE;
     }
-    let accounts = sync_accounts(&loaded);
-    let oauth = oauth_accounts(&loaded);
-    let smtp = smtp_accounts(&loaded);
-    let rules = delivery_rules(&loaded);
     let log = match OpLog::open(&layout) {
         Ok(log) => log,
         Err(error) => {
@@ -86,18 +96,27 @@ pub fn run() -> ExitCode {
         env!("ANTIPHON_VERSION"),
         path.display()
     );
-    let mut daemon = Daemon {
-        layout,
+    let state: SharedState = Arc::new(Mutex::new(MailState {
         log,
-        accounts,
-        oauth,
-        smtp,
-        rules,
         last_sync_unix: None,
+    }));
+    let flow = Mailflow {
+        layout: layout.clone(),
+        accounts: sync_accounts(&loaded),
+        oauth: oauth_accounts(&loaded),
+        smtp: smtp_accounts(&loaded),
+        rules: delivery_rules(&loaded),
         notify: loaded.config.notifications.enabled,
+        state: state.clone(),
+    };
+    let (jobs, worker) = worker::spawn(flow);
+    let mut daemon = Daemon {
+        layout: layout.clone(),
+        state,
+        jobs: jobs.clone(),
         vault,
     };
-    daemon.sync_pass(false);
+    jobs.request(Job::Pass { announce: false });
     let interval = sync_interval(&loaded);
     let idle_lock = idle_lock_interval(&loaded, daemon.vault);
     let shutdown = install_shutdown();
@@ -109,9 +128,17 @@ pub fn run() -> ExitCode {
         idle_lock,
         &shutdown,
     );
+    // The worker must finish its pass before the seal below
+    // unmounts the store it is writing to; closing the queue
+    // stops it after the current batch.
+    drop(daemon);
+    drop(jobs);
+    if worker.join().is_err() {
+        eprintln!("the worker thread panicked");
+    }
     // Seal the vault on the way out so a graceful stop leaves
     // ciphertext at rest, not an open mount.
-    if let Err(error) = vaultctl::lock(&loaded, &daemon.layout) {
+    if let Err(error) = vaultctl::lock(&loaded, &layout) {
         eprintln!("{error}");
     }
     if let Err(error) = outcome {
@@ -187,14 +214,19 @@ fn serve_with_timer(
                 std::thread::sleep(ACCEPT_POLL);
             }
         }
+        // A busy worker holds both timers off: stacking a pass
+        // on a running one only queues duplicates, and sealing
+        // would unmount the store under the running pass.
         if daemon.vault != VaultState::Sealed
             && due(last_sync, interval)
+            && daemon.jobs.idle()
         {
-            daemon.sync_pass(true);
+            daemon.jobs.request(Job::Pass { announce: true });
             last_sync = Instant::now();
         }
         if daemon.vault == VaultState::Open
             && due(last_client, idle_lock)
+            && daemon.jobs.idle()
         {
             idle_seal(daemon, loaded);
         }

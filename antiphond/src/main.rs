@@ -5,6 +5,7 @@ mod mailflow;
 mod notify;
 mod tokens;
 mod vaultctl;
+mod worker;
 
 use std::process::ExitCode;
 
