@@ -1,0 +1,9 @@
+[package]
+name = "antiphon-buildinfo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Build-time helpers for the antiphon binaries"

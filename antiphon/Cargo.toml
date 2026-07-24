@@ -1,0 +1,12 @@
+[package]
+name = "antiphon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "A modern mail client for the terminal"
+
+[build-dependencies]
+antiphon-buildinfo = { path = "../crates/antiphon-buildinfo" }
