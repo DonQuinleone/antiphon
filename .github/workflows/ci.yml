@@ -1,36 +1,121 @@
-name: ci
+# The whole CI surface lives in this one file, as one job per
+# concern: formatting, lints, tests per OS, and the MSRV floor.
+# A release workflow joins it as a separate file only when
+# there are releases to build.
+name: CI
 
 on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  check:
+  rustfmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install stable toolchain
+        # dtolnay/rust-toolchain master 2026-07-24
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: stable
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install stable toolchain
+        # dtolnay/rust-toolchain master 2026-07-24
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: stable
+          components: clippy
+      - name: Cache cargo artefacts
+        # v2.9.1
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+      - name: Install libnotmuch
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y notmuch libnotmuch-dev
+      - name: Lint with warnings as errors
+        run: >
+          cargo clippy --workspace --all-targets --locked
+          -- -D warnings
+
+  test:
+    name: test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      RUST_BACKTRACE: 1
     steps:
-      # v7.0.1
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Check out
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-      # dtolnay/rust-toolchain master 2026-07-24
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+      - name: Install stable toolchain
+        # dtolnay/rust-toolchain master 2026-07-24
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: stable
-          components: clippy, rustfmt
-      # v2.9.1
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
-      - if: runner.os == 'Linux'
+      - name: Cache cargo artefacts
+        # v2.9.1
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+      - name: Install notmuch (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y notmuch libnotmuch-dev
-      - if: runner.os == 'macOS'
+      - name: Install notmuch (macOS)
+        if: runner.os == 'macOS'
         run: brew install notmuch
-      - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace --locked
-      - run: cargo build --workspace --locked --release
+      - name: Run the test suite
+        run: cargo test --workspace --locked
+      - name: Build the release binaries
+        run: cargo build --workspace --locked --release
+
+  msrv:
+    name: MSRV (1.95)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install the minimum supported toolchain
+        # dtolnay/rust-toolchain master 2026-07-24
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: "1.95"
+      - name: Cache cargo artefacts
+        # v2.9.1
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+      - name: Install libnotmuch
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y notmuch libnotmuch-dev
+      - name: Check the workspace compiles at the floor
+        run: cargo check --workspace --locked
