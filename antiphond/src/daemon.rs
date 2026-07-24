@@ -9,7 +9,7 @@ use signal_hook::consts::{SIGINT, SIGTERM};
 
 use antiphon_config::{Dirs, Loaded, load};
 
-use crate::vaultctl;
+use crate::{notify, vaultctl};
 use antiphon_ipc::{
     DaemonStatus, IpcServer, Operation, Request, Response, VaultState,
     read_frame, socket_path, write_frame,
@@ -74,8 +74,9 @@ pub fn run() -> ExitCode {
         accounts,
         smtp,
         last_sync_unix: None,
+        notify: loaded.config.notifications.enabled,
     };
-    daemon.sync_pass();
+    daemon.sync_pass(false);
     let interval = sync_interval(&loaded);
     let shutdown = install_shutdown();
     let outcome =
@@ -106,6 +107,7 @@ struct Daemon {
     accounts: Vec<SyncAccount>,
     smtp: Vec<(String, SmtpAccount)>,
     last_sync_unix: Option<u64>,
+    notify: bool,
 }
 
 fn smtp_accounts(loaded: &Loaded) -> Vec<(String, SmtpAccount)> {
@@ -178,7 +180,7 @@ fn serve_with_timer(
             Err(error) => return Err(error),
         }
         if due(last_sync, interval) {
-            daemon.sync_pass();
+            daemon.sync_pass(true);
             last_sync = Instant::now();
         }
     }
@@ -393,16 +395,21 @@ impl Daemon {
         Ok(())
     }
 
-    fn sync_all(&mut self) -> usize {
+    fn sync_all(&mut self, announce: bool) -> usize {
         let mut failures = 0;
         for account in &self.accounts {
             match sync(account, &self.layout) {
-                Ok(report) => println!(
-                    "synced {}: {} new, {} updated",
-                    account.name,
-                    report.total_new(),
-                    report.total_updated(),
-                ),
+                Ok(report) => {
+                    println!(
+                        "synced {}: {} new, {} updated",
+                        account.name,
+                        report.total_new(),
+                        report.total_updated(),
+                    );
+                    if announce && self.notify {
+                        notify::new_mail(&account.name, &report);
+                    }
+                }
                 Err(error) => {
                     failures += 1;
                     eprintln!(
@@ -418,7 +425,7 @@ impl Daemon {
     }
 
     fn sync_now(&mut self) -> Response {
-        let failures = self.sync_pass();
+        let failures = self.sync_pass(true);
         if failures == 0 {
             return Response::Ack;
         }
@@ -428,9 +435,9 @@ impl Daemon {
         ))
     }
 
-    fn sync_pass(&mut self) -> usize {
+    fn sync_pass(&mut self, announce: bool) -> usize {
         self.drain_outbox();
-        let failures = self.sync_all();
+        let failures = self.sync_all(announce);
         self.drain_ops();
         failures
     }

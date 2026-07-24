@@ -1,4 +1,5 @@
 mod daemon;
+mod notify;
 mod vaultctl;
 
 use std::process::ExitCode;
