@@ -1,0 +1,22 @@
+[package]
+name = "antiphon-sync"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "IMAP sync engine for antiphond"
+
+[dependencies]
+antiphon-store = { path = "../antiphon-store" }
+imap = { version = "=2.4.1", default-features = false }
+rustls = { version = "=0.23.42", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+] }
+webpki-roots = "=1.0.9"
+
+[dev-dependencies]
+tempfile = "=3.27.0"

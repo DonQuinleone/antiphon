@@ -46,6 +46,10 @@ impl StoreLayout {
         self.root.join("contacts")
     }
 
+    pub fn sync_state_dir(&self) -> PathBuf {
+        self.root.join("sync_state")
+    }
+
     pub fn notmuch_config_path(&self) -> PathBuf {
         self.root.join("notmuch.conf")
     }
@@ -82,7 +86,7 @@ impl StoreLayout {
         )
     }
 
-    fn directories(&self) -> [PathBuf; 7] {
+    fn directories(&self) -> [PathBuf; 8] {
         [
             self.root.clone(),
             self.maildir_root(),
@@ -91,6 +95,7 @@ impl StoreLayout {
             self.outbox_dir(),
             self.tokens_dir(),
             self.contacts_dir(),
+            self.sync_state_dir(),
         ]
     }
 }
@@ -137,6 +142,7 @@ mod tests {
         assert_eq!(layout.outbox_dir(), root.join("outbox"));
         assert_eq!(layout.tokens_dir(), root.join("tokens"));
         assert_eq!(layout.contacts_dir(), root.join("contacts"));
+        assert_eq!(layout.sync_state_dir(), root.join("sync_state"));
     }
 
     #[test]
@@ -151,6 +157,7 @@ mod tests {
             layout.outbox_dir(),
             layout.tokens_dir(),
             layout.contacts_dir(),
+            layout.sync_state_dir(),
         ] {
             assert!(path.is_dir(), "missing {}", path.display());
         }
