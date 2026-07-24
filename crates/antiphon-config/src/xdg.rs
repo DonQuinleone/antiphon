@@ -8,12 +8,17 @@ pub struct Dirs {
     pub config: PathBuf,
     pub state: PathBuf,
     pub cache: PathBuf,
+    pub data: PathBuf,
 }
 
 impl Dirs {
     pub fn from_process() -> Option<Dirs> {
         let home = std::env::home_dir()?;
         Some(resolve(|var| std::env::var_os(var), &home))
+    }
+
+    pub fn store_root(&self) -> PathBuf {
+        self.data.join("store")
     }
 }
 
@@ -25,6 +30,7 @@ pub fn resolve(
         config: base(&env, home, "XDG_CONFIG_HOME", ".config"),
         state: base(&env, home, "XDG_STATE_HOME", ".local/state"),
         cache: base(&env, home, "XDG_CACHE_HOME", ".cache"),
+        data: base(&env, home, "XDG_DATA_HOME", ".local/share"),
     }
 }
 
@@ -47,27 +53,46 @@ fn base(
 mod tests {
     use super::*;
 
-    const CASES: &[(&str, Option<&str>, &str)] = &[
-        ("set", Some("/xdg/config"), "/xdg/config/antiphon"),
-        ("unset", None, "/home/q/.config/antiphon"),
-        ("empty", Some(""), "/home/q/.config/antiphon"),
-        ("relative", Some("rel"), "/home/q/.config/antiphon"),
-    ];
-
-    #[test]
-    fn config_dir_follows_the_spec() {
-        for (name, value, expected) in CASES {
-            let env = |var: &str| match var {
-                "XDG_CONFIG_HOME" => value.map(OsString::from),
-                _ => None,
+    fn assert_follows_spec(
+        var: &str,
+        fallback: &str,
+        dir_of: fn(&Dirs) -> &Path,
+    ) {
+        let fallen = format!("/home/q/{fallback}/antiphon");
+        let cases = [
+            ("set", Some("/xdg/base"), "/xdg/base/antiphon"),
+            ("unset", None, fallen.as_str()),
+            ("empty", Some(""), fallen.as_str()),
+            ("relative", Some("rel"), fallen.as_str()),
+        ];
+        for (name, value, expected) in cases {
+            let env = |candidate: &str| {
+                if candidate != var {
+                    return None;
+                }
+                value.map(OsString::from)
             };
             let dirs = resolve(env, Path::new("/home/q"));
             assert_eq!(
-                dirs.config,
-                PathBuf::from(expected),
-                "case {name}"
+                dir_of(&dirs),
+                Path::new(expected),
+                "{var} case {name}"
             );
         }
+    }
+
+    #[test]
+    fn config_dir_follows_the_spec() {
+        assert_follows_spec("XDG_CONFIG_HOME", ".config", |dirs| {
+            dirs.config.as_path()
+        });
+    }
+
+    #[test]
+    fn data_dir_follows_the_spec() {
+        assert_follows_spec("XDG_DATA_HOME", ".local/share", |dirs| {
+            dirs.data.as_path()
+        });
     }
 
     #[test]
@@ -80,6 +105,15 @@ mod tests {
         assert_eq!(
             dirs.cache,
             PathBuf::from("/home/q/.cache/antiphon")
+        );
+    }
+
+    #[test]
+    fn store_root_hangs_off_the_data_dir() {
+        let dirs = resolve(|_| None, Path::new("/home/q"));
+        assert_eq!(
+            dirs.store_root(),
+            PathBuf::from("/home/q/.local/share/antiphon/store")
         );
     }
 }

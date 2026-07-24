@@ -18,12 +18,16 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Check the local setup: config, tools and environment.
-    Doctor,
+    Doctor {
+        /// Create the message store before running the checks.
+        #[arg(long)]
+        init_store: bool,
+    },
 }
 
 fn main() -> ExitCode {
     match Cli::parse().command {
-        Some(Command::Doctor) => doctor::run(),
+        Some(Command::Doctor { init_store }) => doctor::run(init_store),
         None => tui_notice(),
     }
 }

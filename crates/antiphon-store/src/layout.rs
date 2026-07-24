@@ -46,9 +46,20 @@ impl StoreLayout {
         self.root.join("contacts")
     }
 
+    pub fn exists(&self) -> bool {
+        self.directories().iter().all(|dir| dir.is_dir())
+    }
+
     /// Idempotent; re-runs also repair drifted permissions.
     pub fn init(&self) -> io::Result<()> {
-        let dirs = [
+        for dir in self.directories() {
+            create_private_dir(&dir)?;
+        }
+        Ok(())
+    }
+
+    fn directories(&self) -> [PathBuf; 7] {
+        [
             self.root.clone(),
             self.maildir_root(),
             self.notmuch_dir(),
@@ -56,11 +67,7 @@ impl StoreLayout {
             self.outbox_dir(),
             self.tokens_dir(),
             self.contacts_dir(),
-        ];
-        for dir in dirs {
-            create_private_dir(&dir)?;
-        }
-        Ok(())
+        ]
     }
 }
 
@@ -123,6 +130,17 @@ mod tests {
         ] {
             assert!(path.is_dir(), "missing {}", path.display());
         }
+    }
+
+    #[test]
+    fn exists_only_once_the_full_layout_is_present() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = layout_in(&dir);
+        assert!(!layout.exists());
+        layout.init().unwrap();
+        assert!(layout.exists());
+        std::fs::remove_dir(layout.oplog_dir()).unwrap();
+        assert!(!layout.exists());
     }
 
     #[test]

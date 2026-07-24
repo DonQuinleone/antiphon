@@ -390,6 +390,7 @@ move_to = "lists/aerc"
             config: root.clone(),
             state: root.join("state"),
             cache: root.join("cache"),
+            data: root.join("data"),
         };
         let loaded = load(&dirs).unwrap();
         fs::remove_dir_all(&root).unwrap();

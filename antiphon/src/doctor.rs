@@ -1,7 +1,9 @@
 use std::ffi::OsString;
+use std::path::Path;
 use std::process::{Command, ExitCode};
 
 use antiphon_config::{ConfigError, Dirs, Loaded, load};
+use antiphon_store::StoreLayout;
 
 const GREEN: &str = "\x1b[32m";
 const RED: &str = "\x1b[31m";
@@ -29,6 +31,11 @@ const CHECKS: &[Check] = &[
         name: "accounts",
         arg: "",
         run: accounts,
+    },
+    Check {
+        name: "store",
+        arg: "",
+        run: store,
     },
     Check {
         name: "notmuch",
@@ -81,8 +88,11 @@ impl Context {
     }
 }
 
-pub fn run() -> ExitCode {
+pub fn run(init_store: bool) -> ExitCode {
     let context = Context::from_process();
+    if init_store && !create_store(&context) {
+        return ExitCode::FAILURE;
+    }
     let colour = colour_allowed(std::env::var_os("NO_COLOR"));
     let name_width = CHECKS
         .iter()
@@ -100,6 +110,22 @@ pub fn run() -> ExitCode {
         })
         .collect();
     ExitCode::from(exit_code(&results))
+}
+
+fn create_store(context: &Context) -> bool {
+    let Some(dirs) = &context.dirs else {
+        eprintln!("cannot resolve the home directory");
+        return false;
+    };
+    let layout = StoreLayout::new(dirs.store_root());
+    let Err(error) = layout.init() else {
+        return true;
+    };
+    eprintln!(
+        "failed to create the store at {}: {error}",
+        layout.root().display()
+    );
+    false
 }
 
 fn config_directory(context: &Context, _: &str) -> Outcome {
@@ -138,6 +164,25 @@ fn accounts(context: &Context, _: &str) -> Outcome {
         .map(|entry| entry.account.account.name.as_str())
         .collect();
     Outcome::ok(format!("{} found: {}", names.len(), names.join(", ")))
+}
+
+fn store(context: &Context, _: &str) -> Outcome {
+    let Some(dirs) = &context.dirs else {
+        return Outcome::fail("cannot resolve the home directory");
+    };
+    let layout = StoreLayout::new(dirs.store_root());
+    if !layout.exists() {
+        return Outcome::fail(missing_store_detail(layout.root()));
+    }
+    Outcome::ok(layout.root().display().to_string())
+}
+
+fn missing_store_detail(root: &Path) -> String {
+    format!(
+        "no store at {}; \
+         `antiphon doctor --init-store` will create it",
+        root.display()
+    )
 }
 
 fn tool_version(_: &Context, tool: &str) -> Outcome {
@@ -238,6 +283,15 @@ mod tests {
         assert_eq!(first_line(output), "notmuch 0.38.3");
         assert_eq!(first_line(""), "");
         assert_eq!(first_line("bare\n"), "bare");
+    }
+
+    #[test]
+    fn missing_store_detail_names_the_path_and_the_remedy() {
+        assert_eq!(
+            missing_store_detail(Path::new("/data/antiphon/store")),
+            "no store at /data/antiphon/store; \
+             `antiphon doctor --init-store` will create it"
+        );
     }
 
     #[test]

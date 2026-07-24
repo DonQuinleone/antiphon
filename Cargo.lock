@@ -58,6 +58,7 @@ version = "0.0.0"
 dependencies = [
  "antiphon-buildinfo",
  "antiphon-config",
+ "antiphon-store",
  "clap",
 ]
 
