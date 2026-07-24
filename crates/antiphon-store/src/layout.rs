@@ -69,7 +69,20 @@ impl StoreLayout {
         std::fs::write(
             self.notmuch_config_path(),
             self.notmuch_config(),
-        )
+        )?;
+        self.create_index()
+    }
+
+    /// The first sync would create the index anyway, but a
+    /// fresh store must open cleanly before that sync has
+    /// happened.
+    fn create_index(&self) -> io::Result<()> {
+        if self.notmuch_dir().join(".notmuch").exists() {
+            return Ok(());
+        }
+        notmuch::Database::create(self.notmuch_dir())
+            .map(|_| ())
+            .map_err(io::Error::other)
     }
 
     fn notmuch_config(&self) -> String {
@@ -172,6 +185,14 @@ mod tests {
         assert!(layout.exists());
         std::fs::remove_dir(layout.oplog_dir()).unwrap();
         assert!(!layout.exists());
+    }
+
+    #[test]
+    fn a_fresh_init_yields_an_openable_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = layout_in(&dir);
+        layout.init().unwrap();
+        crate::SearchIndex::open(&layout).unwrap();
     }
 
     #[test]
