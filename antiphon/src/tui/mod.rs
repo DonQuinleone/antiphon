@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use antiphon_config::Loaded;
+use antiphon_config::{Dirs, Loaded};
 use antiphon_core::{Action, Keymap, Resolution};
 use antiphon_store::{
     MessageSummary, Outbox, SearchError, SearchIndex, StoreLayout,
@@ -35,7 +35,7 @@ const COMPOSE_ABORTED: &str = "compose aborted";
 pub fn run(
     loaded: &Loaded,
     layout: &StoreLayout,
-    signatures_dir: &Path,
+    dirs: &Dirs,
 ) -> ExitCode {
     let keymap = match Keymap::new(&loaded.config.keys) {
         Ok(keymap) => keymap,
@@ -52,7 +52,7 @@ pub fn run(
             return ExitCode::FAILURE;
         }
     };
-    let context = ComposeContext::from_loaded(loaded, signatures_dir);
+    let context = ComposeContext::from_loaded(loaded, dirs);
     let mut app = App::new(loaded, messages, total);
     let mut terminal = ratatui::init();
     let outcome =

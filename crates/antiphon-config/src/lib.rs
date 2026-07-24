@@ -9,7 +9,9 @@ pub use account::{
     Rule, Smtp,
 };
 pub use error::ConfigError;
-pub use load::{Loaded, NamedAccount, load};
+pub use load::{
+    Loaded, NamedAccount, load, signature_text, template_text,
+};
 pub use schema::{
     Config, Notifications, ReadingPane, SavedSearch, Ui, Unlock, Vault,
     VaultBackend,

@@ -1,7 +1,4 @@
-use std::fs;
-use std::path::Path;
-
-use antiphon_config::{AccountFile, Loaded};
+use antiphon_config::{AccountFile, Dirs, Loaded};
 use antiphon_render::{Draft, build_message};
 use antiphon_store::Envelope;
 
@@ -21,16 +18,12 @@ pub struct ComposeContext {
 }
 
 impl ComposeContext {
-    pub fn from_loaded(
-        loaded: &Loaded,
-        signatures_dir: &Path,
-    ) -> ComposeContext {
+    pub fn from_loaded(loaded: &Loaded, dirs: &Dirs) -> ComposeContext {
         let entries = loaded
             .accounts
             .iter()
             .filter_map(|named| {
-                let identity =
-                    account_identity(&named.account, signatures_dir)?;
+                let identity = account_identity(&named.account, dirs)?;
                 Some((named.account.account.name.clone(), identity))
             })
             .collect();
@@ -53,16 +46,15 @@ impl ComposeContext {
 
 fn account_identity(
     file: &AccountFile,
-    signatures_dir: &Path,
+    dirs: &Dirs,
 ) -> Option<ComposeIdentity> {
     if let Some(identity) = file.identities.first() {
         return Some(ComposeIdentity {
             name: identity.name.clone(),
             address: identity.address.clone(),
-            signature: signature_text(
-                identity.signature.as_deref(),
-                signatures_dir,
-            ),
+            signature: identity.signature.as_deref().and_then(|name| {
+                antiphon_config::signature_text(dirs, name)
+            }),
         });
     }
     let user = file.imap.user.clone();
@@ -74,14 +66,6 @@ fn account_identity(
         address: user,
         signature: None,
     })
-}
-
-fn signature_text(
-    name: Option<&str>,
-    signatures_dir: &Path,
-) -> Option<String> {
-    let name = name?;
-    fs::read_to_string(signatures_dir.join(name)).ok()
 }
 
 pub struct ReplySource<'a> {

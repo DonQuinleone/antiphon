@@ -208,6 +208,23 @@ fn expected_keys(message: &str) -> Vec<String> {
     keys
 }
 
+pub fn signature_text(dirs: &Dirs, name: &str) -> Option<String> {
+    named_file(dirs, "signatures", name)
+}
+
+pub fn template_text(dirs: &Dirs, name: &str) -> Option<String> {
+    named_file(dirs, "templates", name)
+}
+
+fn named_file(dirs: &Dirs, kind: &str, name: &str) -> Option<String> {
+    let file_name = Path::new(name).file_name()?;
+    if file_name != name {
+        return None;
+    }
+    let path = dirs.config.join(kind).join(file_name);
+    fs::read_to_string(path).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -425,21 +442,4 @@ move_to = "lists/aerc"
             .collect();
         assert_eq!(stems, ["a", "b"]);
     }
-}
-
-pub fn signature_text(dirs: &Dirs, name: &str) -> Option<String> {
-    named_file(dirs, "signatures", name)
-}
-
-pub fn template_text(dirs: &Dirs, name: &str) -> Option<String> {
-    named_file(dirs, "templates", name)
-}
-
-fn named_file(dirs: &Dirs, kind: &str, name: &str) -> Option<String> {
-    let file_name = Path::new(name).file_name()?;
-    if file_name != name {
-        return None;
-    }
-    let path = dirs.config.join(kind).join(file_name);
-    fs::read_to_string(path).ok()
 }
