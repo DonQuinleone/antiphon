@@ -1,7 +1,7 @@
+use std::path::PathBuf;
+
 use super::app::App;
 use super::crypto::PgpPlan;
-
-const TEMPLATE_COMMAND: &str = "template ";
 
 /// Per-message overrides of the identity's pgp defaults:
 /// command name, whether it targets signing (else encryption),
@@ -12,6 +12,43 @@ const PGP_TOGGLES: [(&str, bool, bool); 4] = [
     ("encrypt", false, true),
     ("noencrypt", false, false),
 ];
+
+type ArgHandler = fn(&mut App, &str);
+
+/// Commands taking one argument: name, usage line, and the
+/// handler arming the app state the event loop consumes.
+const ARG_COMMANDS: [(&str, &str, ArgHandler); 3] = [
+    ("template", "template <name>", arm_template),
+    ("save-patches", "save-patches <path>", arm_save_patches),
+    ("apply", "apply <repo-dir>", arm_apply),
+];
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PatchCommand {
+    Save(PathBuf),
+    Apply(PathBuf),
+}
+
+fn arm_template(app: &mut App, name: &str) {
+    app.pending_template = Some(name.to_string());
+}
+
+fn arm_save_patches(app: &mut App, path: &str) {
+    app.pending_patches = Some(PatchCommand::Save(path.into()));
+}
+
+fn arm_apply(app: &mut App, repo: &str) {
+    app.pending_patches = Some(PatchCommand::Apply(repo.into()));
+}
+
+fn argument_of<'a>(command: &'a str, name: &str) -> Option<&'a str> {
+    if command == name {
+        return Some("");
+    }
+    let rest = command.strip_prefix(name)?;
+    let rest = rest.strip_prefix(' ')?;
+    Some(rest.trim())
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct FrameStats {
@@ -115,26 +152,36 @@ impl App {
     }
 
     pub fn run_command(&mut self, command: &str) {
-        if self.pgp_toggle(command.trim()) {
+        let command = command.trim();
+        if self.pgp_toggle(command) {
             return;
         }
-        match command.trim() {
+        if self.arg_command(command) {
+            return;
+        }
+        match command {
             "q" | "quit" => self.quit = true,
             "frames" => self.notice = Some(self.frame_stats.summary()),
-            other if other.starts_with(TEMPLATE_COMMAND) => {
-                let name = other[TEMPLATE_COMMAND.len()..].trim();
-                if name.is_empty() {
-                    self.notice =
-                        Some("usage: template <name>".to_string());
-                } else {
-                    self.pending_template = Some(name.to_string());
-                }
-            }
             "" => {}
             other => {
                 self.notice = Some(format!("unknown command: {other}"))
             }
         }
+    }
+
+    fn arg_command(&mut self, command: &str) -> bool {
+        for (name, usage, arm) in ARG_COMMANDS {
+            let Some(argument) = argument_of(command, name) else {
+                continue;
+            };
+            if argument.is_empty() {
+                self.notice = Some(format!("usage: {usage}"));
+            } else {
+                arm(self, argument);
+            }
+            return true;
+        }
+        false
     }
 }
 
@@ -224,6 +271,29 @@ mod tests {
         let next = app.take_pgp_plan(false);
         assert_eq!(next, PgpPlan::default());
         assert!(app.take_pgp_plan(true).sign);
+    }
+
+    #[test]
+    fn patch_commands_arm_pending_state() {
+        let mut app = app_with_messages(1);
+        app.run_command("save-patches");
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("usage: save-patches <path>")
+        );
+        assert!(app.pending_patches.is_none());
+        app.run_command("save-patches /tmp/series.mbox");
+        assert_eq!(
+            app.pending_patches,
+            Some(PatchCommand::Save("/tmp/series.mbox".into()))
+        );
+        app.run_command("apply ../repo");
+        assert_eq!(
+            app.pending_patches,
+            Some(PatchCommand::Apply("../repo".into()))
+        );
+        app.run_command("template reply");
+        assert_eq!(app.pending_template.as_deref(), Some("reply"));
     }
 
     #[test]

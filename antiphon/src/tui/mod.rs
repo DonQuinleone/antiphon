@@ -9,6 +9,7 @@ mod draw;
 mod editor;
 mod identity;
 mod pager;
+mod patches;
 mod scope;
 mod session;
 mod sidebar;
@@ -334,7 +335,10 @@ fn submit_prompt(app: &mut App, layout: &StoreLayout) {
         return;
     };
     match prompt.kind {
-        PromptKind::Command => app.run_command(&prompt.buffer),
+        PromptKind::Command => {
+            app.run_command(&prompt.buffer);
+            patches::run_pending(app, layout);
+        }
         PromptKind::Search => run_search(app, layout, prompt.buffer),
     }
 }

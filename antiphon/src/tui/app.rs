@@ -5,7 +5,7 @@ use antiphon_store::MessageSummary;
 use antiphon_ui::{Theme, VESPERS};
 
 use super::actions::{OpIntent, account_names};
-use super::commands::{FrameStats, Prompt};
+use super::commands::{FrameStats, PatchCommand, Prompt};
 use super::editor::EditorPane;
 use super::scope::{self, ViewScope};
 use super::sidebar::{self, SidebarEntry};
@@ -56,6 +56,7 @@ pub struct App {
     pub current_query: String,
     pub pending_ops: Vec<OpIntent>,
     pub pending_template: Option<String>,
+    pub pending_patches: Option<PatchCommand>,
     pub(super) pending_sign: Option<bool>,
     pub(super) pending_encrypt: Option<bool>,
     pub frame_stats: FrameStats,
@@ -102,6 +103,7 @@ impl App {
             current_query: DEFAULT_QUERY.to_string(),
             pending_ops: Vec::new(),
             pending_template: None,
+            pending_patches: None,
             pending_sign: None,
             pending_encrypt: None,
             frame_stats: FrameStats::default(),
@@ -276,6 +278,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         current_query: DEFAULT_QUERY.to_string(),
         pending_ops: Vec::new(),
         pending_template: None,
+        pending_patches: None,
         pending_sign: None,
         pending_encrypt: None,
         frame_stats: FrameStats::default(),
