@@ -38,6 +38,11 @@ const CHECKS: &[Check] = &[
         run: store,
     },
     Check {
+        name: "antiphond",
+        arg: "",
+        run: daemon,
+    },
+    Check {
         name: "notmuch",
         arg: "notmuch",
         run: tool_version,
@@ -183,6 +188,28 @@ fn missing_store_detail(root: &Path) -> String {
          `antiphon doctor --init-store` will create it",
         root.display()
     )
+}
+
+fn daemon(_: &Context, _: &str) -> Outcome {
+    use antiphon_ipc::{IpcClient, Request, Response, socket_path};
+
+    let path = socket_path(|var| std::env::var_os(var));
+    let Ok(mut client) = IpcClient::connect(&path) else {
+        return Outcome::fail(format!(
+            "not running (no daemon at {}); start antiphond",
+            path.display()
+        ));
+    };
+    match client.request(&Request::Status) {
+        Ok(Response::Status(status)) => Outcome::ok(format!(
+            "running: {} \u{b7} {} op(s) awaiting the server",
+            status.version, status.pending_ops
+        )),
+        Ok(_) => Outcome::fail("unexpected daemon response"),
+        Err(error) => {
+            Outcome::fail(format!("daemon unreachable: {error}"))
+        }
+    }
 }
 
 fn tool_version(_: &Context, tool: &str) -> Outcome {
