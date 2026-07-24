@@ -225,6 +225,7 @@ dependencies = [
  "antiphon-store",
  "imap-client",
  "lettre",
+ "mail-parser",
  "tempfile",
  "tokio",
 ]

@@ -105,9 +105,7 @@ impl SearchIndex {
         &self,
         message_id: &str,
     ) -> Result<Option<PathBuf>, SearchError> {
-        let quoted = message_id.replace('"', "\"\"");
-        let query = format!("id:\"{quoted}\"");
-        let hits = self.query(&query, None)?;
+        let hits = self.query(&id_query(message_id), None)?;
         Ok(hits
             .into_iter()
             .map(|hit| hit.path)
@@ -177,6 +175,13 @@ impl SearchIndex {
             .map_err(|source| SearchError::Scope { source })?;
         self.count(&query)
     }
+}
+
+/// One notmuch query selecting a message by id, with embedded
+/// double quotes doubled per Xapian quoting.
+pub fn id_query(message_id: &str) -> String {
+    let quoted = message_id.replace('"', "\"\"");
+    format!("id:\"{quoted}\"")
 }
 
 fn summarise(

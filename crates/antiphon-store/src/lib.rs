@@ -10,4 +10,4 @@ pub use layout::StoreLayout;
 pub use oplog::{Op, OpKind, OpLog, OpLogError};
 pub use outbox::{Envelope, Outbox, OutboxError, QueuedMessage};
 pub use scope::{Scope, ScopeError, scoped_query};
-pub use search::{MessageSummary, SearchError, SearchIndex};
+pub use search::{MessageSummary, SearchError, SearchIndex, id_query};

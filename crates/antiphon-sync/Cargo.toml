@@ -11,6 +11,7 @@ description = "IMAP sync and SMTP submission engine for antiphond"
 [dependencies]
 antiphon-store = { path = "../antiphon-store" }
 imap-client = "=0.3.1"
+mail-parser = "=0.11.5"
 lettre = { version = "=0.11.22", default-features = false, features = [
     "smtp-transport",
     "rustls-tls",
