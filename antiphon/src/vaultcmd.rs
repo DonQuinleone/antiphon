@@ -35,7 +35,10 @@ pub fn create() -> ExitCode {
     }
 }
 
-fn run_create(dirs: &Dirs, loaded: &Loaded) -> Result<String, String> {
+pub(crate) fn run_create(
+    dirs: &Dirs,
+    loaded: &Loaded,
+) -> Result<String, String> {
     let layout = StoreLayout::new(dirs.store_root());
     if layout.exists() {
         return Err(format!(

@@ -9,6 +9,8 @@ const GREEN: &str = "\x1b[32m";
 const RED: &str = "\x1b[31m";
 const RESET: &str = "\x1b[0m";
 const STATUS_WIDTH: usize = "FAIL".len();
+const STATUS_WAIT: std::time::Duration =
+    std::time::Duration::from_secs(2);
 
 struct Check {
     name: &'static str,
@@ -321,12 +323,17 @@ fn daemon(_: &Context, _: &str) -> Outcome {
             path.display()
         ));
     };
+    let _ = client.set_read_timeout(STATUS_WAIT);
     match client.request(&Request::Status) {
         Ok(Response::Status(status)) => Outcome::ok(format!(
             "running: {} \u{b7} {} op(s) awaiting the server",
             status.version, status.pending_ops
         )),
         Ok(_) => Outcome::fail("unexpected daemon response"),
+        Err(error) if error.is_timeout() => Outcome::ok(
+            "running but busy (initial sync?); try again later"
+                .to_string(),
+        ),
         Err(error) => {
             Outcome::fail(format!("daemon unreachable: {error}"))
         }

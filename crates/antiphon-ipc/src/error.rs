@@ -11,6 +11,18 @@ pub enum IpcError {
     Protocol(String),
 }
 
+impl IpcError {
+    pub fn is_timeout(&self) -> bool {
+        matches!(
+            self,
+            IpcError::Io(error) if matches!(
+                error.kind(),
+                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+            )
+        )
+    }
+}
+
 impl fmt::Display for IpcError {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

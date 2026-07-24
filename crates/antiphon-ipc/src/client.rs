@@ -1,6 +1,7 @@
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::time::Duration;
 
 use crate::IpcError;
 use crate::frame::{read_frame, write_frame};
@@ -14,6 +15,16 @@ impl IpcClient {
     pub fn connect(path: &Path) -> io::Result<IpcClient> {
         let stream = UnixStream::connect(path)?;
         Ok(IpcClient { stream })
+    }
+
+    /// A busy daemon (mid initial sync) cannot answer; a
+    /// bounded wait lets callers report that instead of
+    /// hanging.
+    pub fn set_read_timeout(
+        &self,
+        timeout: Duration,
+    ) -> io::Result<()> {
+        self.stream.set_read_timeout(Some(timeout))
     }
 
     pub fn request(

@@ -2,6 +2,7 @@ mod autostart;
 mod doctor;
 mod oauthcmd;
 mod sendmail;
+mod setup;
 mod tui;
 mod vaultcmd;
 
@@ -40,6 +41,9 @@ enum Command {
         #[command(subcommand)]
         action: OauthAction,
     },
+    /// Interactive first-time setup: account, secrets, vault,
+    /// store, daemon.
+    Setup,
     /// Sendmail-compatible queueing for git send-email.
     #[command(disable_help_flag = true)]
     Sendmail {
@@ -74,6 +78,7 @@ fn main() -> ExitCode {
                 oauthcmd::status(&account)
             }
         },
+        Some(Command::Setup) => setup::run(),
         Some(Command::Sendmail { args }) => sendmail::run(&args),
         None => open_client(),
     }
