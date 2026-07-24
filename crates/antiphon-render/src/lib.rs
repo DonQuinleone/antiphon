@@ -1,6 +1,7 @@
 mod compose;
 mod extract;
 mod flowed;
+mod invite;
 mod list;
 mod patch;
 mod series;
@@ -11,6 +12,7 @@ pub use compose::{
 };
 pub use extract::{BodyKind, BodyText, body_text, delivered_addresses};
 pub use flowed::flow;
+pub use invite::invite_lines;
 pub use list::{
     ListHeaders, ListPost, ListReply, list_headers, reply_to_list,
 };
