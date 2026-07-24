@@ -20,6 +20,8 @@ const STATUS_HEIGHT: u16 = 1;
 const READING_PANE_SHARE: u16 = 40;
 const UNREAD_MARK: &str = "\u{25c6} ";
 const READ_MARK: &str = "  ";
+const FLAG_MARK: &str = "\u{2691} ";
+const NO_FLAG_MARK: &str = "  ";
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
@@ -155,16 +157,25 @@ fn subject_line(
     theme: &Theme,
     message: &MessageSummary,
 ) -> Line<'static> {
-    let mark = if message.unread {
+    let unread = if message.unread {
         Span::styled(UNREAD_MARK, Style::new().fg(theme.unread_marker))
     } else {
         Span::raw(READ_MARK)
+    };
+    let flagged = if is_flagged(message) {
+        Span::styled(FLAG_MARK, Style::new().fg(theme.accent_strong))
+    } else {
+        Span::raw(NO_FLAG_MARK)
     };
     let subject = Span::styled(
         message.subject.clone(),
         Style::new().fg(row_colour(theme, message)),
     );
-    Line::from(vec![mark, subject])
+    Line::from(vec![unread, flagged, subject])
+}
+
+fn is_flagged(message: &MessageSummary) -> bool {
+    message.tags.iter().any(|tag| tag == "flagged")
 }
 
 fn row_colour(
