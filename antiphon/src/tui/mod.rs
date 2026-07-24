@@ -6,6 +6,7 @@ mod crypto;
 mod dispatch;
 mod draw;
 mod editor;
+mod identity;
 mod scope;
 mod session;
 mod sidebar;
@@ -31,8 +32,8 @@ use antiphon_pgp::Keyring;
 use actions::{OpIntent, account_names};
 use app::{App, DEFAULT_QUERY, KeyRoute, View};
 use commands::PromptKind;
-use compose::ComposeContext;
 use dispatch::{dispatch, pending_template_request};
+use identity::ComposeContext;
 use scope::ViewScope;
 use session::{begin_compose, finish_compose};
 

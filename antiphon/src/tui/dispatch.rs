@@ -2,11 +2,10 @@ use antiphon_core::Action;
 
 use super::actions::account_of;
 use super::app::{App, View};
-use super::compose::{
-    self, ComposeContext, ComposeIdentity, ReplySource,
-};
+use super::compose::{self, ReplySource};
 use super::crypto::{self, ComposeCrypto};
 use super::draw;
+use super::identity::{ComposeContext, ComposeIdentity};
 
 const CONVENTION_NEW: &str = "new";
 const CONVENTION_REPLY: &str = "reply";
