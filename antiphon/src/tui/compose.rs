@@ -24,12 +24,14 @@ pub fn fresh_draft(
         Some(template) => expand_for(identity, template, "", date),
         None => String::new(),
     };
-    draft_text(identity, "", "", &body, None)
+    draft_text(identity, "", "", "", &body, None)
 }
 
-pub fn reply_draft(
+pub fn reply_draft_to(
     identity: &ComposeIdentity,
     source: &ReplySource<'_>,
+    to: &str,
+    cc: &str,
     template: Option<&str>,
 ) -> String {
     let quoted = quoted_body(source);
@@ -41,7 +43,8 @@ pub fn reply_draft(
     };
     draft_text(
         identity,
-        &bare_address(source.from),
+        to,
+        cc,
         &reply_subject(source.subject),
         &body,
         Some(source.message_id),
@@ -68,12 +71,13 @@ fn expand_for(
 fn draft_text(
     identity: &ComposeIdentity,
     to: &str,
+    cc: &str,
     subject: &str,
     quoted: &str,
     reply_to_id: Option<&str>,
 ) -> String {
     let mut text = format!(
-        "From: {}\nTo: {to}\nCc: \nSubject: {subject}\n",
+        "From: {}\nTo: {to}\nCc: {cc}\nSubject: {subject}\n",
         from_header(identity),
     );
     if let Some(id) = reply_to_id {
@@ -210,7 +214,7 @@ fn address_list(value: &str) -> Vec<String> {
         .collect()
 }
 
-fn bare_address(value: &str) -> String {
+pub(super) fn bare_address(value: &str) -> String {
     let bracketed = value
         .split_once('<')
         .and_then(|(_, rest)| rest.split_once('>'))
@@ -293,6 +297,16 @@ mod tests {
         }
     }
 
+    fn reply(template: Option<&str>) -> String {
+        reply_draft_to(
+            &identity(),
+            &source(),
+            "alba@example.com",
+            "",
+            template,
+        )
+    }
+
     #[test]
     fn templates_shape_both_compose_paths() {
         let fresh = fresh_draft(
@@ -301,18 +315,14 @@ mod tests {
             "24 Jul",
         );
         assert!(fresh.contains("Dear Tester on 24 Jul:"));
-        let reply = reply_draft(
-            &identity(),
-            &source(),
-            Some("{quoted}\nRegards, {name}"),
-        );
+        let reply = reply(Some("{quoted}\nRegards, {name}"));
         assert!(reply.contains("Regards, Tester"));
         assert!(reply.contains("> "));
     }
 
     #[test]
     fn reply_prefills_the_header_block() {
-        let draft = reply_draft(&identity(), &source(), None);
+        let draft = reply(None);
         let expected = "From: Tester <tester@example.com>\n\
                         To: alba@example.com\n\
                         Cc: \n\
@@ -324,7 +334,7 @@ mod tests {
 
     #[test]
     fn reply_quotes_below_an_attribution_line() {
-        let draft = reply_draft(&identity(), &source(), None);
+        let draft = reply(None);
         let quoted = "On Thu, 23 Jul 2026 at 09:00, \
                       Alba Fenwick wrote:\n\
                       > First line.\n\
@@ -332,6 +342,25 @@ mod tests {
                       > Second line.\n";
         assert!(draft.contains(quoted), "{draft}");
         assert!(draft.ends_with("\n-- \nKind regards\n"), "{draft}");
+    }
+
+    #[test]
+    fn list_replies_carry_explicit_recipients() {
+        let draft = reply_draft_to(
+            &identity(),
+            &source(),
+            "devel@example.com",
+            "mara@example.com, quin@example.com",
+            None,
+        );
+        let parsed = parse_draft(&draft).unwrap();
+        assert_eq!(parsed.to, ["devel@example.com"]);
+        assert_eq!(parsed.cc, ["mara@example.com", "quin@example.com"]);
+        assert_eq!(parsed.subject, "Re: Greetings");
+        assert_eq!(
+            parsed.in_reply_to.as_deref(),
+            Some("id-1@example.com")
+        );
     }
 
     #[test]
@@ -361,7 +390,7 @@ mod tests {
 
     #[test]
     fn drafts_round_trip_through_the_parser() {
-        let mut draft = reply_draft(&identity(), &source(), None);
+        let mut draft = reply(None);
         draft.push_str("Thanks, noted.\n");
         let parsed = parse_draft(&draft).unwrap();
         assert_eq!(parsed.from, "tester@example.com");

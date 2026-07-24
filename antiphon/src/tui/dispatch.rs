@@ -1,4 +1,5 @@
 use antiphon_core::Action;
+use antiphon_store::MessageSummary;
 
 use super::actions::account_of;
 use super::app::{App, View};
@@ -7,6 +8,7 @@ use super::crypto::ComposeCrypto;
 use super::decrypt;
 use super::draw;
 use super::identity::{ComposeContext, ComposeIdentity};
+use super::lists;
 
 const CONVENTION_NEW: &str = "new";
 const CONVENTION_REPLY: &str = "reply";
@@ -73,6 +75,10 @@ pub(super) fn dispatch(
         app.notice = None;
         return reply_request(app, context);
     }
+    if action == Action::ReplyList {
+        app.notice = None;
+        return list_reply_request(app, context);
+    }
     let opening = action == Action::Open && app.view == View::List;
     if !opening {
         app.apply(action);
@@ -119,10 +125,21 @@ fn fresh_request(
     })
 }
 
-fn reply_request(
+/// Everything both reply flavours need before recipients are
+/// decided: the message, its raw bytes, the delivered
+/// addresses, and the identity the reply sends from.
+struct ReplyBasis {
+    message: MessageSummary,
+    raw: Vec<u8>,
+    delivered: Vec<String>,
+    account: String,
+    identity: ComposeIdentity,
+}
+
+fn reply_basis(
     app: &mut App,
     context: &ComposeContext,
-) -> Option<EditorRequest> {
+) -> Option<ReplyBasis> {
     let Some(message) = app.selected_message().cloned() else {
         app.notice = Some("no message selected".into());
         return None;
@@ -144,24 +161,77 @@ fn reply_request(
         app.notice = Some("no compose identity configured".into());
         return None;
     };
+    Some(ReplyBasis {
+        message,
+        raw,
+        delivered,
+        account,
+        identity,
+    })
+}
+
+fn reply_request(
+    app: &mut App,
+    context: &ComposeContext,
+) -> Option<EditorRequest> {
+    let basis = reply_basis(app, context)?;
+    let to = compose::bare_address(&basis.message.from);
+    finish_reply(app, context, basis, &to, "", None)
+}
+
+fn list_reply_request(
+    app: &mut App,
+    context: &ComposeContext,
+) -> Option<EditorRequest> {
+    let basis = reply_basis(app, context)?;
+    let headers = antiphon_render::list_headers(&basis.raw);
+    let plan = lists::list_recipients(
+        &headers,
+        &basis.message.from,
+        &basis.delivered,
+        &basis.identity.address,
+    );
+    let plan = match plan {
+        Ok(plan) => plan,
+        Err(notice) => {
+            app.notice = Some(notice);
+            return None;
+        }
+    };
+    let to = plan.to.join(", ");
+    let cc = plan.cc.join(", ");
+    finish_reply(app, context, basis, &to, &cc, plan.warning)
+}
+
+fn finish_reply(
+    app: &mut App,
+    context: &ComposeContext,
+    basis: ReplyBasis,
+    to: &str,
+    cc: &str,
+    warning: Option<String>,
+) -> Option<EditorRequest> {
     let source = ReplySource {
-        from: &message.from,
-        subject: &message.subject,
-        message_id: &message.id,
+        from: &basis.message.from,
+        subject: &basis.message.subject,
+        message_id: &basis.message.id,
         date: &draw::format_date(
-            message.date_unix,
+            basis.message.date_unix,
             compose::ATTRIBUTION_DATE_FORMAT,
         ),
-        body: &body_text(&raw),
+        body: &body_text(&basis.raw),
     };
-    let text = compose::reply_draft(
-        &identity,
+    let text = compose::reply_draft_to(
+        &basis.identity,
         &source,
+        to,
+        cc,
         context.template(CONVENTION_REPLY).as_deref(),
     );
+    app.notice = warning;
     Some(EditorRequest {
-        account,
+        account: basis.account,
         text,
-        crypto: compose_crypto(app, &identity),
+        crypto: compose_crypto(app, &basis.identity),
     })
 }

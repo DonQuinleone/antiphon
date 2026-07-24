@@ -85,8 +85,8 @@ Actions: `move-down`, `move-up`, `top`, `bottom`,
 `search`, `command`, `next-account`, `previous-account`,
 `sidebar-next`, `sidebar-previous`, `sidebar-open`,
 `toggle-sidebar`, `cycle-reading-pane`, `sync`, `reply`,
-`compose`, `mark-read`, `mark-unread`, `toggle-flagged`,
-`delete-message`.
+`reply-list`, `compose`, `mark-read`, `mark-unread`,
+`toggle-flagged`, `delete-message`.
 
 `next-account` (`gt`) and `previous-account` (`gT`) cycle the
 view scope: unified, then each account in turn. `sidebar-next`
@@ -97,6 +97,14 @@ searches (`inbox`, `unread`, `flagged`) and the
 `sidebar-open` (`ctrl-o`) applies the highlighted entry.
 Account entries set the scope; saved searches run their query
 inside the current scope.
+
+`reply-list` (`L`) replies to the mailing list a message came
+from: `Mail-Followup-To` wins when the author set one,
+otherwise the `List-Post` mailto address is used. A
+`List-Post: NO` list refuses with a status message, and a list
+without any `List-Post` header falls back to reply-all with a
+warning naming the recipient count rather than guessing an
+address.
 
 ## accounts/*.toml
 

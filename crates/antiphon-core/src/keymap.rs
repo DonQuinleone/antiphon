@@ -27,6 +27,7 @@ const DEFAULT_BINDINGS: &[(Action, &str)] = &[
     (Action::CycleReadingPane, "R"),
     (Action::Sync, ",s"),
     (Action::Reply, "r"),
+    (Action::ReplyList, "L"),
     (Action::Compose, "n"),
     (Action::MarkRead, "m"),
     (Action::MarkUnread, "M"),
@@ -245,6 +246,7 @@ mod tests {
             (shifted('B'), Action::ToggleSidebar),
             (shifted('R'), Action::CycleReadingPane),
             (press(KeyCode::Char('r')), Action::Reply),
+            (shifted('L'), Action::ReplyList),
             (press(KeyCode::Char('n')), Action::Compose),
             (
                 KeyEvent::new(

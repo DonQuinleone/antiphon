@@ -8,6 +8,7 @@ mod dispatch;
 mod draw;
 mod editor;
 mod identity;
+mod lists;
 mod pager;
 mod patches;
 mod scope;
