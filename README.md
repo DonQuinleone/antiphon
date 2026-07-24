@@ -49,7 +49,9 @@ cargo build --workspace
 
 Development happens on
 [GitHub](https://github.com/DonQuinleone/antiphon), where issues
-and pull requests are welcome. The repository is mirrored at
+and pull requests are welcome; see
+[CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules. The
+repository is mirrored at
 [git.sr.ht/~donquinleone/antiphon](https://git.sr.ht/~donquinleone/antiphon).
 
 ## Licence
