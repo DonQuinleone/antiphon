@@ -22,7 +22,8 @@ const NEW_MESSAGE_ITEMS: &str = "(UID FLAGS BODY.PEEK[])";
 const FLAG_ITEMS: &str = "(UID FLAGS)";
 const STATE_FILE_EXTENSION: &str = "state";
 
-type TlsSession = Session<StreamOwned<ClientConnection, TcpStream>>;
+pub(crate) type TlsSession =
+    Session<StreamOwned<ClientConnection, TcpStream>>;
 
 #[derive(Clone, Debug)]
 pub struct SyncAccount {
@@ -33,9 +34,9 @@ pub struct SyncAccount {
     pub password: String,
 }
 
-struct RemoteFolder {
-    name: String,
-    delimiter: Option<String>,
+pub(crate) struct RemoteFolder {
+    pub(crate) name: String,
+    pub(crate) delimiter: Option<String>,
 }
 
 pub fn sync(
@@ -64,7 +65,9 @@ pub fn sync(
     Ok(report)
 }
 
-fn connect(account: &SyncAccount) -> Result<TlsSession, SyncError> {
+pub(crate) fn connect(
+    account: &SyncAccount,
+) -> Result<TlsSession, SyncError> {
     let mut roots = rustls::RootCertStore::empty();
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     let config = ClientConfig::builder()
@@ -100,7 +103,7 @@ fn connect(account: &SyncAccount) -> Result<TlsSession, SyncError> {
     )
 }
 
-fn selectable_folders(
+pub(crate) fn selectable_folders(
     session: &mut TlsSession,
 ) -> Result<Vec<RemoteFolder>, SyncError> {
     let names = session

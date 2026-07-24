@@ -86,6 +86,22 @@ impl SearchIndex {
         parsed.count_messages().map_err(wrap)
     }
 
+    /// Finds the message's current file by notmuch id. The
+    /// index can hold several filenames for one id and lag
+    /// behind renames, so only a path that still exists counts.
+    pub fn locate(
+        &self,
+        message_id: &str,
+    ) -> Result<Option<PathBuf>, SearchError> {
+        let quoted = message_id.replace('"', "\"\"");
+        let query = format!("id:\"{quoted}\"");
+        let hits = self.query(&query, None)?;
+        Ok(hits
+            .into_iter()
+            .map(|hit| hit.path)
+            .find(|path| path.exists()))
+    }
+
     pub fn query(
         &self,
         query: &str,

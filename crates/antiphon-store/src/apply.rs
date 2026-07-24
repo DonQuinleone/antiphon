@@ -133,13 +133,7 @@ fn existing_path(
     index: &SearchIndex,
     message_id: &str,
 ) -> Result<Option<PathBuf>, ApplyError> {
-    let quoted = message_id.replace('"', "\"\"");
-    let query = format!("id:\"{quoted}\"");
-    let hits = index.query(&query, None).map_err(ApplyError::Search)?;
-    Ok(hits
-        .into_iter()
-        .map(|hit| hit.path)
-        .find(|path| path.exists()))
+    index.locate(message_id).map_err(ApplyError::Search)
 }
 
 fn apply_flags(

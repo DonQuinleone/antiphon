@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ops::ControlFlow;
 use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
@@ -11,9 +12,9 @@ use antiphon_ipc::{
     read_frame, socket_path, write_frame,
 };
 use antiphon_store::{
-    OpKind, OpLog, SearchIndex, StoreLayout, apply_op,
+    Op, OpKind, OpLog, SearchIndex, StoreLayout, apply_op,
 };
-use antiphon_sync::{SyncAccount, sync};
+use antiphon_sync::{SyncAccount, replay, sync};
 
 pub fn run() -> ExitCode {
     let Some(dirs) = Dirs::from_process() else {
@@ -63,7 +64,7 @@ pub fn run() -> ExitCode {
         accounts,
         last_sync_unix: None,
     };
-    daemon.sync_all();
+    daemon.sync_pass();
     let outcome = server.serve(|stream| {
         daemon.serve_connection(stream);
         ControlFlow::Continue(())
@@ -148,9 +149,7 @@ impl Daemon {
             Request::Ping => Response::Pong,
             Request::EnqueueOp(operation) => self.enqueue(operation),
             Request::Status => Response::Status(self.status()),
-            Request::SyncNow => Response::Error(
-                "sync arrives when antiphon-sync lands".to_string(),
-            ),
+            Request::SyncNow => self.sync_now(),
             Request::Subscribe => Response::Error(
                 "events arrive with the sync loop".to_string(),
             ),
@@ -169,7 +168,11 @@ impl Daemon {
                 return Response::Error(error.to_string());
             }
         };
-        self.apply(&op)
+        let response = self.apply(&op);
+        if response == Response::Ack {
+            self.drain_ops();
+        }
+        response
     }
 
     fn apply(&mut self, op: &antiphon_store::Op) -> Response {
@@ -206,6 +209,83 @@ impl Daemon {
         }
         self.last_sync_unix = Some(now_unix());
         failures
+    }
+
+    fn sync_now(&mut self) -> Response {
+        let failures = self.sync_pass();
+        if failures == 0 {
+            return Response::Ack;
+        }
+        Response::Error(format!(
+            "sync failed for {failures} of {} accounts",
+            self.accounts.len()
+        ))
+    }
+
+    fn sync_pass(&mut self) -> usize {
+        let failures = self.sync_all();
+        self.drain_ops();
+        failures
+    }
+
+    /// Replays unsynced ops per account and advances the synced
+    /// cursor over the resolved prefix. Synced and dropped ops
+    /// are resolved (dropped means the server won and the op is
+    /// discarded); unsupported ops stay pending and hold the
+    /// cursor, since mark_synced covers everything below it.
+    fn drain_ops(&mut self) {
+        let pending = self.log.unsynced();
+        if pending.is_empty() {
+            return;
+        }
+        let mut resolved = HashSet::new();
+        for account in &self.accounts {
+            let ops: Vec<Op> = pending
+                .iter()
+                .filter(|op| op.account == account.name)
+                .cloned()
+                .collect();
+            if ops.is_empty() {
+                continue;
+            }
+            match replay(account, &self.layout, &ops) {
+                Ok(report) => {
+                    println!(
+                        "replayed {}: {} synced, {} dropped, \
+                         {} deferred",
+                        account.name,
+                        report.synced.len(),
+                        report.dropped.len(),
+                        report.unsupported.len(),
+                    );
+                    if !report.dropped.is_empty() {
+                        eprintln!(
+                            "replay {}: server wins, dropped \
+                             ops {:?}",
+                            account.name, report.dropped
+                        );
+                    }
+                    resolved.extend(report.synced);
+                    resolved.extend(report.dropped);
+                }
+                Err(error) => {
+                    eprintln!("replay {}: {error}", account.name);
+                }
+            }
+        }
+        let mut cursor = None;
+        for op in &pending {
+            if !resolved.contains(&op.id) {
+                break;
+            }
+            cursor = Some(op.id);
+        }
+        let Some(id) = cursor else {
+            return;
+        };
+        if let Err(error) = self.log.mark_synced(id) {
+            eprintln!("oplog: {error}");
+        }
     }
 
     fn status(&self) -> DaemonStatus {

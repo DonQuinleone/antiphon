@@ -37,6 +37,9 @@ pub enum SyncError {
         folder: String,
         detail: String,
     },
+    Index {
+        source: antiphon_store::SearchError,
+    },
     Notmuch {
         detail: String,
     },
@@ -74,6 +77,9 @@ impl fmt::Display for SyncError {
             Self::Folder { folder, detail } => {
                 write!(out, "folder {folder}: {detail}")
             }
+            Self::Index { source } => {
+                write!(out, "searching the store index: {source}")
+            }
             Self::Notmuch { detail } => {
                 write!(out, "notmuch new failed: {detail}")
             }
@@ -92,6 +98,7 @@ impl std::error::Error for SyncError {
             Self::Login { source, .. } => Some(source),
             Self::Imap { source, .. } => Some(source),
             Self::Io { source, .. } => Some(source),
+            Self::Index { source } => Some(source),
             Self::NotmuchSpawn { source } => Some(source),
             Self::InvalidHost { .. }
             | Self::State { .. }
