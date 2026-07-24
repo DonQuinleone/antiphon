@@ -1,7 +1,7 @@
 use std::process::Command;
 
-use antiphon_config::Loaded;
-use antiphon_sync::{SmtpAccount, SyncAccount};
+use antiphon_config::{Loaded, Rule};
+use antiphon_sync::{DeliveryRule, SmtpAccount, SyncAccount};
 
 const IMAPS_PORT: u16 = 993;
 const SUBMISSION_PORT: u16 = 587;
@@ -52,6 +52,34 @@ pub fn smtp_accounts(loaded: &Loaded) -> Vec<(String, SmtpAccount)> {
             ))
         })
         .collect()
+}
+
+pub fn delivery_rules(
+    loaded: &Loaded,
+) -> Vec<(String, Vec<DeliveryRule>)> {
+    loaded
+        .accounts
+        .iter()
+        .filter(|entry| !entry.account.rules.is_empty())
+        .map(|entry| {
+            let rules = entry
+                .account
+                .rules
+                .iter()
+                .map(to_delivery_rule)
+                .collect();
+            (entry.account.account.name.clone(), rules)
+        })
+        .collect()
+}
+
+fn to_delivery_rule(rule: &Rule) -> DeliveryRule {
+    DeliveryRule {
+        match_list: rule.match_list.clone(),
+        match_sender: rule.match_sender.clone(),
+        move_to: rule.move_to.clone(),
+        tag: rule.tag.clone(),
+    }
 }
 
 fn resolve_password(command: &str) -> Option<String> {

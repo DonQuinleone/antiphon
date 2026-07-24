@@ -9,9 +9,9 @@ use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 use antiphon_config::{Dirs, Loaded, load};
 use antiphon_ipc::{IpcServer, socket_path};
 use antiphon_store::{OpLog, StoreLayout};
-use antiphon_sync::{SmtpAccount, SyncAccount};
+use antiphon_sync::{DeliveryRule, SmtpAccount, SyncAccount};
 
-use crate::accounts::{smtp_accounts, sync_accounts};
+use crate::accounts::{delivery_rules, smtp_accounts, sync_accounts};
 use crate::vaultctl;
 
 const ACCEPT_POLL: Duration = Duration::from_millis(200);
@@ -22,6 +22,7 @@ pub(crate) struct Daemon {
     pub(crate) log: OpLog,
     pub(crate) accounts: Vec<SyncAccount>,
     pub(crate) smtp: Vec<(String, SmtpAccount)>,
+    pub(crate) rules: Vec<(String, Vec<DeliveryRule>)>,
     pub(crate) last_sync_unix: Option<u64>,
     pub(crate) notify: bool,
 }
@@ -55,6 +56,7 @@ pub fn run() -> ExitCode {
     }
     let accounts = sync_accounts(&loaded);
     let smtp = smtp_accounts(&loaded);
+    let rules = delivery_rules(&loaded);
     let log = match OpLog::open(&layout) {
         Ok(log) => log,
         Err(error) => {
@@ -80,6 +82,7 @@ pub fn run() -> ExitCode {
         log,
         accounts,
         smtp,
+        rules,
         last_sync_unix: None,
         notify: loaded.config.notifications.enabled,
     };

@@ -4,7 +4,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use antiphon_ipc::Response;
 use antiphon_store::{Op, Outbox};
-use antiphon_sync::{replay, send, sync};
+use antiphon_sync::{
+    DeliveryRule, RuleOutcome, apply_rules, replay, send, sync,
+};
 
 use crate::daemon::Daemon;
 use crate::notify;
@@ -39,6 +41,18 @@ impl Daemon {
                         report.total_new(),
                         report.total_updated(),
                     );
+                    let rules =
+                        account_rules(&self.rules, &account.name);
+                    if !rules.is_empty() {
+                        let outcome = apply_rules(
+                            &account.name,
+                            rules,
+                            &report.delivered(),
+                            &self.layout,
+                            &mut self.log,
+                        );
+                        announce_rules(&account.name, outcome);
+                    }
                     if announce && self.notify {
                         notify::new_mail(&account.name, &report);
                     }
@@ -208,6 +222,27 @@ impl Daemon {
     }
 }
 
+fn account_rules<'a>(
+    rules: &'a [(String, Vec<DeliveryRule>)],
+    account: &str,
+) -> &'a [DeliveryRule] {
+    rules
+        .iter()
+        .find(|(name, _)| name == account)
+        .map(|(_, rules)| rules.as_slice())
+        .unwrap_or(&[])
+}
+
+fn announce_rules(account: &str, outcome: RuleOutcome) {
+    if outcome.tagged == 0 && outcome.moved == 0 {
+        return;
+    }
+    println!(
+        "rules {account}: {} tagged, {} moved",
+        outcome.tagged, outcome.moved
+    );
+}
+
 fn error_chain(error: &dyn std::error::Error) -> String {
     let mut text = error.to_string();
     let mut source = error.source();
@@ -224,4 +259,23 @@ pub(crate) fn now_unix() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|since| since.as_secs())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn account_rules_picks_only_the_named_account() {
+        let tagger = DeliveryRule {
+            match_list: None,
+            match_sender: Some("mara@example.com".to_owned()),
+            move_to: None,
+            tag: Some("mara".to_owned()),
+        };
+        let rules = vec![("work".to_owned(), vec![tagger.clone()])];
+        assert_eq!(account_rules(&rules, "work"), &[tagger]);
+        assert!(account_rules(&rules, "home").is_empty());
+        assert!(account_rules(&[], "work").is_empty());
+    }
 }
