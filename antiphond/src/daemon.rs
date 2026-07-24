@@ -192,6 +192,17 @@ fn resolve_password(command: &str) -> Option<String> {
     Some(password)
 }
 
+fn error_chain(error: &dyn std::error::Error) -> String {
+    let mut text = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        text.push_str(": ");
+        text.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    text
+}
+
 fn now_unix() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -362,7 +373,11 @@ impl Daemon {
                 ),
                 Err(error) => {
                     failures += 1;
-                    eprintln!("sync {}: {error}", account.name);
+                    eprintln!(
+                        "sync {}: {}",
+                        account.name,
+                        error_chain(&error)
+                    );
                 }
             }
         }
