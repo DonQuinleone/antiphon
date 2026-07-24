@@ -1,5 +1,6 @@
 mod doctor;
 mod tui;
+mod vaultcmd;
 
 use std::process::ExitCode;
 
@@ -26,11 +27,25 @@ enum Command {
         #[arg(long)]
         init_store: bool,
     },
+    /// Manage the encrypted vault.
+    Vault {
+        #[command(subcommand)]
+        action: VaultAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum VaultAction {
+    /// Create and unlock the vault at the store path.
+    Create,
 }
 
 fn main() -> ExitCode {
     match Cli::parse().command {
         Some(Command::Doctor { init_store }) => doctor::run(init_store),
+        Some(Command::Vault { action }) => match action {
+            VaultAction::Create => vaultcmd::create(),
+        },
         None => open_client(),
     }
 }

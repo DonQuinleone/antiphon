@@ -14,6 +14,7 @@ antiphon-core = { path = "../crates/antiphon-core" }
 antiphon-ipc = { path = "../crates/antiphon-ipc" }
 antiphon-render = { path = "../crates/antiphon-render" }
 antiphon-store = { path = "../crates/antiphon-store" }
+antiphon-vault = { path = "../crates/antiphon-vault" }
 antiphon-ui = { path = "../crates/antiphon-ui" }
 chrono = "=0.4.45"
 ratatui = "=0.30.2"

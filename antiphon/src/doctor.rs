@@ -43,6 +43,11 @@ const CHECKS: &[Check] = &[
         run: store,
     },
     Check {
+        name: "vault",
+        arg: "",
+        run: vault,
+    },
+    Check {
         name: "antiphond",
         arg: "",
         run: daemon,
@@ -208,10 +213,30 @@ fn store(context: &Context, _: &str) -> Outcome {
         return Outcome::fail("cannot resolve the home directory");
     };
     let layout = StoreLayout::new(dirs.store_root());
-    if !layout.exists() {
-        return Outcome::fail(missing_store_detail(layout.root()));
+    if layout.exists() {
+        return Outcome::ok(layout.root().display().to_string());
     }
-    Outcome::ok(layout.root().display().to_string())
+    // A store that is merely behind a sealed vault is not a
+    // fault: antiphond mounts it on start.
+    if sealed_vault(context, &layout) {
+        return Outcome::ok(
+            "behind a sealed vault; antiphond will mount it",
+        );
+    }
+    Outcome::fail(missing_store_detail(layout.root()))
+}
+
+fn sealed_vault(context: &Context, layout: &StoreLayout) -> bool {
+    use antiphon_vault::{VaultStatus, select_backend};
+
+    let Some(Ok(loaded)) = &context.loaded else {
+        return false;
+    };
+    let Ok(vault) = select_backend(loaded.config.vault.backend, layout)
+    else {
+        return false;
+    };
+    vault.status() == VaultStatus::Sealed
 }
 
 fn missing_store_detail(root: &Path) -> String {
@@ -220,6 +245,31 @@ fn missing_store_detail(root: &Path) -> String {
          `antiphon doctor --init-store` will create it",
         root.display()
     )
+}
+
+fn vault(context: &Context, _: &str) -> Outcome {
+    use antiphon_vault::{VaultStatus, select_backend};
+
+    let (Some(dirs), Some(Ok(loaded))) =
+        (&context.dirs, &context.loaded)
+    else {
+        return Outcome::fail("configuration is unavailable");
+    };
+    let layout = StoreLayout::new(dirs.store_root());
+    let vault =
+        match select_backend(loaded.config.vault.backend, &layout) {
+            Ok(vault) => vault,
+            Err(error) => return Outcome::fail(error.to_string()),
+        };
+    match vault.status() {
+        VaultStatus::Open => Outcome::ok("open"),
+        VaultStatus::Sealed => {
+            Outcome::ok("sealed; antiphond unlocks it on start")
+        }
+        VaultStatus::Absent => {
+            Outcome::ok("none; the store is a plain directory")
+        }
+    }
 }
 
 fn daemon(_: &Context, _: &str) -> Outcome {
