@@ -1,0 +1,26 @@
+[package]
+name = "antiphon-oauth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "OAuth2 flows and vault-backed token persistence"
+
+[dependencies]
+oauth2 = { version = "=5.0.0", default-features = false, features = [
+    "reqwest",
+    "reqwest-blocking",
+] }
+reqwest = { version = "=0.12.28", default-features = false, features = [
+    "blocking",
+    "json",
+    "rustls-tls",
+] }
+secrecy = { version = "=0.10.3", features = ["serde"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+
+[dev-dependencies]
+tempfile = "=3.27.0"
