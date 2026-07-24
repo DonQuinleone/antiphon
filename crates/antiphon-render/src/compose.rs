@@ -149,3 +149,46 @@ mod tests {
         assert!(body.text.contains("-- \nQ"));
     }
 }
+
+pub struct TemplateVars<'a> {
+    pub from: &'a str,
+    pub name: &'a str,
+    pub date: &'a str,
+    pub quoted: &'a str,
+}
+
+pub fn expand_template(text: &str, vars: &TemplateVars<'_>) -> String {
+    let pairs = [
+        ("{from}", vars.from),
+        ("{name}", vars.name),
+        ("{date}", vars.date),
+        ("{quoted}", vars.quoted),
+    ];
+    let mut out = text.to_string();
+    for (token, value) in pairs {
+        out = out.replace(token, value);
+    }
+    out
+}
+
+#[cfg(test)]
+mod template_tests {
+    use super::*;
+
+    #[test]
+    fn tokens_expand_and_unknown_braces_survive() {
+        let vars = TemplateVars {
+            from: "quin@example.com",
+            name: "Q",
+            date: "24 Jul",
+            quoted: "> hi",
+        };
+        let text = "Dear {name} ({from}) on {date}:\n\
+                    {quoted}\n{unknown} stays";
+        assert_eq!(
+            expand_template(text, &vars),
+            "Dear Q (quin@example.com) on 24 Jul:\n\
+             > hi\n{unknown} stays"
+        );
+    }
+}
