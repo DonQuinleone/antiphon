@@ -33,6 +33,10 @@ impl IpcServer {
         &self.path
     }
 
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.listener.set_nonblocking(nonblocking)
+    }
+
     pub fn accept(&self) -> io::Result<UnixStream> {
         let (stream, _) = self.listener.accept()?;
         Ok(stream)

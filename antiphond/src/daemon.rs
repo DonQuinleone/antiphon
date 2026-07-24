@@ -1,10 +1,9 @@
 use std::collections::HashSet;
-use std::ops::ControlFlow;
 use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
 
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use antiphon_config::{Dirs, Loaded, load};
 use antiphon_ipc::{
@@ -67,17 +66,13 @@ pub fn run() -> ExitCode {
         last_sync_unix: None,
     };
     daemon.sync_pass();
-    let outcome = server.serve(|stream| {
-        daemon.serve_connection(stream);
-        ControlFlow::Continue(())
-    });
-    match outcome {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("accept: {error}");
-            ExitCode::FAILURE
-        }
+    let interval = sync_interval(&loaded);
+    if let Err(error) = serve_with_timer(&server, &mut daemon, interval)
+    {
+        eprintln!("accept: {error}");
+        return ExitCode::FAILURE;
     }
+    ExitCode::SUCCESS
 }
 
 struct Daemon {
@@ -118,6 +113,46 @@ fn smtp_accounts(loaded: &Loaded) -> Vec<(String, SmtpAccount)> {
 }
 
 const SUBMISSION_PORT: u16 = 587;
+const ACCEPT_POLL: Duration = Duration::from_millis(200);
+
+fn sync_interval(loaded: &Loaded) -> Option<Duration> {
+    let minutes = loaded.config.sync.interval_minutes;
+    if minutes == 0 {
+        return None;
+    }
+    Some(Duration::from_secs(u64::from(minutes) * 60))
+}
+
+fn due(last: Instant, interval: Option<Duration>) -> bool {
+    interval.is_some_and(|interval| last.elapsed() >= interval)
+}
+
+fn serve_with_timer(
+    server: &IpcServer,
+    daemon: &mut Daemon,
+    interval: Option<Duration>,
+) -> std::io::Result<()> {
+    server.set_nonblocking(true)?;
+    let mut last_sync = Instant::now();
+    loop {
+        match server.accept() {
+            Ok(stream) => {
+                stream.set_nonblocking(false)?;
+                daemon.serve_connection(stream);
+            }
+            Err(error)
+                if error.kind() == std::io::ErrorKind::WouldBlock =>
+            {
+                std::thread::sleep(ACCEPT_POLL);
+            }
+            Err(error) => return Err(error),
+        }
+        if due(last_sync, interval) {
+            daemon.sync_pass();
+            last_sync = Instant::now();
+        }
+    }
+}
 
 fn sync_accounts(loaded: &Loaded) -> Vec<SyncAccount> {
     loaded
@@ -296,6 +331,22 @@ impl Daemon {
         if !status.status.success() {
             eprintln!("notmuch new failed after sent copy");
         }
+        // new.tags stamps every indexed message unread+inbox; a
+        // sent copy is neither.
+        let retag = Command::new("notmuch")
+            .args([
+                "tag",
+                "+sent",
+                "-inbox",
+                "-unread",
+                "--",
+                &format!("path:{account}/sent/**"),
+            ])
+            .env("NOTMUCH_CONFIG", self.layout.notmuch_config_path())
+            .output()?;
+        if !retag.status.success() {
+            eprintln!("retagging the sent copy failed");
+        }
         Ok(())
     }
 
@@ -417,6 +468,26 @@ fn store_kind(kind: antiphon_ipc::OpKind) -> OpKind {
         }
         antiphon_ipc::OpKind::Delete => OpKind::Delete,
     }
+}
+
+#[cfg(test)]
+mod timer_tests {
+    use super::*;
+
+    #[test]
+    fn zero_interval_disables_the_timer() {
+        assert!(!due(Instant::now(), None));
+    }
+
+    #[test]
+    fn elapsed_interval_is_due() {
+        let past =
+            Instant::now() - Duration::from_secs(SIXTY_ONE_SECONDS);
+        assert!(due(past, Some(Duration::from_secs(60))));
+        assert!(!due(Instant::now(), Some(Duration::from_secs(60))));
+    }
+
+    const SIXTY_ONE_SECONDS: u64 = 61;
 }
 
 #[cfg(test)]

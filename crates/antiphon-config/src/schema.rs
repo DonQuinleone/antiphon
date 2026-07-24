@@ -7,10 +7,27 @@ use serde::Deserialize;
 pub struct Config {
     pub ui: Ui,
     pub vault: Vault,
+    pub sync: Sync,
     pub notifications: Notifications,
     pub keys: BTreeMap<String, String>,
     pub saved_searches: Vec<SavedSearch>,
 }
+
+#[derive(Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct Sync {
+    pub interval_minutes: u32,
+}
+
+impl Default for Sync {
+    fn default() -> Sync {
+        Sync {
+            interval_minutes: DEFAULT_SYNC_INTERVAL_MINUTES,
+        }
+    }
+}
+
+const DEFAULT_SYNC_INTERVAL_MINUTES: u32 = 5;
 
 #[derive(Debug, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields, default)]
