@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum Request {
     Ping,
     SyncNow,
+    DrainOutbox,
     EnqueueOp(Operation),
     Status,
     Subscribe,
@@ -124,6 +125,7 @@ mod tests {
         let requests = [
             Request::Ping,
             Request::SyncNow,
+            Request::DrainOutbox,
             Request::EnqueueOp(operation(OpKind::Delete)),
             Request::Status,
             Request::Subscribe,

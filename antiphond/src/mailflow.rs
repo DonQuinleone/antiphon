@@ -71,7 +71,7 @@ impl Daemon {
         failures
     }
 
-    fn drain_outbox(&mut self) {
+    pub(crate) fn drain_outbox(&mut self) {
         let outbox = Outbox::open(&self.layout);
         let pending = match outbox.pending() {
             Ok(pending) => pending,

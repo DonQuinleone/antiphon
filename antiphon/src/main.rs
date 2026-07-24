@@ -1,5 +1,6 @@
 mod autostart;
 mod doctor;
+mod sendmail;
 mod tui;
 mod vaultcmd;
 
@@ -33,6 +34,12 @@ enum Command {
         #[command(subcommand)]
         action: VaultAction,
     },
+    /// Sendmail-compatible queueing for git send-email.
+    #[command(disable_help_flag = true)]
+    Sendmail {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -47,6 +54,7 @@ fn main() -> ExitCode {
         Some(Command::Vault { action }) => match action {
             VaultAction::Create => vaultcmd::create(),
         },
+        Some(Command::Sendmail { args }) => sendmail::run(&args),
         None => open_client(),
     }
 }

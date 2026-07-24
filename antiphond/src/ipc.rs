@@ -27,6 +27,10 @@ impl Daemon {
             Request::EnqueueOp(operation) => self.enqueue(operation),
             Request::Status => Response::Status(self.status()),
             Request::SyncNow => self.sync_now(),
+            Request::DrainOutbox => {
+                self.drain_outbox();
+                Response::Ack
+            }
             Request::Subscribe => Response::Error(
                 "events arrive with the sync loop".to_string(),
             ),
