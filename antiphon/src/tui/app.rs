@@ -9,7 +9,7 @@ use super::actions::{OpIntent, account_names};
 use super::commands::{FrameStats, PatchCommand, Prompt};
 use super::editor::EditorPane;
 use super::scope::{self, ViewScope};
-use super::sidebar::{self, SidebarEntry};
+use super::sidebar::{self, AccountEntry, SidebarEntry};
 use antiphon_store::ScopeError;
 
 const PAGER_SCROLL_ROWS: u16 = 1;
@@ -75,21 +75,24 @@ pub struct App {
 impl App {
     pub fn new(
         loaded: &Loaded,
+        folders: &[AccountEntry],
         messages: Vec<MessageSummary>,
         total_messages: u32,
         keyring: Keyring,
     ) -> App {
         let accounts = account_names(loaded);
         let sidebar_entries =
-            sidebar::entries(&accounts, &loaded.config.saved_searches);
+            sidebar::entries(folders, &loaded.config.saved_searches);
+        let sidebar_selected =
+            sidebar::default_selection(&sidebar_entries);
         let theme =
             Theme::by_name(&loaded.config.ui.theme).unwrap_or(&VESPERS);
         App {
             accounts,
             scope: ViewScope::Unified,
             sidebar_entries,
-            sidebar_selected: 0,
-            active_search: None,
+            sidebar_selected,
+            active_search: Some(sidebar::ALL_LABEL.to_string()),
             messages,
             total_messages,
             selected: 0,
@@ -206,6 +209,17 @@ impl App {
         self.current_query = query;
     }
 
+    /// Folders come and go as syncs land; the highlight is
+    /// clamped rather than reset so it never dangles.
+    pub fn update_sidebar(&mut self, entries: Vec<SidebarEntry>) {
+        if entries == self.sidebar_entries {
+            return;
+        }
+        let last = entries.len().saturating_sub(1);
+        self.sidebar_entries = entries;
+        self.sidebar_selected = self.sidebar_selected.min(last);
+    }
+
     pub(super) fn not_built_notice(&mut self) {
         self.notice =
             Some("not built yet; see DESIGN.md milestones".to_string());
@@ -311,10 +325,32 @@ pub(super) fn app_with_messages(count: usize) -> App {
 
 #[cfg(test)]
 pub(super) fn app_with_accounts(names: &[&str]) -> App {
+    app_with_folders(
+        &names
+            .iter()
+            .map(|name| (*name, &[][..]))
+            .collect::<Vec<_>>(),
+    )
+}
+
+#[cfg(test)]
+pub(super) fn app_with_folders(accounts: &[(&str, &[&str])]) -> App {
     let mut app = app_with_messages(1);
-    app.accounts =
-        names.iter().map(|name| (*name).to_string()).collect();
-    app.sidebar_entries = sidebar::entries(&app.accounts, &[]);
+    app.accounts = accounts
+        .iter()
+        .map(|(name, _)| (*name).to_string())
+        .collect();
+    let entries: Vec<AccountEntry> = accounts
+        .iter()
+        .map(|(name, folders)| AccountEntry {
+            name: (*name).to_string(),
+            folders: folders
+                .iter()
+                .map(|folder| (*folder).to_string())
+                .collect(),
+        })
+        .collect();
+    app.sidebar_entries = sidebar::entries(&entries, &[]);
     app
 }
 

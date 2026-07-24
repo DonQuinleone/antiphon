@@ -91,12 +91,21 @@ Actions: `move-down`, `move-up`, `top`, `bottom`,
 `next-account` (`gt`) and `previous-account` (`gT`) cycle the
 view scope: unified, then each account in turn. `sidebar-next`
 (`ctrl-n`) and `sidebar-previous` (`ctrl-p`) move the sidebar
-highlight over the unified view, the accounts, three built-in
-searches (`inbox`, `unread`, `flagged`) and the
-`[[saved_searches]]` from config, in that order;
-`sidebar-open` (`ctrl-o`) applies the highlighted entry.
-Account entries set the scope; saved searches run their query
-inside the current scope.
+highlight over the unified view, the accounts (each with its
+folders nested beneath it), four built-in searches (`all`,
+`inbox`, `unread`, `flagged`) and the `[[saved_searches]]`
+from config, in that order; `sidebar-open` (`ctrl-o`) applies
+the highlighted entry. Account entries set the scope; saved
+searches run their query inside the current scope. On startup
+the `all` search is selected, so everything in scope is
+listed.
+
+Folder entries list one folder of one account: `inbox` is the
+account's root maildir, and every other folder is discovered
+from the store's maildir tree on each refresh, nested IMAP
+folders included (`lists/aerc`, `inbox/accounts`). Opening a
+folder scopes the view to its account and shows only that
+folder's messages.
 
 `reply-list` (`L`) replies to the mailing list a message came
 from: `Mail-Followup-To` wins when the author set one,

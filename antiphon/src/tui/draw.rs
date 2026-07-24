@@ -149,8 +149,9 @@ fn sidebar_item(
     if index == app.sidebar_selected {
         style = style.bg(theme.selection_bg).fg(theme.selection_fg);
     }
+    let indent = if entry.is_folder() { "  " } else { "" };
     ListItem::new(Line::from(Span::styled(
-        format!("{marker}{}", entry.label()),
+        format!("{marker}{indent}{}", entry.label()),
         style,
     )))
 }
@@ -162,8 +163,16 @@ fn entry_active(app: &App, entry: &SidebarEntry) -> bool {
             &app.scope,
             ViewScope::Account(current) if current == account
         ),
-        SidebarEntry::Saved { name, .. } => {
+        SidebarEntry::Folder { account, query, .. } => {
+            app.current_query == *query
+                && matches!(
+                    &app.scope,
+                    ViewScope::Account(current) if current == account
+                )
+        }
+        SidebarEntry::Saved { name, query } => {
             app.active_search.as_deref() == Some(name)
+                && app.current_query == *query
         }
     }
 }
@@ -228,4 +237,39 @@ fn draw_editor(frame: &mut Frame, app: &App, area: Rect) {
         PseudoTerminal::new(pane.session.screen()),
         area,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+
+    use super::super::app::app_with_folders;
+    use super::*;
+
+    fn row_text(buffer: &Buffer, y: u16) -> String {
+        (0..buffer.area.width)
+            .map(|x| buffer.cell((x, y)).unwrap().symbol().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn sidebar_folders_render_indented_under_their_account() {
+        let app = app_with_folders(&[(
+            "work",
+            &["archive", "lists/aerc"][..],
+        )]);
+        let backend = TestBackend::new(60, 14);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| draw(frame, &app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let rows: Vec<String> =
+            (0..5).map(|y| row_text(buffer, y)).collect();
+        assert!(rows[0].contains("unified"), "{:?}", rows[0]);
+        assert!(rows[1].contains("work"), "{:?}", rows[1]);
+        assert!(rows[2].starts_with("    inbox"), "{:?}", rows[2]);
+        assert!(rows[3].starts_with("    archive"), "{:?}", rows[3]);
+        assert!(rows[4].starts_with("    lists/aerc"), "{:?}", rows[4]);
+    }
 }

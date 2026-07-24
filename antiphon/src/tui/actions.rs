@@ -104,6 +104,15 @@ impl App {
             SidebarEntry::Account(account) => {
                 self.scope = ViewScope::Account(account)
             }
+            SidebarEntry::Folder {
+                account,
+                name,
+                query,
+            } => {
+                self.scope = ViewScope::Account(account);
+                self.current_query = query;
+                self.active_search = Some(name);
+            }
             SidebarEntry::Saved { name, query } => {
                 self.current_query = query;
                 self.active_search = Some(name);
@@ -194,7 +203,8 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::super::app::{
-        DEFAULT_QUERY, app_with_accounts, app_with_messages,
+        DEFAULT_QUERY, app_with_accounts, app_with_folders,
+        app_with_messages,
     };
     use super::*;
 
@@ -321,13 +331,61 @@ mod tests {
     #[test]
     fn opening_an_account_entry_sets_the_scope() {
         let mut app = app_with_accounts(&["a", "b"]);
-        app.apply(Action::SidebarNext);
-        app.apply(Action::SidebarNext);
+        let position = app
+            .sidebar_entries
+            .iter()
+            .position(|entry| {
+                entry == &SidebarEntry::Account("b".into())
+            })
+            .expect("account b entry");
+        app.sidebar_selected = position;
         app.apply(Action::SidebarOpen);
         assert_eq!(app.scope, ViewScope::Account("b".into()));
         assert!(app.take_requery());
         assert_eq!(app.current_query, DEFAULT_QUERY);
         assert!(app.active_search.is_none());
+    }
+
+    #[test]
+    fn opening_a_folder_scopes_its_account_and_queries_it() {
+        let mut app = app_with_folders(&[
+            ("a", &[][..]),
+            ("b", &["archive"][..]),
+        ]);
+        let cases = [
+            ("b", "archive", "path:\"b/archive/**\""),
+            ("a", "inbox", "path:\"a/cur\" or path:\"a/new\""),
+        ];
+        for (account, folder, query) in cases {
+            let position = app
+                .sidebar_entries
+                .iter()
+                .position(|entry| match entry {
+                    SidebarEntry::Folder {
+                        account: entry_account,
+                        name,
+                        ..
+                    } => entry_account == account && name == folder,
+                    _ => false,
+                })
+                .expect("folder entry");
+            app.sidebar_selected = position;
+            app.apply(Action::SidebarOpen);
+            assert_eq!(
+                app.scope,
+                ViewScope::Account(account.into()),
+                "{folder}"
+            );
+            assert_eq!(app.current_query, query, "{folder}");
+            assert_eq!(
+                app.active_search.as_deref(),
+                Some(folder),
+                "{folder}"
+            );
+            assert!(app.take_requery(), "{folder}");
+            let scoped = app.scoped(&app.current_query).unwrap();
+            assert!(scoped.contains(query), "{folder}: {scoped}");
+        }
     }
 
     #[test]

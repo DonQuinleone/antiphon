@@ -92,10 +92,17 @@ pub fn run(
     };
     let context = ComposeContext::from_loaded(loaded, dirs);
     let keyring = Keyring::from_dir(dirs.config.join(PGP_KEYRING_DIR));
-    let mut app = App::new(loaded, messages, total, keyring);
+    let folders = sidebar::discover(layout, &accounts);
+    let mut app = App::new(loaded, &folders, messages, total, keyring);
     let mut terminal = ratatui::init();
-    let outcome =
-        event_loop(&mut terminal, &mut app, keymap, layout, &context);
+    let outcome = event_loop(
+        &mut terminal,
+        &mut app,
+        keymap,
+        layout,
+        &context,
+        &loaded.config.saved_searches,
+    );
     ratatui::restore();
     match outcome {
         Ok(()) => ExitCode::SUCCESS,
@@ -122,6 +129,7 @@ fn event_loop(
     mut keymap: Keymap,
     layout: &StoreLayout,
     context: &ComposeContext,
+    saved: &[antiphon_config::SavedSearch],
 ) -> std::io::Result<()> {
     let mut last_refresh = Instant::now();
     let mut last_unread: Option<u32> = None;
@@ -135,6 +143,7 @@ fn event_loop(
             maybe_refresh(
                 app,
                 layout,
+                saved,
                 &mut last_refresh,
                 &mut last_unread,
             );
@@ -243,6 +252,7 @@ fn tick_editor(
 fn maybe_refresh(
     app: &mut App,
     layout: &StoreLayout,
+    saved: &[antiphon_config::SavedSearch],
     last_refresh: &mut Instant,
     last_unread: &mut Option<u32>,
 ) {
@@ -251,6 +261,8 @@ fn maybe_refresh(
     }
     *last_refresh = Instant::now();
     app.sync_progress = antiphon_sync::read_progress(layout);
+    let folders = sidebar::discover(layout, &app.accounts);
+    app.update_sidebar(sidebar::entries(&folders, saved));
     if app.view != View::List || app.prompt.is_some() {
         return;
     }

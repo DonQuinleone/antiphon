@@ -4,6 +4,9 @@ use std::path::{Path, PathBuf};
 #[cfg(unix)]
 const PRIVATE_DIR_MODE: u32 = 0o700;
 
+const CUR_DIR: &str = "cur";
+const MAILDIR_SPECIAL_DIRS: [&str; 3] = ["cur", "new", "tmp"];
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StoreLayout {
     root: PathBuf,
@@ -24,6 +27,21 @@ impl StoreLayout {
 
     pub fn account_maildir(&self, account: &str) -> PathBuf {
         self.maildir_root().join(account)
+    }
+
+    /// Folders under an account's maildir: every subdirectory
+    /// holding a `cur/`, found recursively (nested IMAP
+    /// folders like `inbox/accounts` included), named relative
+    /// to the account root with `/` separators. The root
+    /// itself is the inbox and is not listed. Unreadable
+    /// directories are skipped: this feeds a sidebar, not a
+    /// diagnostic.
+    pub fn account_folders(&self, account: &str) -> Vec<String> {
+        let root = self.account_maildir(account);
+        let mut folders = Vec::new();
+        collect_folders(&root, &root, &mut folders);
+        folders.sort();
+        folders
     }
 
     pub fn notmuch_dir(&self) -> PathBuf {
@@ -113,6 +131,39 @@ impl StoreLayout {
     }
 }
 
+fn collect_folders(root: &Path, dir: &Path, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() || is_maildir_special(&path) {
+            continue;
+        }
+        if path.join(CUR_DIR).is_dir() {
+            out.push(relative_name(root, &path));
+        }
+        collect_folders(root, &path, out);
+    }
+}
+
+fn is_maildir_special(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| MAILDIR_SPECIAL_DIRS.contains(&name))
+}
+
+fn relative_name(root: &Path, path: &Path) -> String {
+    let Ok(relative) = path.strip_prefix(root) else {
+        return String::new();
+    };
+    let parts: Vec<String> = relative
+        .components()
+        .map(|part| part.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    parts.join("/")
+}
+
 fn create_private_dir(dir: &Path) -> io::Result<()> {
     std::fs::create_dir_all(dir)?;
     restrict_to_owner(dir)
@@ -193,6 +244,38 @@ mod tests {
         let layout = layout_in(&dir);
         layout.init().unwrap();
         crate::SearchIndex::open(&layout).unwrap();
+    }
+
+    #[test]
+    fn account_folders_finds_every_dir_with_a_cur() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = layout_in(&dir);
+        let account = layout.account_maildir("work");
+        for path in [
+            "cur",
+            "new",
+            "tmp",
+            "archive/cur",
+            "drafts/cur",
+            "drafts/tmp",
+            "lists/aerc/cur",
+            "lists/aerc/new",
+            "inbox/accounts/cur",
+            "notes",
+        ] {
+            std::fs::create_dir_all(account.join(path)).unwrap();
+        }
+        assert_eq!(
+            layout.account_folders("work"),
+            ["archive", "drafts", "inbox/accounts", "lists/aerc"],
+        );
+    }
+
+    #[test]
+    fn a_missing_account_has_no_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = layout_in(&dir);
+        assert!(layout.account_folders("absent").is_empty());
     }
 
     #[test]

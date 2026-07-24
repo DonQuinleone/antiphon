@@ -1,10 +1,23 @@
 use antiphon_config::SavedSearch;
+use antiphon_store::StoreLayout;
+
+pub const ALL_LABEL: &str = "all";
+const INBOX_LABEL: &str = "inbox";
+const ALL_QUERY: &str = "*";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SidebarEntry {
     Unified,
     Account(String),
-    Saved { name: String, query: String },
+    Folder {
+        account: String,
+        name: String,
+        query: String,
+    },
+    Saved {
+        name: String,
+        query: String,
+    },
 }
 
 impl SidebarEntry {
@@ -12,6 +25,7 @@ impl SidebarEntry {
         match self {
             SidebarEntry::Unified => "unified",
             SidebarEntry::Account(account) => account,
+            SidebarEntry::Folder { name, .. } => name,
             SidebarEntry::Saved { name, .. } => name,
         }
     }
@@ -19,22 +33,56 @@ impl SidebarEntry {
     pub fn is_saved(&self) -> bool {
         matches!(self, SidebarEntry::Saved { .. })
     }
+
+    pub fn is_folder(&self) -> bool {
+        matches!(self, SidebarEntry::Folder { .. })
+    }
 }
 
-/// Built-in unified views; plain `*` is the unified entry
-/// itself, so it is not listed here.
+/// An account and the store folders discovered under it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AccountEntry {
+    pub name: String,
+    pub folders: Vec<String>,
+}
+
+pub fn discover(
+    layout: &StoreLayout,
+    accounts: &[String],
+) -> Vec<AccountEntry> {
+    accounts
+        .iter()
+        .map(|name| AccountEntry {
+            name: name.clone(),
+            folders: layout.account_folders(name),
+        })
+        .collect()
+}
+
+/// Built-in unified views, `all` first so an inbox-zero
+/// account still shows its mail on startup.
 const BUILTIN_SEARCHES: &[(&str, &str)] = &[
-    ("inbox", "tag:inbox"),
+    (ALL_LABEL, ALL_QUERY),
+    (INBOX_LABEL, "tag:inbox"),
     ("unread", "tag:unread"),
     ("flagged", "tag:flagged"),
 ];
 
 pub fn entries(
-    accounts: &[String],
+    accounts: &[AccountEntry],
     saved: &[SavedSearch],
 ) -> Vec<SidebarEntry> {
     let mut items = vec![SidebarEntry::Unified];
-    items.extend(accounts.iter().cloned().map(SidebarEntry::Account));
+    for account in accounts {
+        items.push(SidebarEntry::Account(account.name.clone()));
+        items.push(inbox_entry(&account.name));
+        items.extend(
+            account
+                .folders
+                .iter()
+                .map(|folder| folder_entry(&account.name, folder)),
+        );
+    }
     items.extend(BUILTIN_SEARCHES.iter().map(|(name, query)| {
         SidebarEntry::Saved {
             name: (*name).to_string(),
@@ -46,6 +94,33 @@ pub fn entries(
         query: search.query.clone(),
     }));
     items
+}
+
+/// The account root's cur/new pair is its inbox; a maildir
+/// subdirectory literally named inbox stays a plain folder
+/// with its own path query.
+fn inbox_entry(account: &str) -> SidebarEntry {
+    SidebarEntry::Folder {
+        account: account.to_string(),
+        name: INBOX_LABEL.to_string(),
+        query: format!(
+            "path:\"{account}/cur\" or path:\"{account}/new\""
+        ),
+    }
+}
+
+fn folder_entry(account: &str, folder: &str) -> SidebarEntry {
+    SidebarEntry::Folder {
+        account: account.to_string(),
+        name: folder.to_string(),
+        query: format!("path:\"{account}/{folder}/**\""),
+    }
+}
+
+/// Startup lands on the `all` built-in, the first saved entry,
+/// so a user at inbox zero still sees their mail.
+pub fn default_selection(entries: &[SidebarEntry]) -> usize {
+    entries.iter().position(SidebarEntry::is_saved).unwrap_or(0)
 }
 
 pub fn next_index(selected: usize, count: usize) -> usize {
@@ -76,25 +151,72 @@ mod tests {
             .collect()
     }
 
+    fn accounts(entries: &[(&str, &[&str])]) -> Vec<AccountEntry> {
+        entries
+            .iter()
+            .map(|(name, folders)| AccountEntry {
+                name: (*name).to_string(),
+                folders: folders
+                    .iter()
+                    .map(|folder| (*folder).to_string())
+                    .collect(),
+            })
+            .collect()
+    }
+
     #[test]
-    fn entries_run_unified_accounts_builtins_then_config() {
-        let accounts = vec!["work".to_string(), "personal".to_string()];
-        let searches =
-            saved(&[("patches", "diffstat"), ("boss", "from:boss")]);
-        let items = entries(&accounts, &searches);
+    fn entries_nest_folders_under_their_account() {
+        let items = entries(
+            &accounts(&[
+                ("work", &["archive", "lists/aerc"]),
+                ("personal", &[]),
+            ]),
+            &saved(&[("boss", "from:boss")]),
+        );
         let labels: Vec<&str> =
             items.iter().map(SidebarEntry::label).collect();
         assert_eq!(
             labels,
             [
-                "unified", "work", "personal", "inbox", "unread",
-                "flagged", "patches", "boss",
+                "unified",
+                "work",
+                "inbox",
+                "archive",
+                "lists/aerc",
+                "personal",
+                "inbox",
+                "all",
+                "inbox",
+                "unread",
+                "flagged",
+                "boss",
             ],
         );
     }
 
     #[test]
-    fn config_searches_keep_their_queries_in_order() {
+    fn folder_queries_follow_the_store_path_semantics() {
+        let items = entries(&accounts(&[("work", &["archive"])]), &[]);
+        let queries: Vec<(&str, &str)> = items
+            .iter()
+            .filter_map(|entry| match entry {
+                SidebarEntry::Folder { name, query, .. } => {
+                    Some((name.as_str(), query.as_str()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            queries,
+            [
+                ("inbox", "path:\"work/cur\" or path:\"work/new\""),
+                ("archive", "path:\"work/archive/**\""),
+            ],
+        );
+    }
+
+    #[test]
+    fn config_searches_follow_the_builtins_in_order() {
         let searches =
             saved(&[("patches", "diffstat"), ("boss", "from:boss")]);
         let items = entries(&[], &searches);
@@ -110,6 +232,7 @@ mod tests {
         assert_eq!(
             queries,
             [
+                "*",
                 "tag:inbox",
                 "tag:unread",
                 "tag:flagged",
@@ -117,6 +240,17 @@ mod tests {
                 "from:boss",
             ],
         );
+    }
+
+    #[test]
+    fn the_default_selection_is_the_all_search() {
+        let items = entries(
+            &accounts(&[("work", &["archive"])]),
+            &saved(&[("boss", "from:boss")]),
+        );
+        let index = default_selection(&items);
+        assert_eq!(items[index].label(), ALL_LABEL);
+        assert_eq!(default_selection(&[]), 0);
     }
 
     #[test]
