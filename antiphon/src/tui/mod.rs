@@ -74,7 +74,9 @@ fn event_loop(
     let mut last_refresh = Instant::now();
     let mut last_unread: Option<u32> = None;
     while !app.quit {
+        let drawing = Instant::now();
         terminal.draw(|frame| draw::draw(frame, app))?;
+        app.frame_stats.record(drawing.elapsed());
         if !event::poll(INPUT_POLL)? {
             drain_ops(app);
             maybe_refresh(

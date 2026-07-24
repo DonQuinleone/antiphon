@@ -17,6 +17,41 @@ pub enum View {
     Pager,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FrameStats {
+    pub frames: u64,
+    pub last_micros: u128,
+    pub max_micros: u128,
+    total_micros: u128,
+}
+
+impl FrameStats {
+    pub fn record(&mut self, elapsed: std::time::Duration) {
+        let micros = elapsed.as_micros();
+        self.frames += 1;
+        self.last_micros = micros;
+        self.max_micros = self.max_micros.max(micros);
+        self.total_micros += micros;
+    }
+
+    pub fn mean_micros(&self) -> u128 {
+        if self.frames == 0 {
+            return 0;
+        }
+        self.total_micros / u128::from(self.frames)
+    }
+
+    pub fn summary(&self) -> String {
+        format!(
+            "frames: {} drawn, last {} us, mean {} us, max {} us",
+            self.frames,
+            self.last_micros,
+            self.mean_micros(),
+            self.max_micros,
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PromptKind {
     Search,
@@ -72,6 +107,7 @@ pub struct App {
     pub prompt: Option<Prompt>,
     pub current_query: String,
     pub pending_ops: Vec<OpIntent>,
+    pub frame_stats: FrameStats,
     pub quit: bool,
 }
 
@@ -104,6 +140,7 @@ impl App {
             prompt: None,
             current_query: DEFAULT_QUERY.to_string(),
             pending_ops: Vec::new(),
+            frame_stats: FrameStats::default(),
             quit: false,
         }
     }
@@ -197,6 +234,7 @@ impl App {
     pub fn run_command(&mut self, command: &str) {
         match command.trim() {
             "q" | "quit" => self.quit = true,
+            "frames" => self.notice = Some(self.frame_stats.summary()),
             "" => {}
             other => {
                 self.notice = Some(format!("unknown command: {other}"))
@@ -351,6 +389,7 @@ mod tests {
             prompt: None,
             current_query: DEFAULT_QUERY.to_string(),
             pending_ops: Vec::new(),
+            frame_stats: FrameStats::default(),
             quit: false,
         }
     }
@@ -488,6 +527,18 @@ mod tests {
         app.apply(Action::Command);
         app.prompt_cancel();
         assert!(app.prompt.is_none());
+    }
+
+    #[test]
+    fn frame_stats_track_last_mean_and_max() {
+        let mut stats = FrameStats::default();
+        stats.record(std::time::Duration::from_micros(100));
+        stats.record(std::time::Duration::from_micros(300));
+        assert_eq!(stats.frames, 2);
+        assert_eq!(stats.last_micros, 300);
+        assert_eq!(stats.max_micros, 300);
+        assert_eq!(stats.mean_micros(), 200);
+        assert_eq!(FrameStats::default().mean_micros(), 0);
     }
 
     #[test]
