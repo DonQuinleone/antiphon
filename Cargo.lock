@@ -164,6 +164,7 @@ dependencies = [
  "antiphon-config",
  "antiphon-ipc",
  "antiphon-store",
+ "antiphon-sync",
 ]
 
 [[package]]

@@ -12,6 +12,7 @@ description = "Sync daemon for the antiphon mail client"
 antiphon-config = { path = "../crates/antiphon-config" }
 antiphon-ipc = { path = "../crates/antiphon-ipc" }
 antiphon-store = { path = "../crates/antiphon-store" }
+antiphon-sync = { path = "../crates/antiphon-sync" }
 
 [build-dependencies]
 antiphon-buildinfo = { path = "../crates/antiphon-buildinfo" }
