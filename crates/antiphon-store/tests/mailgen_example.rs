@@ -1,12 +1,18 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use antiphon_store::{SearchIndex, StoreLayout};
 
 const MESSAGE_COUNT: usize = 500;
 const SEED: &str = "42";
+/// Nested cargo can wedge (a dying middle process leaves the
+/// grandchild holding the output pipes, so a plain .output()
+/// waits forever); a deadline turns that into a loud failure.
+const MAILGEN_DEADLINE: Duration = Duration::from_secs(120);
+const WAIT_POLL: Duration = Duration::from_millis(200);
 
 fn notmuch_cli_available() -> bool {
     Command::new("notmuch")
@@ -16,7 +22,7 @@ fn notmuch_cli_available() -> bool {
 }
 
 fn run_mailgen(root: &Path) {
-    let output = Command::new(env!("CARGO"))
+    let mut child = Command::new(env!("CARGO"))
         .args([
             "run",
             "--quiet",
@@ -29,13 +35,30 @@ fn run_mailgen(root: &Path) {
         .args(["--messages", &MESSAGE_COUNT.to_string()])
         .args(["--seed", SEED])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .output()
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
+        .spawn()
         .expect("failed to run the mailgen example");
-    assert!(
-        output.status.success(),
-        "mailgen failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let deadline = Instant::now() + MAILGEN_DEADLINE;
+    loop {
+        match child.try_wait().expect("waiting on mailgen") {
+            Some(status) => {
+                assert!(status.success(), "mailgen failed");
+                return;
+            }
+            None if Instant::now() < deadline => {
+                std::thread::sleep(WAIT_POLL);
+            }
+            None => {
+                let _ = child.kill();
+                panic!(
+                    "mailgen exceeded {}s; killed",
+                    MAILGEN_DEADLINE.as_secs()
+                );
+            }
+        }
+    }
 }
 
 fn maildir_files(layout: &StoreLayout) -> BTreeMap<PathBuf, Vec<u8>> {
