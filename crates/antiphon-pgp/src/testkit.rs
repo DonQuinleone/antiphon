@@ -173,3 +173,34 @@ impl DecryptionHelper for SecretKeys {
         Err(anyhow::anyhow!("no matching decryption key"))
     }
 }
+
+pub(crate) const ALICE: &str = "Alice <alice@example.com>";
+pub(crate) const BOB: &str = "Bob <bob@example.com>";
+pub(crate) const BODY: &str = "A body line for the round trip.";
+
+pub(crate) const PLAIN: &str = concat!(
+    "From: Alice <alice@example.com>\r\n",
+    "To: Bob <bob@example.com>\r\n",
+    "Subject: sealed\r\n",
+    "Message-ID: <1.antiphon@example.com>\r\n",
+    "MIME-Version: 1.0\r\n",
+    "Content-Type: text/plain; charset=\"utf-8\"; ",
+    "format=flowed\r\n",
+    "Content-Transfer-Encoding: 8bit\r\n",
+    "\r\n",
+    "A body line for the round trip.\r\n",
+);
+
+pub(crate) fn signer_for(
+    cert: &Cert,
+) -> impl Fn(&[u8]) -> Result<Vec<u8>, String> {
+    let cert = cert.clone();
+    move |data: &[u8]| Ok(detached_signature(&cert, data))
+}
+
+pub(crate) fn assert_outer_headers(text: &str) {
+    assert!(text.starts_with("From: Alice <alice@example.com>"));
+    assert!(text.contains("Subject: sealed"));
+    assert!(text.contains("Message-ID: <1.antiphon@"));
+    assert!(text.contains("MIME-Version: 1.0"));
+}
