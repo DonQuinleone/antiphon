@@ -13,6 +13,9 @@ antiphon-config = { path = "../crates/antiphon-config" }
 antiphon-ipc = { path = "../crates/antiphon-ipc" }
 antiphon-store = { path = "../crates/antiphon-store" }
 antiphon-sync = { path = "../crates/antiphon-sync" }
+antiphon-vault = { path = "../crates/antiphon-vault" }
+secrecy = "=0.10.3"
+signal-hook = "=0.4.4"
 
 [build-dependencies]
 antiphon-buildinfo = { path = "../crates/antiphon-buildinfo" }

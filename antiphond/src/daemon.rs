@@ -1,11 +1,15 @@
 use std::collections::HashSet;
 use std::os::unix::net::UnixStream;
-use std::process::ExitCode;
-
-use std::process::Command;
+use std::process::{Command, ExitCode};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use signal_hook::consts::{SIGINT, SIGTERM};
+
 use antiphon_config::{Dirs, Loaded, load};
+
+use crate::vaultctl;
 use antiphon_ipc::{
     DaemonStatus, IpcServer, Operation, Request, Response, VaultState,
     read_frame, socket_path, write_frame,
@@ -21,6 +25,19 @@ pub fn run() -> ExitCode {
         return ExitCode::FAILURE;
     };
     let layout = StoreLayout::new(dirs.store_root());
+    let loaded = match load(&dirs) {
+        Ok(loaded) => loaded,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    // Unlock before touching the store: behind a sealed vault
+    // the store only exists once the vault is mounted.
+    if let Err(error) = vaultctl::ensure_open(&loaded, &layout) {
+        eprintln!("{error}");
+        return ExitCode::FAILURE;
+    }
     if !layout.exists() {
         eprintln!(
             "no message store at {}; run \
@@ -29,13 +46,6 @@ pub fn run() -> ExitCode {
         );
         return ExitCode::FAILURE;
     }
-    let loaded = match load(&dirs) {
-        Ok(loaded) => loaded,
-        Err(error) => {
-            eprintln!("{error}");
-            return ExitCode::FAILURE;
-        }
-    };
     let accounts = sync_accounts(&loaded);
     let smtp = smtp_accounts(&loaded);
     let log = match OpLog::open(&layout) {
@@ -67,12 +77,27 @@ pub fn run() -> ExitCode {
     };
     daemon.sync_pass();
     let interval = sync_interval(&loaded);
-    if let Err(error) = serve_with_timer(&server, &mut daemon, interval)
-    {
+    let shutdown = install_shutdown();
+    let outcome =
+        serve_with_timer(&server, &mut daemon, interval, &shutdown);
+    // Seal the vault on the way out so a graceful stop leaves
+    // ciphertext at rest, not an open mount.
+    if let Err(error) = vaultctl::lock(&loaded, &daemon.layout) {
+        eprintln!("{error}");
+    }
+    if let Err(error) = outcome {
         eprintln!("accept: {error}");
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
+}
+
+fn install_shutdown() -> Arc<AtomicBool> {
+    let flag = Arc::new(AtomicBool::new(false));
+    for signal in [SIGINT, SIGTERM] {
+        let _ = signal_hook::flag::register(signal, flag.clone());
+    }
+    flag
 }
 
 struct Daemon {
@@ -132,10 +157,11 @@ fn serve_with_timer(
     server: &IpcServer,
     daemon: &mut Daemon,
     interval: Option<Duration>,
+    shutdown: &Arc<AtomicBool>,
 ) -> std::io::Result<()> {
     server.set_nonblocking(true)?;
     let mut last_sync = Instant::now();
-    loop {
+    while !shutdown.load(Ordering::Relaxed) {
         match server.accept() {
             Ok(stream) => {
                 stream.set_nonblocking(false)?;
@@ -156,6 +182,8 @@ fn serve_with_timer(
             last_sync = Instant::now();
         }
     }
+    println!("shutting down; sealing the vault");
+    Ok(())
 }
 
 fn sync_accounts(loaded: &Loaded) -> Vec<SyncAccount> {
