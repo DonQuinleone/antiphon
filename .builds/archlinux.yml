@@ -2,6 +2,7 @@ image: archlinux
 packages:
   - rust
   - notmuch
+  - gnupg
 sources:
   - https://git.sr.ht/~donquinleone/antiphon
 tasks:
