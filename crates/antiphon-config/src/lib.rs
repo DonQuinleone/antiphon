@@ -1,6 +1,8 @@
 mod account;
+mod diagnose;
 mod error;
 mod load;
+mod pgp;
 mod schema;
 mod xdg;
 
