@@ -203,7 +203,7 @@ fn draw_reading_pane(frame: &mut Frame, app: &App, area: Rect) {
         header_line(theme, "Tags:", message.tags.join(", ")),
         Line::default(),
         Line::from(Span::styled(
-            "body rendering arrives later in M2",
+            "open the message for the full body",
             Style::new().fg(theme.text_muted),
         )),
     ];

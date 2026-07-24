@@ -95,7 +95,10 @@ impl App {
             Action::ToggleSidebar => self.sidebar = !self.sidebar,
             Action::CycleReadingPane => self.cycle_reading_pane(),
             Action::Quit => self.quit = true,
-            _ => self.notice = Some("arrives later in M2"),
+            _ => {
+                self.notice =
+                    Some("not built yet; see DESIGN.md milestones")
+            }
         }
     }
 
@@ -115,7 +118,10 @@ impl App {
             }
             Action::Top => self.pager_scroll = 0,
             Action::Back | Action::Quit => self.view = View::List,
-            _ => self.notice = Some("arrives later in M2"),
+            _ => {
+                self.notice =
+                    Some("not built yet; see DESIGN.md milestones")
+            }
         }
     }
 
