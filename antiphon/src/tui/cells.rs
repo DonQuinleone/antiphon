@@ -24,31 +24,34 @@ pub(super) fn message_row(
     columns: &Columns,
     message: &MessageSummary,
     format: &str,
+    threaded: bool,
 ) -> Row<'static> {
     let theme = app.theme;
     Row::new(vec![
-        status_cell(theme, message),
+        status_cell(theme, message, threaded),
         date_cell(theme, format_date(message.date_unix, format)),
         from_cell(app, columns, message),
         subject_cell(theme, columns, message),
     ])
 }
 
-/// R replied, F forwarded, A attachment, from the tags the
-/// store already keeps (maildir R/P flags, notmuch's own
-/// attachment tagging).
+/// R replied, F forwarded, A attachment (from the tags the
+/// store already keeps), T when the window shows more of the
+/// same thread.
 fn status_cell(
     theme: &Theme,
     message: &MessageSummary,
+    threaded: bool,
 ) -> Line<'static> {
     let has = |tag: &str| {
         message.tags.iter().any(|candidate| candidate == tag)
     };
     let text = format!(
-        "{}{}{}",
+        "{}{}{}{}",
         if has(REPLIED_TAG) { 'R' } else { ' ' },
         if has(FORWARDED_TAG) { 'F' } else { ' ' },
         if has(ATTACHMENT_TAG) { 'A' } else { ' ' },
+        if threaded { 'T' } else { ' ' },
     );
     Line::from(Span::styled(text, Style::new().fg(theme.text_muted)))
 }

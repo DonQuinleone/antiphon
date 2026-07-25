@@ -35,6 +35,7 @@ pub enum Action {
     ToggleHeaders,
     OpenLink,
     Attachments,
+    ThreadView,
 }
 
 const NAMES: &[(Action, &str)] = &[
@@ -71,6 +72,7 @@ const NAMES: &[(Action, &str)] = &[
     (Action::ToggleHeaders, "toggle-headers"),
     (Action::OpenLink, "open-link"),
     (Action::Attachments, "attachments"),
+    (Action::ThreadView, "thread-view"),
 ];
 
 impl Action {

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use antiphon_store::MessageSummary;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
@@ -15,7 +17,7 @@ const COLUMN_GAP: u16 = 1;
 const DATE_HEADING: &str = "DATE";
 const SUBJECT_HEADING: &str = "SUBJECT";
 const FROM_TO_HEADING: &str = "FROM/TO";
-const STATUS_COLS: u16 = 3;
+const STATUS_COLS: u16 = 4;
 const STATUS_HEADING: &str = "#";
 
 /// One column layout shared by the header row and every
@@ -40,6 +42,22 @@ fn columns(
     }
 }
 
+/// Thread ids appearing more than once in the window; the
+/// status column marks their members with T.
+fn threaded_ids(messages: &[MessageSummary]) -> HashSet<&str> {
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut repeated: HashSet<&str> = HashSet::new();
+    for message in messages {
+        if message.thread_id.is_empty() {
+            continue;
+        }
+        if !seen.insert(&message.thread_id) {
+            repeated.insert(&message.thread_id);
+        }
+    }
+    repeated
+}
+
 /// Exactly as wide as the widest rendered date, so nothing is
 /// ever chopped, with the heading as the floor.
 fn date_width(messages: &[MessageSummary], format: &str) -> u16 {
@@ -60,8 +78,10 @@ pub(super) fn draw_list(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
     let columns = columns(area.width, &app.messages, &app.date_format);
+    let threads = threaded_ids(&app.messages);
     let rows = app.messages.iter().map(|message| {
-        message_row(app, &columns, message, &app.date_format)
+        let threaded = threads.contains(message.thread_id.as_str());
+        message_row(app, &columns, message, &app.date_format, threaded)
     });
     // The subject cell opens with the unread/flag gutter; the
     // heading shifts by the same width so the word sits over

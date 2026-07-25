@@ -120,6 +120,10 @@ enter, or move with `j`/`k`, and the url goes to the system
 opener, `open` on macOS and `xdg-open` elsewhere; `esc`
 closes), `attachments` (`a`: expand the attachment drawer),
 `pane-down`/`pane-up` (`J`/`K`: scroll the reading pane),
+`thread-view` (`T`: pivot the flat list onto the selected
+message's whole thread; `back` (`esc`) restores the listing
+you came from; a `T` in the status column marks messages
+whose thread has more rows in the current listing),
 `help` (`?`: the keybinding cheatsheet, generated live from
 these bindings with your overrides applied).
 

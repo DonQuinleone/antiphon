@@ -46,6 +46,8 @@ pub fn account_names(loaded: &Loaded) -> Vec<String> {
         .collect()
 }
 
+const THREAD_LABEL: &str = "thread";
+
 impl App {
     pub(super) fn apply_in_list(&mut self, action: Action) {
         match action {
@@ -94,9 +96,43 @@ impl App {
             Action::MarkUnread => self.set_unread(true),
             Action::ToggleFlagged => self.toggle_flagged(),
             Action::DeleteMessage => self.delete_selected(),
+            Action::ThreadView => self.open_thread(),
+            Action::Back => self.close_thread(),
             Action::Quit => self.quit = true,
             _ => self.not_built_notice(),
         }
+    }
+
+    /// The list stays flat; T pivots it onto the selected
+    /// message's whole thread, and back restores the listing
+    /// it came from.
+    fn open_thread(&mut self) {
+        let Some(message) = self.selected_message() else {
+            return;
+        };
+        let thread = message.thread_id.clone();
+        if thread.is_empty() {
+            self.notice = Some("no thread for this message".into());
+            return;
+        }
+        if self.thread_return.is_none() {
+            self.thread_return = Some((
+                self.current_query.clone(),
+                self.active_search.clone(),
+            ));
+        }
+        self.current_query = format!("thread:{thread}");
+        self.active_search = Some(THREAD_LABEL.to_string());
+        self.requery = true;
+    }
+
+    fn close_thread(&mut self) {
+        let Some((query, search)) = self.thread_return.take() else {
+            return;
+        };
+        self.current_query = query;
+        self.active_search = search;
+        self.requery = true;
     }
 
     fn shift_scope(
@@ -104,10 +140,12 @@ impl App {
         step: fn(&ViewScope, &[String]) -> ViewScope,
     ) {
         self.scope = step(&self.scope, &self.accounts);
+        self.thread_return = None;
         self.requery = true;
     }
 
     fn sidebar_open(&mut self) {
+        self.thread_return = None;
         let Some(entry) =
             self.sidebar_entries.get(self.sidebar_selected)
         else {
@@ -216,6 +254,34 @@ impl App {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn t_pivots_to_the_thread_and_back_restores() {
+        let mut app = app_with_messages(2);
+        app.messages[0].thread_id = "th7".to_string();
+        app.current_query = "tag:inbox".to_string();
+        app.active_search = Some("inbox".to_string());
+
+        app.apply_in_list(Action::ThreadView);
+        assert_eq!(app.current_query, "thread:th7");
+        assert_eq!(app.active_search.as_deref(), Some("thread"));
+        assert!(app.take_requery());
+
+        app.apply_in_list(Action::Back);
+        assert_eq!(app.current_query, "tag:inbox");
+        assert_eq!(app.active_search.as_deref(), Some("inbox"));
+        assert!(app.take_requery());
+        app.apply_in_list(Action::Back);
+        assert!(!app.take_requery(), "back is idle with no thread");
+    }
+
+    #[test]
+    fn a_threadless_message_never_pivots() {
+        let mut app = app_with_messages(1);
+        app.apply_in_list(Action::ThreadView);
+        assert!(app.thread_return.is_none());
+        assert!(!app.take_requery());
+    }
     use super::super::app::DEFAULT_QUERY;
     use super::super::testkit::{
         app_with_accounts, app_with_folders, app_with_messages,

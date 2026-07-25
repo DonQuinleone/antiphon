@@ -82,6 +82,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         pending_encrypt: None,
         pending_one_click: None,
         pending_unsub_post: None,
+        thread_return: None,
         pending_unsubscribe: None,
         frame_stats: FrameStats::default(),
         composer: Composer::Embedded,
