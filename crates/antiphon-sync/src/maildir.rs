@@ -118,14 +118,16 @@ impl MaildirFolder {
         )
     }
 
+    pub fn remove(&self, message: &LocalMessage) -> io::Result<()> {
+        fs::remove_file(self.path_of(message.subdir, &message.name))
+    }
+
     /// Deletes every message this engine delivered (marked
     /// with the UID field), used when UIDVALIDITY changes and
     /// the folder must be refetched from scratch.
     pub fn remove_delivered(&self) -> io::Result<()> {
         for message in self.scan()? {
-            fs::remove_file(
-                self.path_of(message.subdir, &message.name),
-            )?;
+            self.remove(&message)?;
         }
         Ok(())
     }

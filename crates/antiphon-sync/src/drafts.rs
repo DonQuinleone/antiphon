@@ -182,6 +182,7 @@ fn advance_cursor(
         FolderState {
             uid_validity,
             last_uid: uid,
+            last_sweep_unix: stored.last_sweep_unix,
         },
     );
     state.save(&path)
@@ -286,6 +287,7 @@ mod tests {
             FolderState {
                 uid_validity: 3,
                 last_uid: 6,
+                last_sweep_unix: 0,
             },
         );
         state.save(&path).unwrap();

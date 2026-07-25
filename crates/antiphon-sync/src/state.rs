@@ -5,11 +5,17 @@ use std::path::{Path, PathBuf};
 use crate::error::SyncError;
 
 const FIELDS_PER_LINE: usize = 3;
+/// Keyed line carrying a folder's last sweep time. The key can
+/// never collide with the numeric first field of a folder line,
+/// so files without sweep lines (the original format) still
+/// parse unchanged.
+const SWEEP_KEY: &str = "sweep";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct FolderState {
     pub uid_validity: u32,
     pub last_uid: u32,
+    pub last_sweep_unix: u64,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -56,6 +62,13 @@ impl AccountState {
                 "{} {} {name}\n",
                 state.uid_validity, state.last_uid
             ));
+            if state.last_sweep_unix == 0 {
+                continue;
+            }
+            out.push_str(&format!(
+                "{SWEEP_KEY} {} {name}\n",
+                state.last_sweep_unix
+            ));
         }
         out
     }
@@ -69,6 +82,7 @@ fn temp_path(path: &Path) -> PathBuf {
 
 fn parse(text: &str) -> Result<AccountState, (usize, String)> {
     let mut folders = BTreeMap::new();
+    let mut sweeps: Vec<(String, u64)> = Vec::new();
     for (index, line) in text.lines().enumerate() {
         let number = index + 1;
         let fields: Vec<&str> =
@@ -81,6 +95,11 @@ fn parse(text: &str) -> Result<AccountState, (usize, String)> {
                 ),
             ));
         }
+        if fields[0] == SWEEP_KEY {
+            let stamp = parse_number(fields[1], number)?;
+            sweeps.push((fields[2].to_owned(), stamp));
+            continue;
+        }
         let uid_validity = parse_number(fields[0], number)?;
         let last_uid = parse_number(fields[1], number)?;
         folders.insert(
@@ -88,16 +107,24 @@ fn parse(text: &str) -> Result<AccountState, (usize, String)> {
             FolderState {
                 uid_validity,
                 last_uid,
+                last_sweep_unix: 0,
             },
         );
+    }
+    // A sweep line without its folder line names a folder this
+    // state no longer tracks; it is dropped, not an error.
+    for (name, stamp) in sweeps {
+        if let Some(folder) = folders.get_mut(&name) {
+            folder.last_sweep_unix = stamp;
+        }
     }
     Ok(AccountState { folders })
 }
 
-fn parse_number(
+fn parse_number<T: std::str::FromStr>(
     field: &str,
     line: usize,
-) -> Result<u32, (usize, String)> {
+) -> Result<T, (usize, String)> {
     field.parse().map_err(|_| {
         (line, format!("`{field}` is not an unsigned integer"))
     })
@@ -114,6 +141,7 @@ mod tests {
             FolderState {
                 uid_validity: 17,
                 last_uid: 204,
+                last_sweep_unix: 1_700_000_000,
             },
         );
         state.set_folder(
@@ -121,6 +149,7 @@ mod tests {
             FolderState {
                 uid_validity: 3,
                 last_uid: 9,
+                last_sweep_unix: 0,
             },
         );
         state
@@ -138,13 +167,47 @@ mod tests {
 
     #[test]
     fn folder_names_with_spaces_survive() {
-        let reloaded = parse("3 9 Archive/Old Mail\n").unwrap();
+        let reloaded =
+            parse("3 9 Archive/Old Mail\nsweep 42 Archive/Old Mail\n")
+                .unwrap();
         assert_eq!(
             reloaded.folder("Archive/Old Mail"),
             Some(FolderState {
                 uid_validity: 3,
                 last_uid: 9,
+                last_sweep_unix: 42,
             })
+        );
+    }
+
+    #[test]
+    fn state_files_without_sweep_lines_still_load() {
+        let reloaded = parse("17 204 INBOX\n3 9 2020 Taxes\n").unwrap();
+        assert_eq!(
+            reloaded.folder("INBOX"),
+            Some(FolderState {
+                uid_validity: 17,
+                last_uid: 204,
+                last_sweep_unix: 0,
+            })
+        );
+        assert_eq!(
+            reloaded.folder("2020 Taxes"),
+            Some(FolderState {
+                uid_validity: 3,
+                last_uid: 9,
+                last_sweep_unix: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn a_sweep_line_for_an_untracked_folder_is_dropped() {
+        let reloaded = parse("sweep 42 Ghost\n1 2 INBOX\n").unwrap();
+        assert!(reloaded.folder("Ghost").is_none());
+        assert_eq!(
+            reloaded.folder("INBOX").unwrap().last_sweep_unix,
+            0
         );
     }
 
@@ -179,6 +242,7 @@ mod tests {
             FolderState {
                 uid_validity: 17,
                 last_uid: 300,
+                last_sweep_unix: 1_700_000_000,
             },
         );
         updated.save(&path).unwrap();

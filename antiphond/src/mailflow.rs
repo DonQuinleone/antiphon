@@ -134,10 +134,11 @@ impl Mailflow {
         announce: bool,
     ) {
         println!(
-            "synced {}: {} new, {} updated",
+            "synced {}: {} new, {} updated, {} removed",
             account,
             report.total_new(),
             report.total_updated(),
+            report.total_removed(),
         );
         let rules = account_rules(&self.rules, account);
         if !rules.is_empty() {

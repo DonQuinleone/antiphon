@@ -5,6 +5,7 @@ mod error;
 mod folders;
 mod maildir;
 mod progress;
+mod reconcile;
 mod replay;
 mod report;
 mod rules;

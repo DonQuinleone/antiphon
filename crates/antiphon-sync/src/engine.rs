@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -10,8 +11,9 @@ use crate::error::SyncError;
 use crate::folders::folder_subdir;
 use crate::maildir::MaildirFolder;
 use crate::progress::{SyncProgress, write_progress};
+use crate::reconcile::{now_unix, remove_vanished, sweep_due};
 use crate::report::{FolderReport, SyncReport};
-use crate::session::ImapSession;
+use crate::session::{ImapSession, SelectedFolder};
 use crate::state::{AccountState, FolderState};
 use crate::tagging::retag_folders;
 
@@ -137,7 +139,16 @@ fn sync_folder(
             folder: folder.name.clone(),
             detail: String::from("server reported no UIDVALIDITY"),
         })?;
-    let known_uid = known_uid(&maildir, state, folder, uid_validity)?;
+    let now = now_unix();
+    let baseline =
+        folder_baseline(&maildir, state, folder, uid_validity, now)?;
+    let sweeping = sweep_due(baseline.last_sweep_unix, now);
+    let removed_messages = if sweeping {
+        sweep_folder(session, folder, &maildir, &mailbox, indexer)?
+    } else {
+        0
+    };
+    let known_uid = baseline.last_uid;
     let has_mail = mailbox.exists > 0;
     // UIDNEXT lets an up-to-date folder skip the fetch, which
     // would otherwise return the newest message again because
@@ -162,17 +173,24 @@ fn sync_folder(
         .map(|delivery| delivery.uid)
         .max()
         .unwrap_or(known_uid);
+    let last_sweep_unix = if sweeping {
+        now
+    } else {
+        baseline.last_sweep_unix
+    };
     state.set_folder(
         &folder.name,
         FolderState {
             uid_validity,
             last_uid,
+            last_sweep_unix,
         },
     );
     Ok(FolderReport {
         folder: folder.name.clone(),
         new_messages: deliveries.len(),
         updated_messages,
+        removed_messages,
         delivered: deliveries
             .into_iter()
             .map(|delivery| delivery.path)
@@ -198,27 +216,65 @@ fn open_maildir(
     Ok(maildir)
 }
 
-/// Returns the highest UID already in the store for this
-/// folder, wiping and restarting from zero when the server's
-/// UIDVALIDITY no longer matches the recorded one.
-fn known_uid(
+/// Returns the stored cursor for this folder, wiping local
+/// mail and restarting from zero when the server's UIDVALIDITY
+/// no longer matches the recorded one. Wiped and brand-new
+/// folders stamp the sweep clock to `now`: everything local is
+/// about to be refetched, so nothing can have vanished.
+fn folder_baseline(
     maildir: &MaildirFolder,
     state: &AccountState,
     folder: &RemoteFolder,
     uid_validity: u32,
-) -> Result<u32, SyncError> {
+    now: u64,
+) -> Result<FolderState, SyncError> {
+    let fresh = FolderState {
+        uid_validity,
+        last_uid: 0,
+        last_sweep_unix: now,
+    };
     match state.folder(&folder.name) {
         Some(stored) if stored.uid_validity == uid_validity => {
-            Ok(stored.last_uid)
+            Ok(stored)
         }
         Some(_) => {
             maildir
                 .remove_delivered()
                 .map_err(SyncError::io(maildir.root()))?;
-            Ok(0)
+            Ok(fresh)
         }
-        None => Ok(0),
+        None => Ok(fresh),
     }
+}
+
+/// Removes messages deleted or moved server-side, by listing
+/// the folder's full UID set and dropping local files the
+/// listing no longer covers. A folder the server reports empty
+/// skips the listing: `UID FETCH 1:*` has nothing to select.
+fn sweep_folder(
+    session: &mut ImapSession,
+    folder: &RemoteFolder,
+    maildir: &MaildirFolder,
+    mailbox: &SelectedFolder,
+    indexer: &Indexer,
+) -> Result<usize, SyncError> {
+    let server: HashSet<u32> = if mailbox.exists == 0 {
+        HashSet::new()
+    } else {
+        session
+            .list_new_uids(FIRST_UID)
+            .map_err(SyncError::imap(format!(
+                "sweeping {}",
+                folder.name
+            )))?
+            .into_iter()
+            .collect()
+    };
+    let removed = remove_vanished(maildir, &server)?;
+    if removed > 0 {
+        indexer.nudge();
+    }
+    Ok(removed)
 }
 
 fn fetch_new(
