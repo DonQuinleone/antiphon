@@ -279,6 +279,7 @@ dependencies = [
  "antiphon-store",
  "antiphon-sync",
  "antiphon-vault",
+ "reqwest",
  "secrecy",
  "signal-hook 0.4.4",
  "tempfile",

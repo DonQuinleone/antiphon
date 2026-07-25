@@ -143,16 +143,8 @@ impl App {
             self.notice = Some("unsubscribe cancelled".to_string());
             return;
         }
-        self.notice = Some(queue_one_click(&url));
+        self.pending_unsub_post = Some(url);
     }
-}
-
-/// The one hand-off point for a confirmed RFC 8058 unsubscribe:
-/// it records the intent in the status line; the POST itself is
-/// antiphond's, wired in a later slice, so no network happens
-/// here.
-fn queue_one_click(url: &str) -> String {
-    format!("queued: one-click unsubscribe \u{b7} POST {url}")
 }
 
 #[cfg(test)]
@@ -303,12 +295,10 @@ mod tests {
         app.confirm_unsubscribe(true);
         assert!(app.prompt.is_none());
         assert!(app.pending_one_click.is_none());
-        let notice = app.notice.as_deref().unwrap();
-        assert!(
-            notice.starts_with("queued: one-click unsubscribe"),
-            "{notice}"
+        assert_eq!(
+            app.pending_unsub_post.as_deref(),
+            Some("https://example.com/u/1")
         );
-        assert!(notice.contains("https://example.com/u/1"));
     }
 
     #[test]

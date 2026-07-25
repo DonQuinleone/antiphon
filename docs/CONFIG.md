@@ -173,8 +173,9 @@ processes the part, which the big providers all do.
 
 `:unsubscribe` acts on the current message's
 `List-Unsubscribe` header. An RFC 8058 one-click entry asks
-for confirmation naming the list, then queues the POST for
-antiphond (the client never touches the network). A mailto
+for confirmation naming the list, then hands the POST to
+antiphond, which requires https and performs it off the serve
+loop (the client never touches the network). A mailto
 entry opens a
 compose prefilled with the address, subject and body from the
 URI. A web-only entry displays the URL for you to open;

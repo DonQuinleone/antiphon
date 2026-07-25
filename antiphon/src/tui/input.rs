@@ -260,6 +260,9 @@ pub(super) fn prompt_key(
     if app.confirming_unsubscribe() {
         let confirmed = matches!(key.code, KeyCode::Char('y' | 'Y'));
         app.confirm_unsubscribe(confirmed);
+        if let Some(url) = app.pending_unsub_post.take() {
+            app.notice = Some(post_one_click(url));
+        }
         return;
     }
     let ctrl_c = key.code == KeyCode::Char('c')
@@ -314,5 +317,26 @@ fn add_attachment(app: &mut App, input: &str) {
                 app.prompt_push(ch);
             }
         }
+    }
+}
+
+/// A confirmed RFC 8058 unsubscribe goes to antiphond over
+/// IPC and the POST happens there, so the client stays off
+/// the network.
+fn post_one_click(url: String) -> String {
+    use antiphon_ipc::{IpcClient, Request, Response, socket_path};
+
+    let path = socket_path(|var| std::env::var_os(var));
+    let Ok(mut client) = IpcClient::connect(&path) else {
+        return "unsubscribe: antiphond is not running".to_string();
+    };
+    let _ = client.set_read_timeout(super::IPC_WAIT);
+    match client.request(&Request::Unsubscribe { url }) {
+        Ok(Response::Ack) => {
+            "unsubscribing: POST handed to antiphond".to_string()
+        }
+        Ok(Response::Error(error)) => format!("unsubscribe: {error}"),
+        Ok(_) => "unsubscribe: unexpected daemon reply".to_string(),
+        Err(error) => format!("unsubscribe: {error}"),
     }
 }

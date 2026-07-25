@@ -12,6 +12,10 @@ description = "Sync daemon for the antiphon mail client"
 antiphon-config = { path = "../crates/antiphon-config" }
 antiphon-ipc = { path = "../crates/antiphon-ipc" }
 antiphon-oauth = { path = "../crates/antiphon-oauth" }
+reqwest = { version = "=0.12.28", default-features = false, features = [
+    "blocking",
+    "rustls-tls",
+] }
 antiphon-store = { path = "../crates/antiphon-store" }
 antiphon-sync = { path = "../crates/antiphon-sync" }
 antiphon-vault = { path = "../crates/antiphon-vault" }

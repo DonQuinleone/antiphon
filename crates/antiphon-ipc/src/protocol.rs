@@ -6,6 +6,7 @@ pub enum Request {
     Ping,
     SyncNow,
     DrainOutbox,
+    Unsubscribe { url: String },
     EnqueueOp(Operation),
     Status,
     Subscribe,

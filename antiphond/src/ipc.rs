@@ -40,6 +40,15 @@ impl Daemon {
                 self.jobs.request(Job::DrainOutbox);
                 Response::Ack
             }
+            Request::Unsubscribe { url } => {
+                match crate::unsubscribe::validate(&url) {
+                    Ok(()) => {
+                        crate::unsubscribe::spawn_post(url);
+                        Response::Ack
+                    }
+                    Err(error) => Response::Error(error),
+                }
+            }
             Request::Subscribe => Response::Error(
                 "events arrive with the sync loop".to_string(),
             ),
