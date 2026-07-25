@@ -27,6 +27,20 @@ A supervisor is still the better home for a daemon you want
 running before the first client launch, restarted on failure,
 and stopped at logout; the rest of this document covers that.
 
+## What a sync pass does
+
+Every pass fetches new mail per folder, then periodically
+sweeps each folder's full UID listing so messages deleted or
+moved by another client disappear locally too; a UIDVALIDITY
+change refetches the folder outright rather than trusting any
+local state. Passes run on the `[sync]` interval, whenever a
+client asks, and, with `idle = true`, whenever a server push
+arrives: the daemon parks one IMAP IDLE connection per account
+on its INBOX, so new mail typically lands within seconds.
+Watchers cost one extra connection per account, retreat with
+exponential backoff when the network misbehaves, and fall back
+to the interval alone against servers without IDLE.
+
 ## macOS (launchd)
 
 ```bash

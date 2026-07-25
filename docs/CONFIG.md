@@ -57,6 +57,7 @@ unlock = ["touchid", "yubikey", "passphrase"]
 
 [sync]
 interval_minutes = 5       # periodic daemon sync; 0 disables
+idle = false               # IMAP IDLE push on each INBOX
 
 [daemon]
 autostart = true           # client starts antiphond if absent
