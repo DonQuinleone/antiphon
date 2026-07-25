@@ -86,8 +86,10 @@ single-token format is coloured entirely as a date.
 The vault seals the store at rest (see [VAULT.md](VAULT.md)):
 `antiphon vault create` sets it up, `passphrase_cmd` supplies
 the unlock secret to antiphond, and an absent vault leaves the
-store an ordinary directory. `touchid` and `yubikey` in
-`unlock` are declared but not yet wired.
+store an ordinary directory. `unlock` states a preference
+order; of the three methods, `passphrase` is the one that
+works today, so list it last and the others are tried first
+once they exist.
 
 ### Key sequences
 
@@ -95,6 +97,11 @@ Single keys (`j`, `/`, `G`), modifiers (`ctrl-d`, `alt-v`),
 named keys (`enter`, `esc`, `tab`, `space`, `up`, `down`), and
 two-key sequences (`gg`, `,s`). Unknown action names and
 unparseable sequences fail at startup naming the entry.
+
+Movement actions take a count prefix, vi style: `4j` moves
+down four, `12k` up twelve. Digits accumulate until a bound
+key consumes them (capped at 9999); `esc` clears a pending
+count.
 
 Actions: `move-down`, `move-up`, `top`, `bottom`,
 `half-page-down`, `half-page-up`, `open`, `back`, `quit`,
@@ -158,9 +165,9 @@ address.
 
 `:unsubscribe` acts on the current message's
 `List-Unsubscribe` header. An RFC 8058 one-click entry asks
-for confirmation naming the list, then records the queued
-POST for antiphond (the client never touches the network, and
-the daemon route is not yet wired). A mailto entry opens a
+for confirmation naming the list, then queues the POST for
+antiphond (the client never touches the network). A mailto
+entry opens a
 compose prefilled with the address, subject and body from the
 URI. A web-only entry displays the URL for you to open;
 nothing is ever fetched automatically.
@@ -170,8 +177,8 @@ nothing is ever fetched automatically.
 ```toml
 [account]
 name = "personal"
-maildir = "personal"       # parsed but not yet honoured; the
-                           # store folder is the account name
+maildir = "personal"       # reserved; the store folder is
+                           # the account name for now
 
 [imap]
 host = "imap.example.com"
@@ -203,12 +210,13 @@ pgp_key = "8F0EA48BF8BE9D3B9E1B2B9C6E5F0D3A1C2B4D5E"
 match_list = "~lists/somewhere"   # or match_sender
 move_to = "lists/somewhere"       # or tag
 
-[oauth]                    # M8; parsed today, unused yet
+[oauth]
 provider = "google"        # google | microsoft
 client_id = "..."          # optional
 
-[graph]                    # M8; parsed today, unused yet
-send = false
+[graph]
+send = false               # send via Microsoft Graph rather
+                           # than SMTP
 ```
 
 Identity `match` patterns allow one `*`, only in the local
