@@ -95,6 +95,14 @@ pub fn run(
     let keyring = Keyring::from_dir(dirs.config.join(PGP_KEYRING_DIR));
     let folders = sidebar::discover(layout, &accounts);
     let mut app = App::new(loaded, &folders, messages, total, keyring);
+    // Startup opens the default sidebar entry (the first
+    // inbox), so the list shows it rather than highlighting
+    // it over an unrelated query.
+    app.apply(antiphon_core::Action::SidebarOpen);
+    if app.take_requery() {
+        let query = app.current_query.clone();
+        run_query(&mut app, layout, query);
+    }
     let mut terminal = ratatui::init();
     let outcome = event_loop(
         &mut terminal,
