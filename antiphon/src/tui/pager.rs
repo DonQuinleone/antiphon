@@ -1,5 +1,5 @@
 use antiphon_pgp::{Signature, SignatureStatus};
-use antiphon_render::PatchLine;
+use antiphon_render::{MessageHeader, PatchLine};
 use antiphon_ui::Theme;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -8,11 +8,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use super::app::App;
-use super::draw::header_line;
-use super::message_list::format_date;
 
-const KEYBAR: &str =
-    "j/k:Scroll  h:Html  r:Reply  L:List-reply  q:Back  ?:Help";
+const KEYBAR: &str = "j/k:Scroll  t:Headers  h:Html  r:Reply  \
+                      L:List-reply  q:Back  ?:Help";
 const KEYBAR_ROWS: u16 = 1;
 const RULE_ROWS: u16 = 1;
 const MIN_TAG_GAP_COLS: usize = 2;
@@ -76,24 +74,51 @@ fn rule(theme: &Theme, width: u16) -> Paragraph<'static> {
 
 fn header_lines(app: &App, width: u16) -> Vec<Line<'static>> {
     let theme = app.theme;
-    let Some(message) = app.selected_message() else {
-        return Vec::new();
-    };
-    let top = header_line(theme, "From:", message.from.clone());
-    let mut lines = vec![
-        with_tags(theme, top, &message.tags, width),
-        header_line(theme, "To:", message.to.clone()),
-        header_line(
-            theme,
-            "Date:",
-            format_date(message.date_unix, &app.date_format),
-        ),
-        header_line(theme, "Subject:", message.subject.clone()),
-    ];
+    let tags = app
+        .selected_message()
+        .map(|message| message.tags.clone())
+        .unwrap_or_default();
+    let mut lines =
+        header_block(theme, app.pager_header_view(), &tags, width);
     if let Some(line) = signature_line(theme, &app.pager_signature) {
         lines.push(line);
     }
     lines
+}
+
+/// One row per header, in the order given, with the tags
+/// riding the first row; the reading pane shares this shape.
+pub(super) fn header_block(
+    theme: &Theme,
+    headers: &[MessageHeader],
+    tags: &[String],
+    width: u16,
+) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = headers
+        .iter()
+        .map(|header| named_header_line(theme, header))
+        .collect();
+    let Some(top) = lines.first_mut() else {
+        return lines;
+    };
+    *top = with_tags(theme, top.clone(), tags, width);
+    lines
+}
+
+fn named_header_line(
+    theme: &Theme,
+    header: &MessageHeader,
+) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            format!("{}: ", header.name),
+            Style::new().fg(theme.accent),
+        ),
+        Span::styled(
+            header.value.clone(),
+            Style::new().fg(theme.text_primary),
+        ),
+    ])
 }
 
 /// The first header row carries the tags right-aligned and
@@ -253,13 +278,21 @@ mod tests {
         terminal.backend().buffer().clone()
     }
 
+    const RAW: &str = concat!(
+        "From: alba@example.com\r\n",
+        "To: quin@example.com\r\n",
+        "Date: Fri, 24 Jul 2026 09:00:00 +0000\r\n",
+        "Subject: Rehearsal\r\n",
+        "X-Mailer: antiphon\r\n",
+        "\r\n",
+        "body line\r\n",
+    );
+
     fn pager_app() -> App {
         let mut app = app_with_messages(1);
-        app.messages[0].from = "alba@example.com".to_string();
-        app.messages[0].to = "quin@example.com".to_string();
-        app.messages[0].subject = "Rehearsal".to_string();
         app.messages[0].tags =
             vec!["lists".to_string(), "patch".to_string()];
+        app.pager_raw = RAW.as_bytes().to_vec();
         app.open_pager(
             "body line\n".to_string(),
             Signature::none(),
@@ -279,8 +312,15 @@ mod tests {
         );
         assert!(row_text(&buffer, 1).contains("From:"));
         assert!(row_text(&buffer, 2).contains("To:"));
-        assert!(row_text(&buffer, 3).contains("Date:"));
+        assert!(
+            row_text(&buffer, 3)
+                .contains("Date: Fri, 24 Jul 2026 09:00:00 +0000")
+        );
         assert!(row_text(&buffer, 4).contains("Subject: Rehearsal"));
+        assert!(
+            !(0..14).any(|y| row_text(&buffer, y).contains("X-Mailer")),
+            "unconfigured headers stay hidden"
+        );
         let rule = row_text(&buffer, 5);
         assert!(
             rule.chars().all(|ch| ch == '\u{2500}'),
@@ -313,23 +353,55 @@ mod tests {
             "a-very-long-tag".to_string(),
             "another-long-tag".to_string(),
         ];
-        let base = header_line(
-            theme,
-            "From:",
-            "someone@example.com".to_string(),
-        );
+        let from = MessageHeader {
+            name: "From".to_string(),
+            value: "someone@example.com".to_string(),
+        };
+        let base = named_header_line(theme, &from);
         let line = with_tags(theme, base, &tags, 40);
         let text = line_text(&line);
         assert!(text.chars().count() <= 40, "{text:?}");
         assert!(text.ends_with('\u{2026}'), "{text:?}");
 
-        let narrow = header_line(
-            theme,
-            "From:",
-            "someone@example.com".to_string(),
-        );
+        let narrow = named_header_line(theme, &from);
         let untouched = with_tags(theme, narrow.clone(), &tags, 20);
         assert_eq!(line_text(&untouched), line_text(&narrow));
+    }
+
+    #[test]
+    fn the_configured_set_governs_the_header_rows() {
+        use antiphon_core::Action;
+
+        let mut app = app_with_messages(1);
+        app.header_names = vec!["subject".to_string()];
+        app.pager_raw = RAW.as_bytes().to_vec();
+        app.open_pager(
+            "body line\n".to_string(),
+            Signature::none(),
+            Vec::new(),
+        );
+        let buffer = rendered(&app, 60, 14);
+        assert!(row_text(&buffer, 1).starts_with("Subject: Rehearsal"));
+        assert!(
+            row_text(&buffer, 2).chars().all(|ch| ch == '\u{2500}'),
+            "one configured header, then the rule"
+        );
+
+        app.apply(Action::ToggleHeaders);
+        let buffer = rendered(&app, 60, 14);
+        let rows: Vec<String> =
+            (0..14).map(|y| row_text(&buffer, y)).collect();
+        assert!(
+            rows.iter().any(|row| row.starts_with("X-Mailer:")),
+            "the toggle shows every header: {rows:?}"
+        );
+
+        app.apply(Action::ToggleHeaders);
+        let buffer = rendered(&app, 60, 14);
+        assert!(
+            !(0..14).any(|y| row_text(&buffer, y).contains("X-Mailer")),
+            "toggling back restores the configured set"
+        );
     }
 
     #[test]

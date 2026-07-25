@@ -51,6 +51,7 @@ pub struct Ui {
     pub composer: Composer,
     pub list_rows: u16,
     pub sidebar_width: u16,
+    pub headers: Vec<String>,
 }
 
 impl Default for Ui {
@@ -62,12 +63,17 @@ impl Default for Ui {
             composer: Composer::Embedded,
             list_rows: DEFAULT_LIST_ROWS,
             sidebar_width: DEFAULT_SIDEBAR_WIDTH,
+            headers: DEFAULT_HEADERS
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect(),
         }
     }
 }
 
 const DEFAULT_LIST_ROWS: u16 = 7;
 const DEFAULT_SIDEBAR_WIDTH: u16 = 16;
+const DEFAULT_HEADERS: [&str; 4] = ["from", "to", "date", "subject"];
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]

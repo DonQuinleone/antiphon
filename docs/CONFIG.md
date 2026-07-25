@@ -41,6 +41,12 @@ list_rows = 7              # message rows when the reading
                            # "off" the list fills the height
                            # and this key does not apply
 sidebar_width = 16         # columns, clamped to 10-40
+headers = ["from", "to", "date", "subject"]
+                           # headers the pager and reading
+                           # pane show, in this order; any
+                           # RFC 5322 name is legal, matched
+                           # case-insensitively (x-mailer,
+                           # message-id, ...)
 
 [vault]
 backend = "auto"           # auto | luks2 | apfs | gocryptfs
@@ -98,9 +104,12 @@ Actions: `move-down`, `move-up`, `top`, `bottom`,
 `reply-list`, `compose`, `mark-read`, `mark-unread`,
 `toggle-flagged`, `delete-message`, `toggle-html` (`h`:
 flip the open or previewed message between plain and html
-parts), `pane-down`/`pane-up` (`J`/`K`: scroll the reading
-pane), `help` (`?`: the keybinding cheatsheet, generated
-live from these bindings with your overrides applied).
+parts), `toggle-headers` (`t`: flip the pager and reading
+pane between the configured `headers` set and every header
+of the message), `pane-down`/`pane-up` (`J`/`K`: scroll the
+reading pane), `help` (`?`: the keybinding cheatsheet,
+generated live from these bindings with your overrides
+applied).
 
 `next-account` (`gt`) and `previous-account` (`gT`) cycle the
 view scope: unified, then each account in turn. `sidebar-next`

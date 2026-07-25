@@ -64,6 +64,9 @@ impl App {
             Action::Top => self.selected = 0,
             Action::Bottom => self.selected = self.last_index(),
             Action::ToggleSidebar => self.sidebar = !self.sidebar,
+            Action::ToggleHeaders => {
+                self.headers_all = !self.headers_all
+            }
             Action::NextAccount => self.shift_scope(scope::next_scope),
             Action::PreviousAccount => {
                 self.shift_scope(scope::previous_scope)

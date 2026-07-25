@@ -2,6 +2,7 @@ mod attach;
 mod compose;
 mod extract;
 mod flowed;
+mod headers;
 mod html;
 mod invite;
 mod itip;
@@ -22,6 +23,7 @@ pub use extract::{
     rendered_body,
 };
 pub use flowed::flow;
+pub use headers::{MessageHeader, all_headers, selected_headers};
 pub use invite::invite_lines;
 pub use itip::{ItipReply, Rsvp, itip_reply};
 pub use links::{BodyLine, Link, LinkSpan, RenderedBody};

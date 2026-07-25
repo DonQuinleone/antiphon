@@ -184,6 +184,7 @@ pub(super) fn dispatch(
             );
         }
         Err(error) => {
+            app.pager_raw = Vec::new();
             app.open_pager(
                 format!("cannot read {}: {error}", path.display()),
                 antiphon_pgp::Signature::none(),

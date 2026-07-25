@@ -11,7 +11,7 @@ use tui_term::widget::PseudoTerminal;
 
 use super::app::{App, View};
 use super::headers;
-use super::message_list::{draw_list, format_date};
+use super::message_list::draw_list;
 use super::pager::draw_pager;
 use super::review;
 use super::scope::ViewScope;
@@ -234,18 +234,21 @@ fn draw_reading_pane(frame: &mut Frame, app: &App, area: Rect) {
         frame.render_widget(empty, area);
         return;
     };
-    let mut lines = vec![
-        header_line(theme, "From:", message.from.clone()),
-        header_line(theme, "To:", message.to.clone()),
-        header_line(
+    let mut lines = Vec::new();
+    if let Some(preview) = &app.preview {
+        let headers = if app.headers_all {
+            &preview.headers_all
+        } else {
+            &preview.headers
+        };
+        lines.extend(super::pager::header_block(
             theme,
-            "Date:",
-            format_date(message.date_unix, &app.date_format),
-        ),
-        header_line(theme, "Subject:", message.subject.clone()),
-        header_line(theme, "Tags:", message.tags.join(", ")),
-        Line::default(),
-    ];
+            headers,
+            &message.tags,
+            area.width,
+        ));
+        lines.push(Line::default());
+    }
     lines.extend(preview_lines(app));
     let pane = Paragraph::new(lines)
         .block(block)

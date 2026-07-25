@@ -40,6 +40,7 @@ const DEFAULT_BINDINGS: &[(Action, &str)] = &[
     (Action::PaneScrollDown, "J"),
     (Action::PaneScrollUp, "K"),
     (Action::Help, "?"),
+    (Action::ToggleHeaders, "t"),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -324,6 +325,7 @@ mod tests {
             (press(KeyCode::Char('r')), Action::Reply),
             (shifted('L'), Action::ReplyList),
             (press(KeyCode::Char('n')), Action::Compose),
+            (press(KeyCode::Char('t')), Action::ToggleHeaders),
             (
                 KeyEvent::new(
                     KeyCode::Char('n'),

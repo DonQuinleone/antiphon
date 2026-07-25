@@ -32,6 +32,7 @@ pub enum Action {
     PaneScrollUp,
     Help,
     DeleteMessage,
+    ToggleHeaders,
 }
 
 const NAMES: &[(Action, &str)] = &[
@@ -65,6 +66,7 @@ const NAMES: &[(Action, &str)] = &[
     (Action::PaneScrollUp, "pane-up"),
     (Action::Help, "help"),
     (Action::DeleteMessage, "delete-message"),
+    (Action::ToggleHeaders, "toggle-headers"),
 ];
 
 impl Action {

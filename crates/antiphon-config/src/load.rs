@@ -190,7 +190,21 @@ mod tests {
         assert_eq!(config.ui.list_rows, 7);
         assert_eq!(config.ui.sidebar_width, 16);
         assert_eq!(config.ui.date_format, "%Y-%m-%d %H:%M");
+        assert_eq!(
+            config.ui.headers,
+            ["from", "to", "date", "subject"]
+        );
         assert!(config.notifications.enabled);
+    }
+
+    #[test]
+    fn headers_parse_from_the_ui_table() {
+        let config: Config = parse(
+            "[ui]\nheaders = [\"from\", \"x-mailer\"]\n",
+            Path::new("config.toml"),
+        )
+        .unwrap();
+        assert_eq!(config.ui.headers, ["from", "x-mailer"]);
     }
 
     #[test]

@@ -1,4 +1,6 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use antiphon_render::MessageHeader;
 
 use super::app::App;
 
@@ -14,6 +16,8 @@ pub(super) const ENCRYPTED_NOTE: &str =
 pub(super) struct Preview {
     pub path: PathBuf,
     pub lines: Vec<String>,
+    pub headers: Vec<MessageHeader>,
+    pub headers_all: Vec<MessageHeader>,
 }
 
 pub(super) fn refresh(app: &mut App) {
@@ -36,16 +40,30 @@ pub(super) fn refresh(app: &mut App) {
     if changed {
         app.preview_html = false;
     }
-    let lines = load_lines(&path, app.preview_html);
+    let preview = load(&path, app.preview_html, &app.header_names);
     app.preview_scroll = 0;
-    app.preview = Some(Preview { path, lines });
+    app.preview = Some(preview);
 }
 
-fn load_lines(path: &std::path::Path, html: bool) -> Vec<String> {
+fn load(path: &Path, html: bool, names: &[String]) -> Preview {
     let Ok(raw) = std::fs::read(path) else {
-        return vec!["message file is unavailable".to_string()];
+        return Preview {
+            path: path.to_owned(),
+            lines: vec!["message file is unavailable".to_string()],
+            headers: Vec::new(),
+            headers_all: Vec::new(),
+        };
     };
-    if antiphon_pgp::encrypted_payload(&raw).is_some() {
+    Preview {
+        path: path.to_owned(),
+        lines: body_lines(&raw, html),
+        headers: antiphon_render::selected_headers(&raw, names),
+        headers_all: antiphon_render::all_headers(&raw),
+    }
+}
+
+fn body_lines(raw: &[u8], html: bool) -> Vec<String> {
+    if antiphon_pgp::encrypted_payload(raw).is_some() {
         return vec![ENCRYPTED_NOTE.to_string()];
     }
     let preference = if html {
@@ -53,7 +71,7 @@ fn load_lines(path: &std::path::Path, html: bool) -> Vec<String> {
     } else {
         antiphon_render::BodyPreference::Plain
     };
-    antiphon_render::body_text_preferring(&raw, preference)
+    antiphon_render::body_text_preferring(raw, preference)
         .text
         .lines()
         .take(PREVIEW_LINE_CAP)
@@ -70,19 +88,32 @@ mod tests {
         Subject: preview\n\n\
         first line\nsecond line\n";
 
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|name| (*name).to_string()).collect()
+    }
+
     #[test]
-    fn a_plain_message_previews_its_body() {
+    fn a_plain_message_previews_its_body_and_headers() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("m.eml");
         std::fs::write(&path, PLAIN).unwrap();
-        let lines = load_lines(&path, false);
-        assert_eq!(lines[0], "first line");
-        assert_eq!(lines[1], "second line");
+        let preview = load(&path, false, &names(&["subject"]));
+        assert_eq!(preview.lines[0], "first line");
+        assert_eq!(preview.lines[1], "second line");
+        assert_eq!(preview.headers.len(), 1);
+        assert_eq!(preview.headers[0].name, "Subject");
+        assert_eq!(preview.headers[0].value, "preview");
+        assert_eq!(preview.headers_all.len(), 3);
     }
 
     #[test]
     fn a_missing_file_is_named_not_a_crash() {
-        let lines = load_lines(std::path::Path::new("/nowhere"), false);
-        assert_eq!(lines, ["message file is unavailable"]);
+        let preview = load(
+            std::path::Path::new("/nowhere"),
+            false,
+            &names(&["from"]),
+        );
+        assert_eq!(preview.lines, ["message file is unavailable"]);
+        assert!(preview.headers.is_empty());
     }
 }

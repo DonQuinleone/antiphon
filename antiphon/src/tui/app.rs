@@ -1,7 +1,7 @@
 use antiphon_config::{Composer, Loaded, ReadingPane};
 use antiphon_core::Action;
 use antiphon_pgp::{Keyring, Signature};
-use antiphon_render::MailtoUnsubscribe;
+use antiphon_render::{MailtoUnsubscribe, MessageHeader};
 use antiphon_store::MessageSummary;
 use antiphon_ui::{Theme, VESPERS};
 
@@ -55,6 +55,10 @@ pub struct App {
     pub pager_scroll: u16,
     pub pager_raw: Vec<u8>,
     pub pager_html: bool,
+    pub pager_headers: Vec<MessageHeader>,
+    pub pager_headers_all: Vec<MessageHeader>,
+    pub header_names: Vec<String>,
+    pub headers_all: bool,
     pub preview_scroll: u16,
     pub preview_html: bool,
     pub help: bool,
@@ -123,6 +127,10 @@ impl App {
             pager_scroll: 0,
             pager_raw: Vec::new(),
             pager_html: false,
+            pager_headers: Vec::new(),
+            pager_headers_all: Vec::new(),
+            header_names: loaded.config.ui.headers.clone(),
+            headers_all: false,
             preview_scroll: 0,
             preview_html: false,
             help: false,
@@ -219,7 +227,23 @@ impl App {
         self.pager_signature = signature;
         self.pager_invite = invite;
         self.pager_scroll = 0;
+        self.pager_headers = antiphon_render::selected_headers(
+            &self.pager_raw,
+            &self.header_names,
+        );
+        self.pager_headers_all =
+            antiphon_render::all_headers(&self.pager_raw);
         self.view = View::Pager;
+    }
+
+    /// The header block the pager shows right now: the
+    /// configured set, or everything once t toggles it.
+    pub fn pager_header_view(&self) -> &[MessageHeader] {
+        if self.headers_all {
+            &self.pager_headers_all
+        } else {
+            &self.pager_headers
+        }
     }
 
     pub fn selected_message(&self) -> Option<&MessageSummary> {
@@ -288,6 +312,9 @@ impl App {
                 self.pager_scroll =
                     self.pager_line_count().clamp(0, u16::MAX as i32)
                         as u16
+            }
+            Action::ToggleHeaders => {
+                self.headers_all = !self.headers_all
             }
             Action::Back | Action::Quit => self.view = View::List,
             _ => self.not_built_notice(),
