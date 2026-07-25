@@ -94,6 +94,22 @@ impl fmt::Display for Action {
     }
 }
 
+impl Action {
+    /// Only motions repeat under a count prefix; anything
+    /// with side effects runs once however many were typed.
+    pub fn repeatable(self) -> bool {
+        matches!(
+            self,
+            Action::MoveDown
+                | Action::MoveUp
+                | Action::HalfPageDown
+                | Action::HalfPageUp
+                | Action::PaneScrollDown
+                | Action::PaneScrollUp
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,21 +127,5 @@ mod tests {
     fn unknown_name_maps_to_nothing() {
         assert_eq!(Action::from_name("frobnicate"), None);
         assert_eq!(Action::from_name("HalfPageDown"), None);
-    }
-}
-
-impl Action {
-    /// Only motions repeat under a count prefix; anything
-    /// with side effects runs once however many were typed.
-    pub fn repeatable(self) -> bool {
-        matches!(
-            self,
-            Action::MoveDown
-                | Action::MoveUp
-                | Action::HalfPageDown
-                | Action::HalfPageUp
-                | Action::PaneScrollDown
-                | Action::PaneScrollUp
-        )
     }
 }
