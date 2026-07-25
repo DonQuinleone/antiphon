@@ -72,11 +72,19 @@ const DAEMON_ASSIGNS_ID: u64 = 0;
 const UNREAD_QUERY: &str = "tag:unread";
 const PGP_KEYRING_DIR: &str = "pgp";
 
+const THEMES_DIR: &str = "themes";
+
 pub fn run(
     loaded: &Loaded,
     layout: &StoreLayout,
     dirs: &Dirs,
 ) -> ExitCode {
+    if let Err(error) =
+        antiphon_ui::load_themes(&dirs.config.join(THEMES_DIR))
+    {
+        eprintln!("{error}");
+        return ExitCode::FAILURE;
+    }
     let keymap = match Keymap::new(&loaded.config.keys) {
         Ok(keymap) => keymap,
         Err(error) => {

@@ -1,0 +1,43 @@
+image: debian/stable
+arch: arm64
+packages:
+  - curl
+  - build-essential
+  - libnotmuch-dev
+  - pkg-config
+  - scdoc
+oauth: git.sr.ht/OBJECTS:RW
+environment:
+  repo: ~donquinleone/antiphon
+sources:
+  - https://git.sr.ht/~donquinleone/antiphon
+secrets: []
+tasks:
+  - gate: |
+      cd antiphon
+      tag=$(git describe --exact-match 2>/dev/null || true)
+      if [ -z "$tag" ]; then
+          echo "not a tag build; nothing to release"
+          exit 0
+      fi
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+          | sh -s -- -y --profile minimal
+  - package: |
+      cd antiphon
+      tag=$(git describe --exact-match 2>/dev/null || true)
+      [ -n "$tag" ] || exit 0
+      . "$HOME/.cargo/env"
+      cargo build --release --locked --workspace
+      name="antiphon-$tag-aarch64-linux-gnu"
+      mkdir "$name"
+      cp target/release/antiphon target/release/antiphond "$name/"
+      cp -R dist LICENSE README.md "$name/"
+      tar czf "$name.tar.gz" "$name"
+      sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+  - upload: |
+      cd antiphon
+      tag=$(git describe --exact-match 2>/dev/null || true)
+      [ -n "$tag" ] || exit 0
+      name="antiphon-$tag-aarch64-linux-gnu"
+      hut git artifact upload --repo "https://git.sr.ht/$repo" \
+          --rev "$tag" "$name.tar.gz" "$name.tar.gz.sha256"

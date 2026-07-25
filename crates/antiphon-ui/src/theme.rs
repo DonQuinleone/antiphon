@@ -1,15 +1,41 @@
-mod gallery;
+mod parse;
+
+use std::path::Path;
+use std::sync::OnceLock;
 
 use ratatui::style::Color;
 
-pub const fn hex(rgb: u32) -> Color {
-    assert!(rgb <= 0xff_ffff, "hex colour out of 24-bit range");
-    Color::Rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8)
-}
+pub use parse::ThemeError;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One theme file per theme: the shipped gallery is embedded
+/// from themes/ in exactly the format users write, so the
+/// source tree doubles as the format's documentation.
+const BUILTIN_THEMES: [&str; 17] = [
+    include_str!("../themes/vespers.toml"),
+    include_str!("../themes/kanagawa-wave.toml"),
+    include_str!("../themes/catppuccin-mocha.toml"),
+    include_str!("../themes/gruvbox-dark.toml"),
+    include_str!("../themes/tokyo-night.toml"),
+    include_str!("../themes/nord.toml"),
+    include_str!("../themes/rose-pine.toml"),
+    include_str!("../themes/dracula.toml"),
+    include_str!("../themes/solarized-dark.toml"),
+    include_str!("../themes/solarized-light.toml"),
+    include_str!("../themes/gruvbox-light.toml"),
+    include_str!("../themes/catppuccin-latte.toml"),
+    include_str!("../themes/one-dark.toml"),
+    include_str!("../themes/everforest-dark.toml"),
+    include_str!("../themes/ayu-dark.toml"),
+    include_str!("../themes/github-dark.toml"),
+    include_str!("../themes/monokai.toml"),
+];
+
+const VESPERS_NAME: &str = "vespers";
+const THEME_EXTENSION: &str = "toml";
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Theme {
-    pub name: &'static str,
+    pub name: String,
     pub background: Color,
     pub surface: Color,
     pub border: Color,
@@ -31,51 +57,67 @@ pub struct Theme {
     pub diff_remove: Color,
 }
 
-const DEPTH: Color = hex(0x0c0f1d);
-const SURFACE: Color = hex(0x141a2e);
-const RAISED: Color = hex(0x1e2742);
-const LINES: Color = hex(0x2c3860);
-const SLATE: Color = hex(0x7a86ad);
-const PARCHMENT: Color = hex(0xe9e4d4);
-const GOLD: Color = hex(0xd9ad52);
-const LIGHT_GOLD: Color = hex(0xedd08a);
-const SAGE: Color = hex(0x8ba7a3);
-const RUBRIC: Color = hex(0xc4576a);
+static REGISTRY: OnceLock<Vec<Theme>> = OnceLock::new();
 
-pub const VESPERS: Theme = Theme {
-    name: "vespers",
-    background: DEPTH,
-    surface: SURFACE,
-    border: RAISED,
-    text_primary: PARCHMENT,
-    text_muted: SLATE,
-    accent: GOLD,
-    accent_strong: LIGHT_GOLD,
-    selection_bg: LINES,
-    selection_fg: PARCHMENT,
-    unread_marker: GOLD,
-    list_date: SLATE,
-    list_time: GOLD,
-    list_from: SAGE,
-    list_subject: PARCHMENT,
-    count: SLATE,
-    status_ok: SAGE,
-    status_error: RUBRIC,
-    diff_add: SAGE,
-    diff_remove: RUBRIC,
-};
+fn builtins() -> Vec<Theme> {
+    BUILTIN_THEMES
+        .iter()
+        .map(|text| {
+            parse::parse_theme(text)
+                .expect("embedded themes always parse")
+        })
+        .collect()
+}
+
+/// Loads the registry: the built-in gallery plus every *.toml
+/// under `dir`, a user file overriding a built-in of the same
+/// name. Called once at startup; a defective user file fails
+/// loudly with its path, like config does. A process that
+/// never calls this (the daemon, tests) gets the built-ins on
+/// first use.
+pub fn load_themes(dir: &Path) -> Result<(), ThemeError> {
+    let mut themes = builtins();
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .map(|found| found.filter_map(Result::ok).collect())
+        .unwrap_or_default();
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        let path = entry.path();
+        let is_theme =
+            path.extension().is_some_and(|ext| ext == THEME_EXTENSION);
+        if !is_theme {
+            continue;
+        }
+        let theme = parse::parse_theme_file(&path)?;
+        themes.retain(|known| known.name != theme.name);
+        themes.push(theme);
+    }
+    let _ = REGISTRY.set(themes);
+    Ok(())
+}
+
+fn registry() -> &'static [Theme] {
+    REGISTRY.get_or_init(builtins)
+}
 
 impl Theme {
     pub fn by_name(name: &str) -> Option<&'static Theme> {
-        Self::all().find(|theme| theme.name == name)
+        registry().iter().find(|theme| theme.name == name)
     }
 
     pub fn names() -> impl Iterator<Item = &'static str> {
-        Self::all().map(|theme| theme.name)
+        registry().iter().map(|theme| theme.name.as_str())
     }
 
-    fn all() -> impl Iterator<Item = &'static Theme> {
-        std::iter::once(&VESPERS).chain(gallery::GALLERY.iter())
+    pub fn all() -> impl Iterator<Item = &'static Theme> {
+        registry().iter()
+    }
+
+    /// The house default; present unless a user file
+    /// deliberately overrides it, and the fallback is then
+    /// that override.
+    pub fn vespers() -> &'static Theme {
+        Self::by_name(VESPERS_NAME).unwrap_or_else(|| &registry()[0])
     }
 }
 
@@ -83,37 +125,25 @@ impl Theme {
 mod tests {
     use super::*;
 
-    fn rgb(colour: Color) -> u32 {
-        let Color::Rgb(r, g, b) = colour else {
-            panic!("expected an rgb colour, got {colour:?}");
-        };
-        (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)
-    }
-
     #[test]
-    fn hex_round_trips() {
-        let samples =
-            [0x000000, 0xffffff, 0x0c0f1d, 0x123456, 0xd9ad52];
-        for value in samples {
-            assert_eq!(rgb(hex(value)), value);
+    fn every_builtin_parses_and_resolves() {
+        let names: Vec<&str> = Theme::names().collect();
+        assert_eq!(names.len(), BUILTIN_THEMES.len());
+        for expected in [
+            "vespers",
+            "dracula",
+            "solarized-dark",
+            "solarized-light",
+            "gruvbox-light",
+            "catppuccin-latte",
+            "one-dark",
+            "everforest-dark",
+            "ayu-dark",
+            "github-dark",
+            "monokai",
+        ] {
+            assert!(names.contains(&expected), "{expected} missing");
         }
-    }
-
-    #[test]
-    fn every_named_theme_resolves() {
-        let names: Vec<_> = Theme::names().collect();
-        assert_eq!(
-            names,
-            [
-                "vespers",
-                "kanagawa-wave",
-                "catppuccin-mocha",
-                "gruvbox-dark",
-                "tokyo-night",
-                "nord",
-                "rose-pine",
-            ],
-        );
         for name in names {
             let theme = Theme::by_name(name)
                 .unwrap_or_else(|| panic!("{name} did not resolve"));
@@ -130,30 +160,24 @@ mod tests {
 
     #[test]
     fn vespers_matches_the_branding_palette() {
-        let vespers = Theme::by_name("vespers").unwrap();
-        let slots = [
-            (vespers.background, 0x0c0f1d),
-            (vespers.surface, 0x141a2e),
-            (vespers.border, 0x1e2742),
-            (vespers.text_primary, 0xe9e4d4),
-            (vespers.text_muted, 0x7a86ad),
-            (vespers.accent, 0xd9ad52),
-            (vespers.accent_strong, 0xedd08a),
-            (vespers.selection_bg, 0x2c3860),
-            (vespers.selection_fg, 0xe9e4d4),
-            (vespers.unread_marker, 0xd9ad52),
-            (vespers.list_date, 0x7a86ad),
-            (vespers.list_time, 0xd9ad52),
-            (vespers.list_from, 0x8ba7a3),
-            (vespers.list_subject, 0xe9e4d4),
-            (vespers.count, 0x7a86ad),
-            (vespers.status_ok, 0x8ba7a3),
-            (vespers.status_error, 0xc4576a),
-            (vespers.diff_add, 0x8ba7a3),
-            (vespers.diff_remove, 0xc4576a),
-        ];
-        for (slot, expected) in slots {
-            assert_eq!(rgb(slot), expected);
+        let vespers = Theme::vespers();
+        assert_eq!(vespers.background, Color::Rgb(0x0c, 0x0f, 0x1d));
+        assert_eq!(vespers.accent, Color::Rgb(0xd9, 0xad, 0x52));
+        assert_eq!(vespers.text_primary, Color::Rgb(0xe9, 0xe4, 0xd4));
+    }
+
+    #[test]
+    fn light_themes_really_are_light() {
+        for name in
+            ["solarized-light", "gruvbox-light", "catppuccin-latte"]
+        {
+            let theme = Theme::by_name(name).unwrap();
+            let Color::Rgb(red, green, blue) = theme.background else {
+                panic!("{name}: expected an rgb background");
+            };
+            let brightness =
+                u32::from(red) + u32::from(green) + u32::from(blue);
+            assert!(brightness > 500, "{name} is not light");
         }
     }
 }

@@ -76,8 +76,19 @@ query = "tag:unread"
 ```
 
 Gallery themes: `vespers` (default), `kanagawa-wave`,
-`catppuccin-mocha`, `gruvbox-dark`, `tokyo-night`, `nord`,
-`rose-pine`. Truecolor terminal required.
+`catppuccin-mocha`, `gruvbox-dark`, `gruvbox-light`,
+`tokyo-night`, `nord`, `rose-pine`, `dracula`,
+`solarized-dark`, `solarized-light`, `catppuccin-latte`,
+`one-dark`, `everforest-dark`, `ayu-dark`, `github-dark`,
+`monokai`. Truecolor terminal required.
+
+Themes are plain files, one per theme, and yours load from
+`$XDG_CONFIG_HOME/antiphon/themes/*.toml`: nineteen `#rrggbb`
+colour roles plus a `name`, in exactly the format the shipped
+gallery uses (crates/antiphon-ui/themes/ in the source tree
+is the reference). A user file whose `name` matches a shipped
+theme replaces it, and a defective file fails startup naming
+the file and the key, like every other config error.
 
 In the message list the rendered `date_format` splits at its
 last space: the left part wears the theme's date colour, the

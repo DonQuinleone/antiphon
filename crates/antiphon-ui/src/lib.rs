@@ -1,3 +1,3 @@
 mod theme;
 
-pub use theme::{Theme, VESPERS, hex};
+pub use theme::{Theme, ThemeError, load_themes};

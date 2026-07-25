@@ -256,6 +256,8 @@ name = "antiphon-ui"
 version = "0.0.0"
 dependencies = [
  "ratatui",
+ "serde",
+ "toml",
 ]
 
 [[package]]

@@ -10,3 +10,5 @@ description = "Ratatui widgets, views and the theme engine"
 
 [dependencies]
 ratatui = "=0.30.2"
+serde = { version = "=1.0.229", features = ["derive"] }
+toml = "=1.1.3"

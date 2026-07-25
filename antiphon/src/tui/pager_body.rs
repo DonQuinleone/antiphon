@@ -179,7 +179,6 @@ fn link_in<'a>(
 #[cfg(test)]
 mod tests {
     use antiphon_pgp::Signature;
-    use antiphon_ui::VESPERS;
 
     use super::super::testkit::app_with_messages;
     use super::*;
@@ -215,13 +214,16 @@ mod tests {
             ],
         );
         assert_eq!(rows[0].kind, RowKind::Invite);
-        let styled = styled(&VESPERS, &rows[0]);
-        assert_eq!(styled.spans[0].style.fg, Some(VESPERS.accent));
+        let styled = styled(Theme::vespers(), &rows[0]);
+        assert_eq!(
+            styled.spans[0].style.fg,
+            Some(Theme::vespers().accent)
+        );
     }
 
     #[test]
     fn patch_classifications_map_to_theme_roles() {
-        let theme = &VESPERS;
+        let theme = Theme::vespers();
         let cases = [
             (PatchLine::Addition, "+new", theme.diff_add),
             (PatchLine::Removal, "-old", theme.diff_remove),
@@ -258,12 +260,12 @@ mod tests {
             Vec::new(),
         );
         let rows = rows(&app);
-        let line = styled(&VESPERS, &rows[0]);
+        let line = styled(Theme::vespers(), &rows[0]);
         assert_eq!(line_text(&line), "see https://example.com/x now");
         assert_eq!(line.spans.len(), 3);
         let link = &line.spans[1];
         assert_eq!(link.content.as_ref(), "https://example.com/x");
-        assert_eq!(link.style.fg, Some(VESPERS.accent));
+        assert_eq!(link.style.fg, Some(Theme::vespers().accent));
         assert!(link.style.add_modifier.contains(Modifier::UNDERLINED));
     }
 

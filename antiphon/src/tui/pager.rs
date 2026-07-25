@@ -219,7 +219,6 @@ fn signature_colour(
 
 #[cfg(test)]
 mod tests {
-    use antiphon_ui::VESPERS;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::buffer::Buffer;
@@ -314,12 +313,12 @@ mod tests {
         assert!(top.starts_with("From: alba@example.com"));
         let x = top.find("lists, patch").unwrap() as u16;
         let cell = buffer.cell((x, 1)).unwrap();
-        assert_eq!(cell.style().fg, Some(VESPERS.text_muted));
+        assert_eq!(cell.style().fg, Some(Theme::vespers().text_muted));
     }
 
     #[test]
     fn overlong_tags_truncate_with_an_ellipsis() {
-        let theme = &VESPERS;
+        let theme = Theme::vespers();
         let tags = vec![
             "a-very-long-tag".to_string(),
             "another-long-tag".to_string(),
@@ -377,7 +376,7 @@ mod tests {
 
     #[test]
     fn signature_line_renders_and_colours_per_status() {
-        let theme = &VESPERS;
+        let theme = Theme::vespers();
         let cases = [
             (
                 SignatureStatus::Good {
@@ -415,6 +414,9 @@ mod tests {
 
     #[test]
     fn unsigned_message_shows_no_signature_line() {
-        assert!(signature_line(&VESPERS, &Signature::none()).is_none());
+        assert!(
+            signature_line(Theme::vespers(), &Signature::none())
+                .is_none()
+        );
     }
 }

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use antiphon_config::{Composer, ReadingPane};
 use antiphon_pgp::{Keyring, Signature, SignatureStatus};
 use antiphon_store::MessageSummary;
-use antiphon_ui::VESPERS;
+use antiphon_ui::Theme;
 
 use super::app::{App, DEFAULT_QUERY, View};
 use super::commands::FrameStats;
@@ -76,7 +76,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         sidebar: true,
         list_rows: antiphon_config::Ui::default().list_rows,
         sidebar_width: antiphon_config::Ui::default().sidebar_width,
-        theme: &VESPERS,
+        theme: Theme::vespers(),
         date_format: String::new(),
         notice: None,
         prompt: None,

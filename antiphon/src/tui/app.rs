@@ -6,7 +6,7 @@ use antiphon_render::{
 };
 use antiphon_store::MessageSummary;
 use antiphon_store::contacts::Contact;
-use antiphon_ui::{Theme, VESPERS};
+use antiphon_ui::Theme;
 
 use super::actions::{OpIntent, account_names};
 use super::commands::{FrameStats, PatchCommand, Prompt};
@@ -124,8 +124,8 @@ impl App {
             sidebar::entries(folders, &loaded.config.saved_searches);
         let sidebar_selected =
             sidebar::default_selection(&sidebar_entries);
-        let theme =
-            Theme::by_name(&loaded.config.ui.theme).unwrap_or(&VESPERS);
+        let theme = Theme::by_name(&loaded.config.ui.theme)
+            .unwrap_or(Theme::vespers());
         App {
             accounts,
             scope: ViewScope::Unified,
