@@ -5,7 +5,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Row, Table, TableState};
+use ratatui::widgets::{Paragraph, Row, Table, TableState};
 
 use super::app::App;
 
@@ -60,6 +60,15 @@ fn date_width(messages: &[MessageSummary], format: &str) -> u16 {
 
 pub(super) fn draw_list(frame: &mut Frame, app: &App, area: Rect) {
     let theme = app.theme;
+    if app.messages.is_empty() {
+        let label = app.active_search.as_deref().unwrap_or("this view");
+        let empty = Paragraph::new(Line::from(Span::styled(
+            format!("nothing in {label}"),
+            Style::new().fg(theme.text_muted),
+        )));
+        frame.render_widget(empty, area);
+        return;
+    }
     let columns = columns(area.width, &app.messages, &app.date_format);
     let rows = app.messages.iter().map(|message| {
         message_row(app, &columns, message, &app.date_format)
@@ -422,13 +431,14 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_list_renders_just_the_header() {
+    fn an_empty_list_says_so() {
         let app = listed_app(&[], ISO);
         let buffer = render(&app, 40, 4);
-        let header = row_chars(&buffer, 0);
-        assert_eq!(column_of(&header, DATE_HEADING), Some(0));
-        let row: String = row_chars(&buffer, 1).into_iter().collect();
-        assert!(row.trim().is_empty());
+        let row: String = row_chars(&buffer, 0).into_iter().collect();
+        assert!(
+            row.contains("nothing in"),
+            "expected the empty notice, got {row:?}"
+        );
     }
 
     #[test]

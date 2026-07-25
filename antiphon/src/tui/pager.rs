@@ -88,7 +88,10 @@ fn pager_line_colour(
     }
 }
 
-fn prose_colour(theme: &Theme, line: &str) -> ratatui::style::Color {
+pub(super) fn prose_colour(
+    theme: &Theme,
+    line: &str,
+) -> ratatui::style::Color {
     if line.trim_start().starts_with('>') {
         theme.text_muted
     } else {

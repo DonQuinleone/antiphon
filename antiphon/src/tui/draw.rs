@@ -227,9 +227,10 @@ fn preview_lines(app: &App) -> Vec<Line<'static>> {
         .lines
         .iter()
         .map(|line| {
+            let colour = super::pager::prose_colour(theme, line);
             Line::from(Span::styled(
                 line.clone(),
-                Style::new().fg(theme.text_primary),
+                Style::new().fg(colour),
             ))
         })
         .collect()
