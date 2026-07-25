@@ -160,6 +160,7 @@ impl App {
                 account,
                 name,
                 query,
+                ..
             } => {
                 self.scope = ViewScope::Account(account);
                 self.current_query = query;

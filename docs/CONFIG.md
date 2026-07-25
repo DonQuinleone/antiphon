@@ -158,7 +158,10 @@ account's root maildir, and every other folder is discovered
 from the store's maildir tree on each refresh, nested IMAP
 folders included (`lists/aerc`, `inbox/accounts`). Opening a
 folder scopes the view to its account and shows only that
-folder's messages.
+folder's messages. A folder holding unread mail steps out of
+the muted rank and carries its unread count beside the name,
+refreshed with the rest of the sidebar every couple of
+seconds.
 
 `reply-list` (`L`) replies to the mailing list a message came
 from: `Mail-Followup-To` wins when the author set one,

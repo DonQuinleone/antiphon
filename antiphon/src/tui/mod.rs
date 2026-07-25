@@ -284,7 +284,14 @@ fn maybe_refresh(
     *last_refresh = Instant::now();
     app.sync_progress = antiphon_sync::read_progress(layout);
     let folders = sidebar::discover(layout, &app.accounts);
-    app.update_sidebar(sidebar::entries(&folders, saved));
+    let index = SearchIndex::open(layout).ok();
+    let mut entries = sidebar::entries(&folders, saved);
+    if let Some(index) = &index {
+        sidebar::fill_unread(&mut entries, |query| {
+            index.count(&format!("tag:unread and ({query})")).ok()
+        });
+    }
+    app.update_sidebar(entries);
     if app.view != View::List || app.prompt.is_some() {
         return;
     }
@@ -295,7 +302,7 @@ fn maybe_refresh(
     let Ok(unread_query) = app.scoped(UNREAD_QUERY) else {
         return;
     };
-    let Ok(index) = SearchIndex::open(layout) else {
+    let Some(index) = index else {
         return;
     };
     let Ok(total) = index.count(&effective) else {

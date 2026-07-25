@@ -176,6 +176,9 @@ fn sidebar_separator(theme: &Theme, width: u16) -> ListItem<'static> {
     )))
 }
 
+/// A folder holding unread mail steps out of the muted rank
+/// and wears its count, so the sidebar says where new mail
+/// sits without being opened.
 fn sidebar_item(
     app: &App,
     index: usize,
@@ -183,22 +186,35 @@ fn sidebar_item(
 ) -> ListItem<'static> {
     let theme = app.theme;
     let active = entry_active(app, entry);
+    let unread = super::sidebar::unread_of(entry);
     let marker = if active { ACTIVE_MARK } else { INACTIVE_MARK };
     let mut style = if active {
         Style::new()
             .fg(theme.accent_strong)
             .add_modifier(Modifier::BOLD)
+    } else if unread > 0 {
+        Style::new()
+            .fg(theme.text_primary)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::new().fg(theme.text_muted)
     };
+    let mut count_style = Style::new()
+        .fg(theme.unread_marker)
+        .add_modifier(Modifier::BOLD);
     if index == app.sidebar_selected {
         style = style.bg(theme.selection_bg).fg(theme.selection_fg);
+        count_style = count_style.bg(theme.selection_bg);
     }
     let indent = if entry.is_folder() { "  " } else { "" };
-    ListItem::new(Line::from(Span::styled(
+    let mut spans = vec![Span::styled(
         format!("{marker}{indent}{}", entry.label()),
         style,
-    )))
+    )];
+    if unread > 0 {
+        spans.push(Span::styled(format!(" {unread}"), count_style));
+    }
+    ListItem::new(Line::from(spans))
 }
 
 fn entry_active(app: &App, entry: &SidebarEntry) -> bool {
@@ -414,6 +430,24 @@ mod tests {
         assert!(rows[2].starts_with("    inbox"), "{:?}", rows[2]);
         assert!(rows[3].starts_with("    archive"), "{:?}", rows[3]);
         assert!(rows[4].starts_with("    lists/aerc"), "{:?}", rows[4]);
+    }
+
+    #[test]
+    fn unread_folders_wear_their_count_in_the_sidebar() {
+        let mut app = app_with_folders(&[("work", &["archive"][..])]);
+        super::super::sidebar::fill_unread(
+            &mut app.sidebar_entries,
+            |query| query.contains("archive").then_some(7),
+        );
+        let backend = TestBackend::new(60, 14);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| draw(frame, &app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let rows: Vec<String> =
+            (0..5).map(|y| row_text(buffer, y)).collect();
+        assert!(rows[2].starts_with("    inbox"), "{:?}", rows[2]);
+        assert!(!rows[2].contains('0'), "no count when read");
+        assert!(rows[3].starts_with("    archive 7"), "{:?}", rows[3]);
     }
 
     #[test]

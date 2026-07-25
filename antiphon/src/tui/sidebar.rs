@@ -13,6 +13,7 @@ pub enum SidebarEntry {
         account: String,
         name: String,
         query: String,
+        unread: u32,
     },
     Saved {
         name: String,
@@ -106,6 +107,7 @@ fn inbox_entry(account: &str) -> SidebarEntry {
         query: format!(
             "path:\"{account}/cur\" or path:\"{account}/new\""
         ),
+        unread: 0,
     }
 }
 
@@ -114,6 +116,29 @@ fn folder_entry(account: &str, folder: &str) -> SidebarEntry {
         account: account.to_string(),
         name: folder.to_string(),
         query: format!("path:\"{account}/{folder}/**\""),
+        unread: 0,
+    }
+}
+
+/// Stamps unread counts onto the folder entries; the counter
+/// answers "how many unread match this query", normally the
+/// notmuch index, injectable so the maths tests offline.
+pub fn fill_unread(
+    entries: &mut [SidebarEntry],
+    mut count: impl FnMut(&str) -> Option<u32>,
+) {
+    for entry in entries {
+        let SidebarEntry::Folder { query, unread, .. } = entry else {
+            continue;
+        };
+        *unread = count(query).unwrap_or(0);
+    }
+}
+
+pub fn unread_of(entry: &SidebarEntry) -> u32 {
+    match entry {
+        SidebarEntry::Folder { unread, .. } => *unread,
+        _ => 0,
     }
 }
 
@@ -260,6 +285,22 @@ mod tests {
         let fallback = default_selection(&searches_only);
         assert_eq!(searches_only[fallback].label(), ALL_LABEL);
         assert_eq!(default_selection(&[]), 0);
+    }
+
+    #[test]
+    fn fill_unread_stamps_folders_and_skips_the_rest() {
+        let mut items = entries(
+            &accounts(&[("work", &["archive"])]),
+            &saved(&[("boss", "from:boss")]),
+        );
+        fill_unread(&mut items, |query| {
+            match query.contains("archive") {
+                true => Some(3),
+                false => None,
+            }
+        });
+        let counts: Vec<u32> = items.iter().map(unread_of).collect();
+        assert_eq!(counts, [0, 0, 0, 3, 0, 0, 0, 0, 0]);
     }
 
     #[test]
