@@ -56,6 +56,13 @@ impl StoreLayout {
         self.root.join("outbox")
     }
 
+    /// Not part of init's directory set: pre-existing stores
+    /// must keep passing exists(), so the draft spool creates
+    /// this directory on first use instead.
+    pub fn draft_outbox_dir(&self) -> PathBuf {
+        self.root.join("draft_outbox")
+    }
+
     pub fn tokens_dir(&self) -> PathBuf {
         self.root.join("tokens")
     }
@@ -204,6 +211,10 @@ mod tests {
         assert_eq!(layout.notmuch_dir(), root.join("notmuch"));
         assert_eq!(layout.oplog_dir(), root.join("oplog"));
         assert_eq!(layout.outbox_dir(), root.join("outbox"));
+        assert_eq!(
+            layout.draft_outbox_dir(),
+            root.join("draft_outbox")
+        );
         assert_eq!(layout.tokens_dir(), root.join("tokens"));
         assert_eq!(layout.contacts_dir(), root.join("contacts"));
         assert_eq!(layout.sync_state_dir(), root.join("sync_state"));

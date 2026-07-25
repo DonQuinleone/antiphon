@@ -1,14 +1,9 @@
-use std::fmt;
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
 use crate::layout::StoreLayout;
-
-const MESSAGE_EXT: &str = "eml";
-const ENVELOPE_EXT: &str = "json";
+use crate::spool::{Spool, SpoolError};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Envelope {
@@ -24,35 +19,14 @@ pub struct QueuedMessage {
     pub message_path: PathBuf,
 }
 
-#[derive(Debug)]
-pub enum OutboxError {
-    Io { path: PathBuf, source: io::Error },
-    Envelope { path: PathBuf, detail: String },
-}
-
-impl fmt::Display for OutboxError {
-    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Io { path, source } => {
-                write!(out, "{}: {source}", path.display())
-            }
-            Self::Envelope { path, detail } => {
-                write!(out, "{}: {detail}", path.display())
-            }
-        }
-    }
-}
-
-impl std::error::Error for OutboxError {}
-
 pub struct Outbox {
-    dir: PathBuf,
+    spool: Spool,
 }
 
 impl Outbox {
     pub fn open(layout: &StoreLayout) -> Outbox {
         Outbox {
-            dir: layout.outbox_dir(),
+            spool: Spool::new(layout.outbox_dir()),
         }
     }
 
@@ -63,13 +37,9 @@ impl Outbox {
         &self,
         envelope: &Envelope,
         raw_message: &[u8],
-    ) -> Result<QueuedMessage, OutboxError> {
-        let id = self.next_id()?;
-        let message_path = self.path_for(id, MESSAGE_EXT);
-        write_synced(&message_path, raw_message)?;
-        let json =
-            serde_json::to_vec(envelope).expect("envelope serialises");
-        write_synced(&self.path_for(id, ENVELOPE_EXT), &json)?;
+    ) -> Result<QueuedMessage, SpoolError> {
+        let (id, message_path) =
+            self.spool.enqueue(envelope, raw_message)?;
         Ok(QueuedMessage {
             id,
             envelope: envelope.clone(),
@@ -77,103 +47,30 @@ impl Outbox {
         })
     }
 
-    pub fn pending(&self) -> Result<Vec<QueuedMessage>, OutboxError> {
-        let entries = fs::read_dir(&self.dir).map_err(|source| {
-            OutboxError::Io {
-                path: self.dir.clone(),
-                source,
-            }
-        })?;
-        let mut ids: Vec<u64> = entries
-            .filter_map(Result::ok)
-            .filter_map(|entry| queued_id(&entry.path()))
-            .collect();
-        ids.sort_unstable();
-        ids.dedup();
-        ids.into_iter()
-            .filter_map(|id| self.load(id).transpose())
-            .collect()
+    pub fn pending(&self) -> Result<Vec<QueuedMessage>, SpoolError> {
+        Ok(self
+            .spool
+            .pending()?
+            .into_iter()
+            .map(|(id, envelope, message_path)| QueuedMessage {
+                id,
+                envelope,
+                message_path,
+            })
+            .collect())
     }
 
-    pub fn remove(&self, id: u64) -> Result<(), OutboxError> {
-        for ext in [ENVELOPE_EXT, MESSAGE_EXT] {
-            let path = self.path_for(id, ext);
-            let Err(source) = fs::remove_file(&path) else {
-                continue;
-            };
-            if source.kind() == io::ErrorKind::NotFound {
-                continue;
-            }
-            return Err(OutboxError::Io { path, source });
-        }
-        Ok(())
+    pub fn remove(&self, id: u64) -> Result<(), SpoolError> {
+        self.spool.remove(id)
     }
-
-    fn load(
-        &self,
-        id: u64,
-    ) -> Result<Option<QueuedMessage>, OutboxError> {
-        let envelope_path = self.path_for(id, ENVELOPE_EXT);
-        let message_path = self.path_for(id, MESSAGE_EXT);
-        if !envelope_path.exists() || !message_path.exists() {
-            return Ok(None);
-        }
-        let bytes = fs::read(&envelope_path).map_err(|source| {
-            OutboxError::Io {
-                path: envelope_path.clone(),
-                source,
-            }
-        })?;
-        let envelope =
-            serde_json::from_slice(&bytes).map_err(|error| {
-                OutboxError::Envelope {
-                    path: envelope_path,
-                    detail: error.to_string(),
-                }
-            })?;
-        Ok(Some(QueuedMessage {
-            id,
-            envelope,
-            message_path,
-        }))
-    }
-
-    fn next_id(&self) -> Result<u64, OutboxError> {
-        let entries = fs::read_dir(&self.dir).map_err(|source| {
-            OutboxError::Io {
-                path: self.dir.clone(),
-                source,
-            }
-        })?;
-        let highest = entries
-            .filter_map(Result::ok)
-            .filter_map(|entry| queued_id(&entry.path()))
-            .max()
-            .unwrap_or(0);
-        Ok(highest + 1)
-    }
-
-    fn path_for(&self, id: u64, ext: &str) -> PathBuf {
-        self.dir.join(format!("{id:016}.{ext}"))
-    }
-}
-
-fn queued_id(path: &Path) -> Option<u64> {
-    path.file_stem()?.to_str()?.parse().ok()
-}
-
-fn write_synced(path: &Path, bytes: &[u8]) -> Result<(), OutboxError> {
-    let wrap = |source| OutboxError::Io {
-        path: path.to_path_buf(),
-        source,
-    };
-    let mut file = fs::File::create(path).map_err(wrap)?;
-    io::Write::write_all(&mut file, bytes).map_err(wrap)?;
-    file.sync_data().map_err(wrap)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
+    use crate::spool::ENVELOPE_EXT;
+
     use super::*;
 
     fn outbox_in(dir: &tempfile::TempDir) -> Outbox {
