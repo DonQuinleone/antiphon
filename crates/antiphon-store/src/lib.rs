@@ -1,5 +1,6 @@
 pub mod apply;
-pub mod drafts;
+pub mod contacts;
+mod drafts;
 pub mod layout;
 pub mod oplog;
 pub mod outbox;
