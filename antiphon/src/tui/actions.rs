@@ -27,7 +27,29 @@ pub enum OpIntent {
         account: String,
         message_id: String,
         to_folder: String,
+        from_folder: String,
     },
+}
+
+/// The folder a delivered message sits in, relative to its
+/// account maildir: empty for the root inbox, "lists/rust"
+/// for a nested folder.
+pub fn folder_of(path: &std::path::Path) -> String {
+    let account = account_of(path);
+    let mut parts: Vec<&str> = Vec::new();
+    let mut seen_account = false;
+    for component in path.components() {
+        let text = component.as_os_str().to_str().unwrap_or("");
+        if seen_account {
+            parts.push(text);
+        }
+        if !seen_account && text == account {
+            seen_account = true;
+        }
+    }
+    // The trailing cur|new/<file> pair never names a folder.
+    let folder_parts = parts.len().saturating_sub(2).min(parts.len());
+    parts[..folder_parts].join("/")
 }
 
 pub fn account_of(path: &std::path::Path) -> String {
@@ -52,7 +74,12 @@ pub fn account_names(loaded: &Loaded) -> Vec<String> {
 }
 
 const THREAD_LABEL: &str = "thread";
-const DEFAULT_ARCHIVE_FOLDER: &str = "Archive";
+// Lowercase because the store's local folder names are the
+// server names lowercased by the sync engine.
+const DEFAULT_ARCHIVE_FOLDER: &str = "archive";
+// Typing "inbox" moves to the account root, whose folder path
+// is empty.
+const ROOT_FOLDER_INPUT: &str = "inbox";
 
 impl App {
     pub(super) fn apply_in_list(&mut self, action: Action) {
@@ -103,6 +130,7 @@ impl App {
             Action::ToggleFlagged => self.toggle_flagged(),
             Action::DeleteMessage => self.delete_selected(),
             Action::Archive => self.archive_selected(),
+            Action::MoveTo => self.open_folder_picker(),
             Action::ThreadView => self.open_thread(),
             Action::Back => self.close_thread(),
             Action::Quit => self.quit = true,
@@ -169,9 +197,13 @@ impl App {
                 query,
                 ..
             } => {
+                let label = self
+                    .alias_for(&account, &name)
+                    .unwrap_or(&name)
+                    .to_string();
                 self.scope = ViewScope::Account(account);
                 self.current_query = query;
-                self.active_search = Some(name);
+                self.active_search = Some(label);
             }
             SidebarEntry::Saved { name, query } => {
                 self.current_query = query;
@@ -243,19 +275,60 @@ impl App {
     /// ("Archive" unless the account names another): a durable
     /// move op the daemon replays against the server.
     pub(super) fn archive_selected(&mut self) {
+        let Some(message) = self.selected_message() else {
+            return;
+        };
+        let account = account_of(&message.path);
+        let to_folder = self.archive_folder_of(&account);
+        self.move_selected_to(&to_folder);
+    }
+
+    /// The one row-to-op path for moves: the row leaves at
+    /// once, the op records where the message came from so
+    /// the server replay can find it there.
+    pub(super) fn move_selected_to(&mut self, to_folder: &str) {
         if self.selected >= self.messages.len() {
             return;
         }
         let message = self.messages.remove(self.selected);
         self.total_messages = self.total_messages.saturating_sub(1);
         let account = account_of(&message.path);
-        let to_folder = self.archive_folder_of(&account);
+        let to_folder = self.resolve_folder(&account, to_folder);
         self.pending_ops.push(OpIntent::Move {
             account,
             message_id: message.id,
+            from_folder: folder_of(&message.path),
             to_folder,
         });
         self.selected = self.selected.min(self.last_index());
+    }
+
+    /// Folder names typed by the user accept an alias as well
+    /// as the real path; display is the inverse mapping.
+    pub(super) fn resolve_folder(
+        &self,
+        account: &str,
+        input: &str,
+    ) -> String {
+        if input == ROOT_FOLDER_INPUT {
+            return String::new();
+        }
+        self.folder_aliases
+            .iter()
+            .find(|(acct, _, alias)| acct == account && alias == input)
+            .map(|(_, real, _)| real.clone())
+            .unwrap_or_else(|| input.to_string())
+    }
+
+    pub(super) fn alias_for(
+        &self,
+        account: &str,
+        folder: &str,
+    ) -> Option<&str> {
+        self.folder_aliases
+            .iter()
+            .find(|(acct, real, _)| acct == account && real == folder)
+            .map(|(_, _, alias)| alias.as_str())
     }
 
     fn archive_folder_of(&self, account: &str) -> String {
@@ -291,6 +364,46 @@ impl App {
 mod tests {
 
     #[test]
+    fn folder_of_reads_the_subdir_between_account_and_cur() {
+        let cases = [
+            ("store/maildir/work/cur/a.eml", ""),
+            ("store/maildir/work/lists/rust/new/a.eml", "lists/rust"),
+            ("store/maildir/work/archive/cur/a.eml", "archive"),
+        ];
+        for (path, expected) in cases {
+            assert_eq!(
+                folder_of(std::path::Path::new(path)),
+                expected,
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn typed_folder_names_resolve_aliases_and_the_root() {
+        let mut app = app_with_messages(1);
+        app.folder_aliases = vec![(
+            "work".to_string(),
+            "inbox/accounts".to_string(),
+            "accounts".to_string(),
+        )];
+        assert_eq!(
+            app.resolve_folder("work", "accounts"),
+            "inbox/accounts"
+        );
+        assert_eq!(
+            app.resolve_folder("home", "accounts"),
+            "accounts",
+            "aliases are per account"
+        );
+        assert_eq!(app.resolve_folder("work", "inbox"), "");
+        assert_eq!(
+            app.alias_for("work", "inbox/accounts"),
+            Some("accounts")
+        );
+    }
+
+    #[test]
     fn archiving_moves_to_the_account_folder_and_drops_the_row() {
         let mut app = app_with_messages(2);
         app.messages[1].path =
@@ -316,7 +429,7 @@ mod tests {
         else {
             panic!("expected a move op");
         };
-        assert_eq!(to_folder, "Archive", "default folder");
+        assert_eq!(to_folder, "archive", "default folder");
         assert!(app.messages.is_empty());
         app.apply_in_list(Action::Archive);
         assert_eq!(app.pending_ops.len(), 2, "empty list is safe");

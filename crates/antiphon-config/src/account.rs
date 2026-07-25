@@ -12,6 +12,8 @@ pub struct AccountFile {
     pub rules: Vec<Rule>,
     pub oauth: Option<Oauth>,
     pub graph: Option<Graph>,
+    #[serde(default)]
+    pub folder_names: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]

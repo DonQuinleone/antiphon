@@ -118,9 +118,13 @@ fn store_kind(kind: antiphon_ipc::OpKind) -> OpKind {
         antiphon_ipc::OpKind::Flag { add, remove } => {
             OpKind::Flag { add, remove }
         }
-        antiphon_ipc::OpKind::Move { to_folder } => {
-            OpKind::Move { to_folder }
-        }
+        antiphon_ipc::OpKind::Move {
+            to_folder,
+            from_folder,
+        } => OpKind::Move {
+            to_folder,
+            from_folder,
+        },
         antiphon_ipc::OpKind::Delete => OpKind::Delete,
     }
 }
@@ -151,10 +155,14 @@ mod tests {
         assert!(matches!(flag, OpKind::Flag { .. }));
         let moved = store_kind(WireKind::Move {
             to_folder: "archive".to_string(),
+            from_folder: Some(String::new()),
         });
-        assert!(
-            matches!(moved, OpKind::Move { to_folder } if to_folder == "archive")
-        );
+        assert!(matches!(
+            moved,
+            OpKind::Move { to_folder, from_folder }
+                if to_folder == "archive"
+                    && from_folder.as_deref() == Some("")
+        ));
         assert!(matches!(store_kind(WireKind::Delete), OpKind::Delete));
     }
 

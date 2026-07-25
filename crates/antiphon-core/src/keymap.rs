@@ -45,6 +45,7 @@ const DEFAULT_BINDINGS: &[(Action, &str)] = &[
     (Action::Attachments, "v"),
     (Action::ThreadView, "T"),
     (Action::Archive, "a"),
+    (Action::MoveTo, "c"),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -334,6 +335,7 @@ mod tests {
             (press(KeyCode::Char('v')), Action::Attachments),
             (shifted('T'), Action::ThreadView),
             (press(KeyCode::Char('a')), Action::Archive),
+            (press(KeyCode::Char('c')), Action::MoveTo),
             (
                 KeyEvent::new(
                     KeyCode::Char('n'),

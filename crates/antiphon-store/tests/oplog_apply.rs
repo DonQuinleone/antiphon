@@ -150,6 +150,7 @@ fn move_application_is_idempotent() {
         "gamma@example.com",
         OpKind::Move {
             to_folder: ARCHIVE.to_owned(),
+            from_folder: None,
         },
     );
     assert_eq!(outcome, ApplyOutcome::Applied);
@@ -220,6 +221,7 @@ fn script() -> Vec<(&'static str, OpKind)> {
             "beta@example.com",
             OpKind::Move {
                 to_folder: ARCHIVE.to_owned(),
+                from_folder: None,
             },
         ),
         ("alpha@example.com", flag_op(&["replied"], &[])),

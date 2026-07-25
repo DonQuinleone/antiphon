@@ -64,6 +64,7 @@ pub struct App {
     pub pager_rendered: RenderedBody,
     pub pager_attachments: Vec<MessageAttachment>,
     pub link_picker: Option<LinkPicker>,
+    pub folder_picker: Option<super::folder_picker::FolderPicker>,
     pub drawer_open: bool,
     pub drawer_selected: usize,
     pub header_names: Vec<String>,
@@ -76,6 +77,7 @@ pub struct App {
     pub keyring: Keyring,
     pub own_addresses: Vec<String>,
     pub archive_folders: Vec<(String, String)>,
+    pub folder_aliases: Vec<(String, String, String)>,
     pub contacts: Vec<Contact>,
     pub preview: Option<super::preview::Preview>,
     pub reading_pane: ReadingPane,
@@ -146,6 +148,7 @@ impl App {
             pager_rendered: RenderedBody::default(),
             pager_attachments: Vec::new(),
             link_picker: None,
+            folder_picker: None,
             drawer_open: false,
             drawer_selected: 0,
             header_names: loaded.config.ui.headers.clone(),
@@ -158,6 +161,7 @@ impl App {
             keyring,
             own_addresses,
             archive_folders: archive_folders(loaded),
+            folder_aliases: folder_aliases(loaded),
             contacts: Vec::new(),
             preview: None,
             reading_pane: loaded.config.ui.reading_pane,
@@ -328,6 +332,7 @@ impl App {
                 self.view = View::List;
                 self.archive_selected();
             }
+            Action::MoveTo => self.open_folder_picker(),
             Action::Back | Action::Quit => self.view = View::List,
             _ => self.not_built_notice(),
         }
@@ -368,6 +373,21 @@ fn archive_folders(loaded: &Loaded) -> Vec<(String, String)> {
         .filter_map(|entry| {
             let folder = entry.account.account.archive.clone()?;
             Some((entry.account.account.name.clone(), folder))
+        })
+        .collect()
+}
+
+fn folder_aliases(loaded: &Loaded) -> Vec<(String, String, String)> {
+    loaded
+        .accounts
+        .iter()
+        .flat_map(|entry| {
+            let account = entry.account.account.name.clone();
+            entry.account.folder_names.iter().map(
+                move |(real, alias)| {
+                    (account.clone(), real.clone(), alias.clone())
+                },
+            )
         })
         .collect()
 }

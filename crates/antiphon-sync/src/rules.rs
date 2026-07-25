@@ -152,6 +152,9 @@ impl RulePass<'_> {
                 message_id,
                 OpKind::Move {
                     to_folder: folder.to_owned(),
+                    // Rules act on fresh inbox deliveries, so
+                    // the source is always the account root.
+                    from_folder: Some(String::new()),
                 },
             )
             .map_err(|error| error.to_string())?;

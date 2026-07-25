@@ -169,7 +169,9 @@ fn a_list_rule_moves_through_the_oplog_and_tags() {
     assert_eq!(pending[0].message_id, "patch-1@example.com");
     assert!(matches!(
         &pending[0].kind,
-        OpKind::Move { to_folder } if to_folder == LIST_FOLDER
+        OpKind::Move { to_folder, from_folder }
+            if to_folder == LIST_FOLDER
+                && from_folder.as_deref() == Some("")
     ));
     assert!(log.unapplied().is_empty(), "move op was applied");
     let tags = tags_of(&store.layout, "id:patch-1@example.com");

@@ -100,7 +100,7 @@ pub fn apply_op(
         OpKind::Flag { add, remove } => {
             apply_flags(&path, add, remove)?
         }
-        OpKind::Move { to_folder } => {
+        OpKind::Move { to_folder, .. } => {
             apply_move(layout, op, &path, to_folder)?
         }
         OpKind::Delete => apply_delete(&path)?,

@@ -68,6 +68,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         draw_pager(frame, app, content);
         draw_status(frame, app, status);
         super::link_picker::draw_picker(frame, app, area);
+        super::folder_picker::draw_picker(frame, app, area);
         return;
     }
     let (sidebar, main) =
@@ -82,6 +83,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         draw_reading_pane(frame, app, pane);
     }
     draw_status(frame, app, status);
+    super::folder_picker::draw_picker(frame, app, area);
     if app.help {
         draw_help(frame, app, area);
     }
@@ -207,10 +209,14 @@ fn sidebar_item(
         count_style = count_style.bg(theme.selection_bg);
     }
     let indent = if entry.is_folder() { "  " } else { "" };
-    let mut spans = vec![Span::styled(
-        format!("{marker}{indent}{}", entry.label()),
-        style,
-    )];
+    let label = match entry {
+        SidebarEntry::Folder { account, name, .. } => {
+            app.alias_for(account, name).unwrap_or(entry.label())
+        }
+        _ => entry.label(),
+    };
+    let mut spans =
+        vec![Span::styled(format!("{marker}{indent}{label}"), style)];
     if unread > 0 {
         spans.push(Span::styled(format!(" {unread}"), count_style));
     }

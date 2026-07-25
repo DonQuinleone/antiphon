@@ -12,6 +12,7 @@ mod drafts;
 mod draw;
 mod drawer;
 mod editor;
+mod folder_picker;
 mod headers;
 mod identity;
 mod input;
@@ -369,7 +370,15 @@ fn wire_op(intent: OpIntent) -> Operation {
             account,
             message_id,
             to_folder,
-        } => (account, message_id, OpKind::Move { to_folder }),
+            from_folder,
+        } => (
+            account,
+            message_id,
+            OpKind::Move {
+                to_folder,
+                from_folder: Some(from_folder),
+            },
+        ),
     };
     Operation {
         op_id: OpId(DAEMON_ASSIGNS_ID),

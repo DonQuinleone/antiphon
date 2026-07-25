@@ -220,6 +220,7 @@ mod tests {
                     client_id: Some("client-app".to_string()),
                 }),
                 graph: None,
+                folder_names: Default::default(),
             },
         }
     }

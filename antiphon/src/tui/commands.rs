@@ -18,11 +18,12 @@ type ArgHandler = fn(&mut App, &str);
 
 /// Commands taking one argument: name, usage line, and the
 /// handler arming the app state the event loop consumes.
-const ARG_COMMANDS: [(&str, &str, ArgHandler); 4] = [
+const ARG_COMMANDS: [(&str, &str, ArgHandler); 5] = [
     ("template", "template <name>", arm_template),
     ("resume", "resume <draft-path>", arm_resume),
     ("save-patches", "save-patches <path>", arm_save_patches),
     ("apply", "apply <repo-dir>", arm_apply),
+    ("move", "move <folder>", arm_move),
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,6 +34,10 @@ pub enum PatchCommand {
 
 fn arm_template(app: &mut App, name: &str) {
     app.pending_template = Some(name.to_string());
+}
+
+fn arm_move(app: &mut App, folder: &str) {
+    app.move_selected_to(folder);
 }
 
 fn arm_resume(app: &mut App, path: &str) {

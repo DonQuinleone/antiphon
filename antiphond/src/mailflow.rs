@@ -307,9 +307,8 @@ impl Mailflow {
 
     /// Replays unsynced ops per account and advances the synced
     /// cursor over the resolved prefix. Synced and dropped ops
-    /// are resolved (dropped means the server won and the op is
-    /// discarded); unsupported ops stay pending and hold the
-    /// cursor, since mark_synced covers everything below it.
+    /// are resolved (dropped means the server won and the op
+    /// is discarded).
     ///
     /// The lock is held only to snapshot and to mark: replay
     /// itself talks to the server and must not block IPC. Ops
@@ -333,12 +332,10 @@ impl Mailflow {
             match replay(account, &self.layout, &ops) {
                 Ok(report) => {
                     println!(
-                        "replayed {}: {} synced, {} dropped, \
-                         {} deferred",
+                        "replayed {}: {} synced, {} dropped",
                         account.name,
                         report.synced.len(),
                         report.dropped.len(),
-                        report.unsupported.len(),
                     );
                     if !report.dropped.is_empty() {
                         eprintln!(

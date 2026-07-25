@@ -52,6 +52,8 @@ pub enum OpKind {
     },
     Move {
         to_folder: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from_folder: Option<String>,
     },
     Delete,
 }
@@ -179,6 +181,7 @@ mod tests {
             },
             OpKind::Move {
                 to_folder: "lists/example".into(),
+                from_folder: None,
             },
             OpKind::Delete,
         ];
@@ -202,6 +205,7 @@ mod tests {
         assert_eq!(ping, r#"{"type":"ping"}"#);
         let kind = OpKind::Move {
             to_folder: "Archive".into(),
+            from_folder: None,
         };
         let moved = serde_json::to_string(&kind).unwrap();
         assert_eq!(moved, r#"{"kind":"move","to_folder":"Archive"}"#);

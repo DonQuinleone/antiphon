@@ -296,21 +296,23 @@ fn live_flag_replay_round_trip() {
         "flags were not restored: {restored:?}"
     );
 
-    let unsupported_move = op(
+    // A move recorded before the source folder was carried
+    // can never replay; it resolves server-wins.
+    let legacy_move = op(
         3,
         &message_id,
         OpKind::Move {
             to_folder: String::from("archive"),
+            from_folder: None,
         },
     );
     let ghost =
         flag_op(4, &format!("ghost-{message_id}"), &["flagged"], &[]);
     let delete = op(5, &message_id, OpKind::Delete);
     let report =
-        replay(&account, &layout, &[unsupported_move, ghost, delete])
+        replay(&account, &layout, &[legacy_move, ghost, delete])
             .unwrap();
-    assert_eq!(report.unsupported, [3]);
-    assert_eq!(report.dropped, [4]);
+    assert_eq!(report.dropped, [3, 4]);
     assert_eq!(report.synced, [5]);
     assert!(
         server_flags(&account, INBOX, uid).is_none(),

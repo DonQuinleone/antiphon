@@ -213,6 +213,16 @@ impl ImapSession {
         Ok(appended.map(|(uid, validity)| (uid.get(), validity.get())))
     }
 
+    pub fn uid_move(
+        &mut self,
+        uid: u32,
+        mailbox: &str,
+    ) -> Result<(), ClientError> {
+        self.runtime.block_on(
+            self.client.uid_move_or_fallback(single(uid), mailbox),
+        )
+    }
+
     pub fn uid_expunge(&mut self, uid: u32) -> Result<(), ClientError> {
         let task = UidExpungeTask {
             sequence_set: single(uid),

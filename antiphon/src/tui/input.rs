@@ -12,8 +12,8 @@ use super::commands::PromptKind;
 use super::dispatch::dispatch;
 use super::identity::ComposeContext;
 use super::{
-    attach, draw, drawer, headers, link_picker, pager, pager_body,
-    patches, review, run_query, run_search, session,
+    attach, draw, drawer, folder_picker, headers, link_picker, pager,
+    pager_body, patches, review, run_query, run_search, session,
 };
 
 const MOUSE_WHEEL_ROWS: usize = 3;
@@ -141,6 +141,10 @@ pub(super) fn keymap_key(
         if let Some(url) = link_picker::feed(app, key) {
             link_picker::open_url(app, &url);
         }
+        return;
+    }
+    if app.folder_picker.is_some() {
+        folder_picker::feed(app, key);
         return;
     }
     if app.view == View::Pager && app.drawer_open {

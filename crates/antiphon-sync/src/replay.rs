@@ -37,19 +37,17 @@ const TAG_FLAGS: [TagFlag; 3] = [
 ];
 
 /// How each op fared against the server, in op order. Dropped
-/// ops are resolved under the server-wins rule and must not be
-/// retried; unsupported ops (Move, for now) stay pending.
+/// ops are resolved under the server-wins rule and must not
+/// be retried.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReplayReport {
     pub synced: Vec<u64>,
     pub dropped: Vec<u64>,
-    pub unsupported: Vec<u64>,
 }
 
 enum Verdict {
     Synced,
     Dropped,
-    Unsupported,
 }
 
 /// Replays local oplog operations to the IMAP server. A message
@@ -86,7 +84,6 @@ pub fn replay(
         match replayer.replay_op(op)? {
             Verdict::Synced => report.synced.push(op.id),
             Verdict::Dropped => report.dropped.push(op.id),
-            Verdict::Unsupported => report.unsupported.push(op.id),
         }
     }
     replayer.session.logout();
@@ -105,7 +102,14 @@ struct Replayer {
 impl Replayer {
     fn replay_op(&mut self, op: &Op) -> Result<Verdict, SyncError> {
         match &op.kind {
-            OpKind::Move { .. } => Ok(Verdict::Unsupported),
+            OpKind::Move {
+                to_folder,
+                from_folder,
+            } => self.replay_move(
+                op,
+                to_folder.clone(),
+                from_folder.clone(),
+            ),
             OpKind::Flag { add, remove } => {
                 let Some((set, clear)) = flag_sets(add, remove) else {
                     return Ok(Verdict::Dropped);
@@ -119,6 +123,61 @@ impl Replayer {
             }
             OpKind::Delete => self.with_uid(op, Self::expunge_uid),
         }
+    }
+
+    /// The local apply has already moved the file, so the op's
+    /// recorded source mailbox is selected and the UID read
+    /// back off the moved file's name. A missing source (an op
+    /// from before it was carried), an unknown mailbox on
+    /// either side, or a vanished UID all resolve server-wins.
+    fn replay_move(
+        &mut self,
+        op: &Op,
+        to_folder: String,
+        from_folder: Option<String>,
+    ) -> Result<Verdict, SyncError> {
+        let Some(source) = from_folder else {
+            return Ok(Verdict::Dropped);
+        };
+        let source_mailbox =
+            self.folders.get(Path::new(&source)).cloned();
+        let target_mailbox =
+            self.folders.get(Path::new(&to_folder)).cloned();
+        let (Some(source_mailbox), Some(target_mailbox)) =
+            (source_mailbox, target_mailbox)
+        else {
+            return Ok(Verdict::Dropped);
+        };
+        let Some(uid) = self.moved_uid(op)? else {
+            return Ok(Verdict::Dropped);
+        };
+        self.select(&source_mailbox)?;
+        if !self.uid_exists(uid)? {
+            return Ok(Verdict::Dropped);
+        }
+        self.session.uid_move(uid, &target_mailbox).map_err(
+            SyncError::imap(format!(
+                "moving uid {uid} to {target_mailbox}"
+            )),
+        )?;
+        Ok(Verdict::Synced)
+    }
+
+    /// The moved file keeps its delivery name, so the source
+    /// mailbox's UID still rides in it wherever it sits now.
+    fn moved_uid(&self, op: &Op) -> Result<Option<u32>, SyncError> {
+        let located = self
+            .index
+            .locate(&op.message_id)
+            .map_err(|source| SyncError::Index { source })?;
+        let Some(path) = located else {
+            return Ok(None);
+        };
+        let uid = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(parse_uid);
+        Ok(uid)
     }
 
     /// Resolves the op's message to a live server UID and runs

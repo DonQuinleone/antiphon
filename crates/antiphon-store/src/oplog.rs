@@ -29,6 +29,12 @@ pub enum OpKind {
     },
     Move {
         to_folder: String,
+        // Recorded so the server replay can find the message
+        // in the mailbox it was in before the local apply
+        // moved the file; absent on ops from before it was
+        // carried, which therefore cannot replay.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from_folder: Option<String>,
     },
     Delete,
 }
@@ -301,6 +307,25 @@ fn io_at(path: &Path) -> impl FnOnce(io::Error) -> OpLogError {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn moves_recorded_before_the_source_field_still_load() {
+        let current = Op {
+            id: 4,
+            account: "work".to_string(),
+            message_id: "m1".to_string(),
+            kind: OpKind::Move {
+                to_folder: "archive".to_string(),
+                from_folder: None,
+            },
+        };
+        let old_json = serde_json::to_string(&current)
+            .unwrap()
+            .replace(",\"from_folder\":null", "");
+        assert!(!old_json.contains("from_folder"), "{old_json}");
+        let op: Op = serde_json::from_str(&old_json).unwrap();
+        assert_eq!(op, current);
+    }
     use super::*;
 
     fn layout_in(dir: &tempfile::TempDir) -> StoreLayout {
@@ -463,6 +488,7 @@ mod tests {
                 "id@example.com",
                 OpKind::Move {
                     to_folder: "archive".to_owned(),
+                    from_folder: None,
                 },
             )
             .unwrap();

@@ -122,6 +122,10 @@ closes), `attachments` (`v`: expand the attachment drawer),
 `archive` (`a`: move the message to the account's archive
 folder, from the list or the pager; the row leaves at once
 and the daemon replays the move against the server),
+`move-to` (`c`: a picker over the account's other folders,
+aliases shown where configured; `enter` moves, `esc` closes;
+`:move <folder>` does the same by name, accepting an alias,
+the real path, or `inbox` for the account root),
 `pane-down`/`pane-up` (`J`/`K`: scroll the reading pane),
 `thread-view` (`T`: pivot the flat list onto the selected
 message's whole thread; `back` (`esc`) restores the listing
@@ -166,6 +170,11 @@ the muted rank and carries its unread count beside the name,
 refreshed with the rest of the sidebar every couple of
 seconds.
 
+`[folder_names]` gives folders friendlier sidebar names
+(`INBOX/Accounts` shown as `accounts`); the alias also works
+wherever a folder name is typed. The left side is the folder
+path as the store knows it: lowercase, `/`-separated.
+
 `reply-list` (`L`) replies to the mailing list a message came
 from: `Mail-Followup-To` wins when the author set one,
 otherwise the `List-Post` mailto address is used. A
@@ -198,8 +207,13 @@ nothing is ever fetched automatically.
 name = "personal"
 maildir = "personal"       # reserved; the store folder is
                            # the account name for now
-archive = "Archive"        # where `a` files mail; this is
-                           # also the default
+archive = "archive"        # where `a` files mail, as the
+                           # folder appears in the sidebar;
+                           # this is also the default
+
+[folder_names]             # sidebar aliases; typed folder
+                           # names accept either side
+"inbox/accounts" = "accounts"
 
 [imap]
 host = "imap.example.com"
