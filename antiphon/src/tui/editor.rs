@@ -7,8 +7,6 @@ use portable_pty::{
 };
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use super::crypto::ComposeCrypto;
-
 const PTY_READ_CHUNK: usize = 4096;
 const SCROLLBACK_LINES: usize = 0;
 const EDITOR_TERM: &str = "xterm-256color";
@@ -16,13 +14,11 @@ const ESC: u8 = 0x1b;
 const BACKSPACE_DEL: u8 = 0x7f;
 const CTRL_MASK: u8 = 0x1f;
 
-/// A draft handed to the embedded editor, with everything
-/// needed to queue or abort it once the child exits.
+/// The body file handed to the embedded editor and the live
+/// pty session, settled once the child exits; everything else
+/// about the compose lives in the compose state.
 pub struct EditorPane {
-    pub account: String,
-    pub written: String,
     pub path: PathBuf,
-    pub crypto: ComposeCrypto,
     pub session: EditorSession,
 }
 

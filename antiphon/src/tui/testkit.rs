@@ -5,6 +5,17 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use antiphon_pgp::{Keyring, SignatureStatus};
 
 use super::crypto::{ComposeCrypto, PgpPlan};
+use super::identity::ComposeIdentity;
+
+pub(super) fn tester_identity() -> ComposeIdentity {
+    ComposeIdentity {
+        name: Some("Tester".to_string()),
+        address: "tester@example.com".to_string(),
+        signature: Some("Kind regards\n".to_string()),
+        pgp_sign: false,
+        pgp_key: None,
+    }
+}
 
 pub(super) const TEST_USER_ID: &str =
     "Antiphon Test <antiphon-test@example.com>";

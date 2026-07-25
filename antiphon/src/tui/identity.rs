@@ -1,6 +1,7 @@
 use antiphon_config::{AccountFile, Dirs, Loaded};
 use antiphon_core::{Addr, ParsedIdentity, reply_identity};
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ComposeIdentity {
     pub name: Option<String>,
     pub address: String,
@@ -29,9 +30,11 @@ impl ComposeContext {
         let entries = loaded
             .accounts
             .iter()
-            .filter_map(|named| {
-                let identity = account_identity(&named.account, dirs)?;
-                Some((named.account.account.name.clone(), identity))
+            .flat_map(|named| {
+                let name = named.account.account.name.clone();
+                account_identities(&named.account, dirs)
+                    .into_iter()
+                    .map(move |identity| (name.clone(), identity))
             })
             .collect();
         let parsed = loaded
@@ -62,6 +65,12 @@ impl ComposeContext {
         }
     }
 
+    /// Every configured identity paired with its account, in
+    /// account order; the From field cycles through these.
+    pub fn choices(&self) -> &[(String, ComposeIdentity)] {
+        &self.entries
+    }
+
     /// The named account's identity, or the first configured
     /// identity when the account has none of its own.
     pub fn identity_for(
@@ -87,16 +96,7 @@ impl ComposeContext {
             return Some((account.to_string(), identity));
         }
         self.identity_for(account).map(|(name, identity)| {
-            (
-                name.to_string(),
-                ComposeIdentity {
-                    name: identity.name.clone(),
-                    address: identity.address.clone(),
-                    signature: identity.signature.clone(),
-                    pgp_sign: identity.pgp_sign,
-                    pgp_key: identity.pgp_key.clone(),
-                },
-            )
+            (name.to_string(), identity.clone())
         })
     }
 
@@ -165,30 +165,34 @@ fn parsed_identities(file: &AccountFile) -> Vec<ParsedIdentity> {
         .collect()
 }
 
-fn account_identity(
+fn account_identities(
     file: &AccountFile,
     dirs: &Dirs,
-) -> Option<ComposeIdentity> {
-    if let Some(identity) = file.identities.first() {
-        return Some(ComposeIdentity {
-            name: identity.name.clone(),
-            address: identity.address.clone(),
-            signature: identity.signature.as_deref().and_then(|name| {
-                antiphon_config::signature_text(dirs, name)
-            }),
-            pgp_sign: identity.pgp_sign,
-            pgp_key: identity.pgp_key.clone(),
-        });
+) -> Vec<ComposeIdentity> {
+    if !file.identities.is_empty() {
+        return file
+            .identities
+            .iter()
+            .map(|identity| ComposeIdentity {
+                name: identity.name.clone(),
+                address: identity.address.clone(),
+                signature: identity.signature.as_deref().and_then(
+                    |name| antiphon_config::signature_text(dirs, name),
+                ),
+                pgp_sign: identity.pgp_sign,
+                pgp_key: identity.pgp_key.clone(),
+            })
+            .collect();
     }
     let user = file.imap.user.clone();
     if !user.contains('@') {
-        return None;
+        return Vec::new();
     }
-    Some(ComposeIdentity {
+    vec![ComposeIdentity {
         name: None,
         address: user,
         signature: None,
         pgp_sign: false,
         pgp_key: None,
-    })
+    }]
 }

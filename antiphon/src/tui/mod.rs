@@ -7,11 +7,13 @@ mod decrypt;
 mod dispatch;
 mod draw;
 mod editor;
+mod headers;
 mod identity;
 mod lists;
 mod message_list;
 mod pager;
 mod patches;
+mod prefill;
 mod preview;
 mod scope;
 mod session;
@@ -46,7 +48,6 @@ use dispatch::{
 };
 use identity::ComposeContext;
 use scope::ViewScope;
-use session::{begin_compose, finish_compose};
 
 const INPUT_POLL: Duration = Duration::from_millis(250);
 const EDITOR_POLL: Duration = Duration::from_millis(20);
@@ -167,6 +168,9 @@ fn event_loop(
         }
         match app.key_route() {
             KeyRoute::Editor => editor_key(app, key),
+            KeyRoute::Compose => {
+                compose_key(terminal, app, layout, key)?
+            }
             KeyRoute::Prompt => {
                 prompt_key(app, layout, key);
                 let mut request =
@@ -174,18 +178,13 @@ fn event_loop(
                 if request.is_none() {
                     request = pending_unsubscribe_request(app, context);
                 }
-                if let Some(request) = request {
-                    begin_compose(terminal, app, layout, request)?;
+                if let Some(state) = request {
+                    app.start_compose(state);
                 }
             }
-            KeyRoute::Keymap => keymap_key(
-                terminal,
-                app,
-                &mut keymap,
-                layout,
-                context,
-                key,
-            )?,
+            KeyRoute::Keymap => {
+                keymap_key(app, &mut keymap, layout, context, key)
+            }
         }
         drain_ops(app);
     }
@@ -206,14 +205,39 @@ fn editor_key(app: &mut App, key: KeyEvent) {
     }
 }
 
-fn keymap_key(
+/// Keys in the fields stage feed the header state machine;
+/// the outcomes needing the terminal or store are acted on
+/// here.
+fn compose_key(
     terminal: &mut DefaultTerminal,
+    app: &mut App,
+    layout: &StoreLayout,
+    key: KeyEvent,
+) -> std::io::Result<()> {
+    use headers::HeadersOutcome;
+
+    let Some(state) = app.compose.as_mut() else {
+        return Ok(());
+    };
+    match state.feed(key) {
+        HeadersOutcome::Edited | HeadersOutcome::CycleFrom(_) => Ok(()),
+        HeadersOutcome::OpenEditor => {
+            session::open_body_editor(terminal, app, layout)
+        }
+        HeadersOutcome::Cancel => {
+            app.abort_compose("compose aborted");
+            Ok(())
+        }
+    }
+}
+
+fn keymap_key(
     app: &mut App,
     keymap: &mut Keymap,
     layout: &StoreLayout,
     context: &ComposeContext,
     key: KeyEvent,
-) -> std::io::Result<()> {
+) {
     // Backspace scrolls the pager up out of the box (the
     // keymap holds one sequence per action, so this pairs
     // with enter's Open-as-scroll without stealing a
@@ -224,20 +248,19 @@ fn keymap_key(
         && key.code == KeyCode::Backspace
     {
         app.apply(antiphon_core::Action::MoveUp);
-        return Ok(());
+        return;
     }
     let Resolution::Match(action) = keymap.feed(key) else {
-        return Ok(());
+        return;
     };
     let request = dispatch(app, action, context);
     if app.take_requery() {
         let query = app.current_query.clone();
         run_query(app, layout, query);
     }
-    let Some(request) = request else {
-        return Ok(());
-    };
-    begin_compose(terminal, app, layout, request)
+    if let Some(state) = request {
+        app.start_compose(state);
+    }
 }
 
 /// Pump pty output into the parser, keep the pty sized to the
@@ -258,16 +281,7 @@ fn tick_editor(
         return Ok(());
     };
     let pane = app.close_editor().expect("editor pane present");
-    app.notice = Some(finish_compose(
-        layout,
-        &app.keyring,
-        &pane.account,
-        &pane.written,
-        &pane.path,
-        &pane.crypto,
-        success,
-    ));
-    nudge_daemon();
+    session::finish_body_edit(app, layout, &pane.path, success);
     Ok(())
 }
 

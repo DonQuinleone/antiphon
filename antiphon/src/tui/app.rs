@@ -7,6 +7,7 @@ use antiphon_ui::{Theme, VESPERS};
 
 use super::actions::{OpIntent, account_names};
 use super::commands::{FrameStats, PatchCommand, Prompt};
+use super::compose::ComposeState;
 use super::editor::EditorPane;
 use super::scope::{self, ViewScope};
 use super::sidebar::{self, AccountEntry, SidebarEntry};
@@ -21,6 +22,7 @@ pub const DEFAULT_QUERY: &str = "*";
 pub enum View {
     List,
     Pager,
+    Compose,
     Editor,
 }
 
@@ -29,6 +31,7 @@ pub enum View {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeyRoute {
     Prompt,
+    Compose,
     Editor,
     Keymap,
 }
@@ -73,6 +76,7 @@ pub struct App {
     pub(super) pending_unsubscribe: Option<(String, MailtoUnsubscribe)>,
     pub frame_stats: FrameStats,
     pub composer: Composer,
+    pub compose: Option<ComposeState>,
     pub editor: Option<EditorPane>,
     editor_return: View,
     pub(super) requery: bool,
@@ -135,6 +139,7 @@ impl App {
             pending_unsubscribe: None,
             frame_stats: FrameStats::default(),
             composer: loaded.config.ui.composer,
+            compose: None,
             editor: None,
             editor_return: View::List,
             requery: false,
@@ -159,10 +164,22 @@ impl App {
         if self.prompt.is_some() {
             return KeyRoute::Prompt;
         }
-        if self.view == View::Editor {
-            return KeyRoute::Editor;
+        match self.view {
+            View::Compose => KeyRoute::Compose,
+            View::Editor => KeyRoute::Editor,
+            _ => KeyRoute::Keymap,
         }
-        KeyRoute::Keymap
+    }
+
+    pub fn start_compose(&mut self, state: ComposeState) {
+        self.compose = Some(state);
+        self.view = View::Compose;
+    }
+
+    pub fn abort_compose(&mut self, notice: &str) {
+        self.compose = None;
+        self.view = View::List;
+        self.notice = Some(notice.to_string());
     }
 
     pub fn open_editor(&mut self, pane: EditorPane) {
@@ -208,7 +225,7 @@ impl App {
         match self.view {
             View::List => self.apply_in_list(action),
             View::Pager => self.apply_in_pager(action),
-            View::Editor => {}
+            View::Compose | View::Editor => {}
         }
     }
 
@@ -339,6 +356,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         pending_unsubscribe: None,
         frame_stats: FrameStats::default(),
         composer: Composer::Embedded,
+        compose: None,
         editor: None,
         editor_return: View::List,
         requery: false,

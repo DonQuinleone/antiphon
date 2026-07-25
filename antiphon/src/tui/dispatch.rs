@@ -3,26 +3,26 @@ use antiphon_store::MessageSummary;
 
 use super::actions::account_of;
 use super::app::{App, View};
-use super::compose::{self, ReplySource};
-use super::crypto::ComposeCrypto;
+use super::compose::{ComposeState, IdentityChoice, bare_address};
 use super::decrypt;
 use super::identity::{ComposeContext, ComposeIdentity};
 use super::lists;
 use super::message_list;
+use super::prefill::{self, DraftFields, ReplySource};
 
 const CONVENTION_NEW: &str = "new";
 const CONVENTION_REPLY: &str = "reply";
 
 fn now_attribution() -> String {
     chrono::Local::now()
-        .format(compose::ATTRIBUTION_DATE_FORMAT)
+        .format(prefill::ATTRIBUTION_DATE_FORMAT)
         .to_string()
 }
 
 pub(super) fn pending_template_request(
     app: &mut App,
     context: &ComposeContext,
-) -> Option<EditorRequest> {
+) -> Option<ComposeState> {
     let name = app.pending_template.take()?;
     let Some(template) = context.template(&name) else {
         app.notice = Some(format!("no template named {name}"));
@@ -30,56 +30,66 @@ pub(super) fn pending_template_request(
     };
     let first = app.accounts.first().cloned().unwrap_or_default();
     let (account, identity) = context.identity_for(&first)?;
-    Some(EditorRequest {
-        account: account.to_string(),
-        text: compose::fresh_draft(
-            identity,
-            Some(&template),
-            &now_attribution(),
-        ),
-        crypto: compose_crypto(app, identity),
-    })
+    let fields = prefill::fresh_fields(
+        identity,
+        Some(&template),
+        &now_attribution(),
+    );
+    Some(state_for(app, context, account, identity, fields))
 }
 
 pub(super) fn pending_unsubscribe_request(
     app: &mut App,
     context: &ComposeContext,
-) -> Option<EditorRequest> {
+) -> Option<ComposeState> {
     let (account, mailto) = app.pending_unsubscribe.take()?;
     let (account, identity) = context.identity_for(&account)?;
-    Some(EditorRequest {
-        account: account.to_string(),
-        text: compose::unsubscribe_draft(identity, &mailto),
-        crypto: compose_crypto(app, identity),
-    })
+    let fields = prefill::unsubscribe_fields(identity, &mailto);
+    Some(state_for(app, context, account, identity, fields))
 }
 
-/// A draft ready for the user's editor; the event loop owns
-/// the terminal hand-off, so app state never touches it.
-pub(super) struct EditorRequest {
-    pub(super) account: String,
-    pub(super) text: String,
-    pub(super) crypto: ComposeCrypto,
-}
-
-/// The seal settings a compose starts with: the identity's
-/// defaults with any armed per-message overrides consumed.
-fn compose_crypto(
+/// A compose ready for the fields stage: every configured
+/// identity to cycle through, the resolved default selected,
+/// and any armed :sign/:encrypt overrides consumed.
+fn state_for(
     app: &mut App,
+    context: &ComposeContext,
+    account: &str,
     identity: &ComposeIdentity,
-) -> ComposeCrypto {
-    ComposeCrypto {
-        plan: app.take_pgp_plan(identity.pgp_sign),
-        key: identity.pgp_key.clone(),
-        address: identity.address.clone(),
-    }
+    fields: DraftFields,
+) -> ComposeState {
+    let mut choices: Vec<IdentityChoice> = context
+        .choices()
+        .iter()
+        .map(|(account, identity)| IdentityChoice {
+            account: account.clone(),
+            identity: identity.clone(),
+        })
+        .collect();
+    let position = choices.iter().position(|choice| {
+        choice.account == account
+            && choice.identity.address == identity.address
+    });
+    let chosen = position.unwrap_or_else(|| {
+        choices.insert(
+            0,
+            IdentityChoice {
+                account: account.to_string(),
+                identity: identity.clone(),
+            },
+        );
+        0
+    });
+    let overrides =
+        (app.pending_sign.take(), app.pending_encrypt.take());
+    ComposeState::new(choices, chosen, fields, overrides)
 }
 
 pub(super) fn dispatch(
     app: &mut App,
     action: Action,
     context: &ComposeContext,
-) -> Option<EditorRequest> {
+) -> Option<ComposeState> {
     if action == Action::Compose && app.view == View::List {
         app.notice = None;
         return fresh_request(app, context);
@@ -132,21 +142,18 @@ fn body_text(raw: &[u8]) -> String {
 fn fresh_request(
     app: &mut App,
     context: &ComposeContext,
-) -> Option<EditorRequest> {
+) -> Option<ComposeState> {
     let first = app.accounts.first().cloned().unwrap_or_default();
     let Some((account, identity)) = context.identity_for(&first) else {
         app.notice = Some("no compose identity configured".into());
         return None;
     };
-    Some(EditorRequest {
-        account: account.to_string(),
-        text: compose::fresh_draft(
-            identity,
-            context.template(CONVENTION_NEW).as_deref(),
-            &now_attribution(),
-        ),
-        crypto: compose_crypto(app, identity),
-    })
+    let fields = prefill::fresh_fields(
+        identity,
+        context.template(CONVENTION_NEW).as_deref(),
+        &now_attribution(),
+    );
+    Some(state_for(app, context, account, identity, fields))
 }
 
 /// Everything both reply flavours need before recipients are
@@ -197,16 +204,16 @@ fn reply_basis(
 fn reply_request(
     app: &mut App,
     context: &ComposeContext,
-) -> Option<EditorRequest> {
+) -> Option<ComposeState> {
     let basis = reply_basis(app, context)?;
-    let to = compose::bare_address(&basis.message.from);
+    let to = bare_address(&basis.message.from);
     finish_reply(app, context, basis, &to, "", None)
 }
 
 fn list_reply_request(
     app: &mut App,
     context: &ComposeContext,
-) -> Option<EditorRequest> {
+) -> Option<ComposeState> {
     let basis = reply_basis(app, context)?;
     let headers = antiphon_render::list_headers(&basis.raw);
     let plan = lists::list_recipients(
@@ -234,18 +241,18 @@ fn finish_reply(
     to: &str,
     cc: &str,
     warning: Option<String>,
-) -> Option<EditorRequest> {
+) -> Option<ComposeState> {
     let source = ReplySource {
         from: &basis.message.from,
         subject: &basis.message.subject,
         message_id: &basis.message.id,
         date: &message_list::format_date(
             basis.message.date_unix,
-            compose::ATTRIBUTION_DATE_FORMAT,
+            prefill::ATTRIBUTION_DATE_FORMAT,
         ),
         body: &body_text(&basis.raw),
     };
-    let text = compose::reply_draft_to(
+    let fields = prefill::reply_fields(
         &basis.identity,
         &source,
         to,
@@ -253,11 +260,13 @@ fn finish_reply(
         context.template(CONVENTION_REPLY).as_deref(),
     );
     app.notice = warning;
-    Some(EditorRequest {
-        account: basis.account,
-        text,
-        crypto: compose_crypto(app, &basis.identity),
-    })
+    Some(state_for(
+        app,
+        context,
+        &basis.account,
+        &basis.identity,
+        fields,
+    ))
 }
 
 /// Re-renders the open message with the other body part; the

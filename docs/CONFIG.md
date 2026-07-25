@@ -186,6 +186,19 @@ bad one. On reply, the most specific match wins (literal, then
 plus-pattern, then catch-all) and the From is the delivered
 address verbatim.
 
+## Composing
+
+A compose (`compose`, `reply`, `reply-list`, `:template`,
+`:unsubscribe`) opens a fields stage, aerc style: To, Cc, Bcc
+and Subject are structured fields edited in place, and From
+cycles through every configured identity with `left`/`right`
+or `space` rather than taking free text; replies preselect the
+identity the resolution engine picked. `tab`/`shift-tab` move
+between fields, `enter` advances and, on From (or `ctrl-e`
+from anywhere), opens `$EDITOR` on the body alone; headers
+never pass through the editor. `esc` backs out of the fields
+stage.
+
 ## OpenPGP at compose time
 
 `pgp_sign` sets the default for mail sent from that identity;

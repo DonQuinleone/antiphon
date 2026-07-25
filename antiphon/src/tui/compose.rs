@@ -1,223 +1,140 @@
 use antiphon_render::{Draft, build_message};
 use antiphon_store::Envelope;
+use ratatui::crossterm::event::KeyEvent;
 
+use super::crypto::{ComposeCrypto, PgpPlan};
+use super::headers::{HeaderFields, HeadersOutcome};
 use super::identity::ComposeIdentity;
-use super::message_list::sender_name;
+use super::prefill::DraftFields;
 
-pub const ATTRIBUTION_DATE_FORMAT: &str = "%a, %d %b %Y at %H:%M";
-const REPLY_PREFIX: &str = "re:";
-
-pub struct ReplySource<'a> {
-    pub from: &'a str,
-    pub subject: &'a str,
-    pub message_id: &'a str,
-    pub date: &'a str,
-    pub body: &'a str,
+/// One entry the From field can cycle to: a configured
+/// identity and the account it sends through.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct IdentityChoice {
+    pub account: String,
+    pub identity: ComposeIdentity,
 }
 
-pub fn fresh_draft(
-    identity: &ComposeIdentity,
-    template: Option<&str>,
-    date: &str,
-) -> String {
-    let body = match template {
-        Some(template) => expand_for(identity, template, "", date),
-        None => String::new(),
-    };
-    draft_text(identity, "", "", "", &body, None)
+/// A compose in flight, across the fields stage, the body
+/// editor and the review screen.
+pub(super) struct ComposeState {
+    pub choices: Vec<IdentityChoice>,
+    pub chosen: usize,
+    pub fields: HeaderFields,
+    pub body: String,
+    pub in_reply_to: Option<String>,
+    pub references: Vec<String>,
+    pub sign_override: Option<bool>,
+    pub encrypt_override: Option<bool>,
 }
 
-pub fn unsubscribe_draft(
-    identity: &ComposeIdentity,
-    mailto: &antiphon_render::MailtoUnsubscribe,
-) -> String {
-    draft_text(
-        identity,
-        &mailto.address,
-        "",
-        mailto.subject.as_deref().unwrap_or(""),
-        mailto.body.as_deref().unwrap_or(""),
-        None,
-    )
-}
-
-pub fn reply_draft_to(
-    identity: &ComposeIdentity,
-    source: &ReplySource<'_>,
-    to: &str,
-    cc: &str,
-    template: Option<&str>,
-) -> String {
-    let quoted = quoted_body(source);
-    let body = match template {
-        Some(template) => {
-            expand_for(identity, template, &quoted, source.date)
+impl ComposeState {
+    pub fn new(
+        choices: Vec<IdentityChoice>,
+        chosen: usize,
+        fields: DraftFields,
+        overrides: (Option<bool>, Option<bool>),
+    ) -> ComposeState {
+        ComposeState {
+            choices,
+            chosen,
+            fields: HeaderFields::from_draft(&fields),
+            body: fields.body,
+            in_reply_to: fields.in_reply_to,
+            references: fields.references,
+            sign_override: overrides.0,
+            encrypt_override: overrides.1,
         }
-        None => quoted,
-    };
-    draft_text(
-        identity,
-        to,
-        cc,
-        &reply_subject(source.subject),
-        &body,
-        Some(source.message_id),
-    )
-}
-
-fn expand_for(
-    identity: &ComposeIdentity,
-    template: &str,
-    quoted: &str,
-    date: &str,
-) -> String {
-    antiphon_render::expand_template(
-        template,
-        &antiphon_render::TemplateVars {
-            from: &identity.address,
-            name: identity.name.as_deref().unwrap_or(""),
-            date,
-            quoted,
-        },
-    )
-}
-
-fn draft_text(
-    identity: &ComposeIdentity,
-    to: &str,
-    cc: &str,
-    subject: &str,
-    quoted: &str,
-    reply_to_id: Option<&str>,
-) -> String {
-    let mut text = format!(
-        "From: {}\nTo: {to}\nCc: {cc}\nSubject: {subject}\n",
-        from_header(identity),
-    );
-    if let Some(id) = reply_to_id {
-        text.push_str(&format!(
-            "In-Reply-To: <{id}>\nReferences: <{id}>\n"
-        ));
     }
-    text.push('\n');
-    text.push_str(quoted);
-    text.push('\n');
-    text.push_str(&signature_block(identity));
-    text
-}
 
-fn from_header(identity: &ComposeIdentity) -> String {
-    match &identity.name {
-        Some(name) => format!("{name} <{}>", identity.address),
-        None => identity.address.clone(),
+    pub fn identity(&self) -> &ComposeIdentity {
+        &self.choices[self.chosen].identity
+    }
+
+    pub fn account(&self) -> &str {
+        &self.choices[self.chosen].account
+    }
+
+    /// The seal plan as it stands: the chosen identity's
+    /// default unless overridden by :sign/:nosign arming or
+    /// the review screen's toggles.
+    pub fn plan(&self) -> PgpPlan {
+        PgpPlan {
+            sign: self
+                .sign_override
+                .unwrap_or(self.identity().pgp_sign),
+            encrypt: self.encrypt_override.unwrap_or(false),
+        }
+    }
+
+    pub fn crypto(&self) -> ComposeCrypto {
+        ComposeCrypto {
+            plan: self.plan(),
+            key: self.identity().pgp_key.clone(),
+            address: self.identity().address.clone(),
+        }
+    }
+
+    pub fn feed(&mut self, key: KeyEvent) -> HeadersOutcome {
+        match self.fields.feed(key) {
+            HeadersOutcome::CycleFrom(step) => {
+                self.cycle_from(step);
+                HeadersOutcome::Edited
+            }
+            other => other,
+        }
+    }
+
+    fn cycle_from(&mut self, step: i32) {
+        let count = self.choices.len() as i32;
+        let next = (self.chosen as i32 + step).rem_euclid(count);
+        self.chosen = next as usize;
+    }
+
+    pub fn sender_line(&self) -> String {
+        let identity = self.identity();
+        match &identity.name {
+            Some(name) => format!("{name} <{}>", identity.address),
+            None => identity.address.clone(),
+        }
+    }
+
+    pub fn outgoing(&self) -> Result<Outgoing, String> {
+        let identity = self.identity();
+        if !identity.address.contains('@') {
+            return Err("From needs a full address".to_string());
+        }
+        let to = address_list(&self.fields.to);
+        if to.is_empty() {
+            return Err("no recipients in To".to_string());
+        }
+        Ok(Outgoing {
+            from_name: identity.name.clone(),
+            from: identity.address.clone(),
+            to,
+            cc: address_list(&self.fields.cc),
+            bcc: address_list(&self.fields.bcc),
+            subject: self.fields.subject.trim().to_string(),
+            in_reply_to: self.in_reply_to.clone(),
+            references: self.references.clone(),
+            body: self.body.clone(),
+        })
     }
 }
 
-fn signature_block(identity: &ComposeIdentity) -> String {
-    let Some(signature) = &identity.signature else {
-        return String::new();
-    };
-    let trimmed = signature.trim_end();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    format!("-- \n{trimmed}\n")
-}
-
-fn reply_subject(subject: &str) -> String {
-    let trimmed = subject.trim();
-    let lowered = trimmed.to_ascii_lowercase();
-    if lowered.starts_with(REPLY_PREFIX) {
-        return trimmed.to_string();
-    }
-    format!("Re: {trimmed}")
-}
-
-fn quoted_body(source: &ReplySource<'_>) -> String {
-    let mut out = format!(
-        "On {}, {} wrote:\n",
-        source.date,
-        sender_name(source.from),
-    );
-    for line in source.body.trim_end().lines() {
-        out.push_str(&quote_line(line));
-    }
-    out
-}
-
-fn quote_line(line: &str) -> String {
-    if line.is_empty() {
-        return ">\n".to_string();
-    }
-    format!("> {line}\n")
-}
-
+/// A compose validated and ready to assemble: parsed address
+/// lists and the exact header values the message will carry.
 #[derive(Debug, Default, PartialEq, Eq)]
-pub struct ParsedDraft {
+pub(super) struct Outgoing {
     pub from_name: Option<String>,
     pub from: String,
     pub to: Vec<String>,
     pub cc: Vec<String>,
+    pub bcc: Vec<String>,
     pub subject: String,
     pub in_reply_to: Option<String>,
     pub references: Vec<String>,
     pub body: String,
-}
-
-pub fn parse_draft(text: &str) -> Result<ParsedDraft, String> {
-    let Some((headers, body)) = text.split_once("\n\n") else {
-        return Err(
-            "draft has no blank line after the headers".to_string()
-        );
-    };
-    let mut parsed = ParsedDraft {
-        body: body.to_string(),
-        ..ParsedDraft::default()
-    };
-    for line in headers.lines() {
-        let Some((key, value)) = line.split_once(':') else {
-            return Err(format!("malformed header line: {line}"));
-        };
-        apply_header(&mut parsed, key.trim(), value.trim())?;
-    }
-    validate(&parsed)?;
-    Ok(parsed)
-}
-
-fn apply_header(
-    parsed: &mut ParsedDraft,
-    key: &str,
-    value: &str,
-) -> Result<(), String> {
-    match key.to_ascii_lowercase().as_str() {
-        "from" => set_from(parsed, value),
-        "to" => parsed.to = address_list(value),
-        "cc" => parsed.cc = address_list(value),
-        "subject" => parsed.subject = value.to_string(),
-        "in-reply-to" => parsed.in_reply_to = single_id(value),
-        "references" => parsed.references = id_list(value),
-        other => return Err(format!("unknown header: {other}")),
-    }
-    Ok(())
-}
-
-fn validate(parsed: &ParsedDraft) -> Result<(), String> {
-    if !parsed.from.contains('@') {
-        return Err("From needs a full address".to_string());
-    }
-    if parsed.to.is_empty() {
-        return Err("no recipients in To".to_string());
-    }
-    Ok(())
-}
-
-fn set_from(parsed: &mut ParsedDraft, value: &str) {
-    parsed.from = bare_address(value);
-    let name = value
-        .split_once('<')
-        .map(|(name, _)| name.trim().trim_matches('"').trim())
-        .unwrap_or("");
-    parsed.from_name = (!name.is_empty()).then(|| name.to_string());
 }
 
 fn address_list(value: &str) -> Vec<String> {
@@ -236,48 +153,36 @@ pub(super) fn bare_address(value: &str) -> String {
     bracketed.unwrap_or(value).trim().to_string()
 }
 
-fn single_id(value: &str) -> Option<String> {
-    let id = value.trim().trim_matches(['<', '>']).to_string();
-    (!id.is_empty()).then_some(id)
-}
-
-fn id_list(value: &str) -> Vec<String> {
-    value
-        .split_whitespace()
-        .map(|id| id.trim_matches(['<', '>']).to_string())
-        .filter(|id| !id.is_empty())
-        .collect()
-}
-
-pub fn draft_unchanged(written: &str, edited: &str) -> bool {
-    written == edited
-}
-
-pub fn assemble(parsed: &ParsedDraft, date_unix: i64) -> Vec<u8> {
-    let (_, domain) =
-        parsed.from.rsplit_once('@').expect("validated at parse");
+/// The one place an outgoing message is assembled; Bcc
+/// recipients ride the envelope only, never the headers.
+pub(super) fn assemble(outgoing: &Outgoing, date_unix: i64) -> Vec<u8> {
+    let (_, domain) = outgoing
+        .from
+        .rsplit_once('@')
+        .expect("validated in outgoing");
     let draft = Draft {
-        from_name: parsed.from_name.as_deref(),
-        from: &parsed.from,
-        to: as_strs(&parsed.to),
-        cc: as_strs(&parsed.cc),
-        subject: &parsed.subject,
-        in_reply_to: parsed.in_reply_to.as_deref(),
-        references: as_strs(&parsed.references),
-        body: &parsed.body,
+        from_name: outgoing.from_name.as_deref(),
+        from: &outgoing.from,
+        to: as_strs(&outgoing.to),
+        cc: as_strs(&outgoing.cc),
+        subject: &outgoing.subject,
+        in_reply_to: outgoing.in_reply_to.as_deref(),
+        references: as_strs(&outgoing.references),
+        body: &outgoing.body,
         signature: None,
     };
     build_message(&draft, domain, date_unix)
 }
 
-pub fn envelope(account: &str, parsed: &ParsedDraft) -> Envelope {
+pub(super) fn envelope(account: &str, outgoing: &Outgoing) -> Envelope {
     Envelope {
         account: account.to_string(),
-        from: parsed.from.clone(),
-        recipients: parsed
+        from: outgoing.from.clone(),
+        recipients: outgoing
             .to
             .iter()
-            .chain(&parsed.cc)
+            .chain(&outgoing.cc)
+            .chain(&outgoing.bcc)
             .cloned()
             .collect(),
     }
@@ -288,212 +193,149 @@ fn as_strs(values: &[String]) -> Vec<&str> {
 }
 
 #[cfg(test)]
+pub(super) fn test_state() -> ComposeState {
+    use super::testkit::tester_identity;
+
+    let second = ComposeIdentity {
+        name: None,
+        address: "quin@example.org".to_string(),
+        signature: None,
+        pgp_sign: true,
+        pgp_key: Some("ABCD".to_string()),
+    };
+    ComposeState::new(
+        vec![
+            IdentityChoice {
+                account: "personal".to_string(),
+                identity: tester_identity(),
+            },
+            IdentityChoice {
+                account: "work".to_string(),
+                identity: second,
+            },
+        ],
+        0,
+        DraftFields::default(),
+        (None, None),
+    )
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
-    fn identity() -> ComposeIdentity {
-        ComposeIdentity {
-            name: Some("Tester".to_string()),
-            address: "tester@example.com".to_string(),
-            signature: Some("Kind regards\n".to_string()),
-            pgp_sign: false,
-            pgp_key: None,
-        }
-    }
-
-    fn source() -> ReplySource<'static> {
-        ReplySource {
-            from: "Alba Fenwick <alba@example.com>",
-            subject: "Greetings",
-            message_id: "id-1@example.com",
-            date: "Thu, 23 Jul 2026 at 09:00",
-            body: "First line.\n\nSecond line.\n",
-        }
-    }
-
-    fn reply(template: Option<&str>) -> String {
-        reply_draft_to(
-            &identity(),
-            &source(),
-            "alba@example.com",
-            "",
-            template,
-        )
+    #[test]
+    fn from_cycles_through_identities_and_wraps() {
+        let mut state = test_state();
+        assert_eq!(state.account(), "personal");
+        assert_eq!(state.sender_line(), "Tester <tester@example.com>");
+        state.cycle_from(1);
+        assert_eq!(state.account(), "work");
+        assert_eq!(state.sender_line(), "quin@example.org");
+        state.cycle_from(1);
+        assert_eq!(state.account(), "personal");
+        state.cycle_from(-1);
+        assert_eq!(state.account(), "work");
     }
 
     #[test]
-    fn templates_shape_both_compose_paths() {
-        let fresh = fresh_draft(
-            &identity(),
-            Some("Dear {name} on {date}:\n{quoted}"),
-            "24 Jul",
-        );
-        assert!(fresh.contains("Dear Tester on 24 Jul:"));
-        let reply = reply(Some("{quoted}\nRegards, {name}"));
-        assert!(reply.contains("Regards, Tester"));
-        assert!(reply.contains("> "));
+    fn the_plan_follows_the_identity_until_overridden() {
+        let mut state = test_state();
+        assert_eq!(state.plan(), PgpPlan::default());
+        state.cycle_from(1);
+        assert!(state.plan().sign);
+        assert_eq!(state.crypto().key.as_deref(), Some("ABCD"));
+        state.sign_override = Some(false);
+        state.encrypt_override = Some(true);
+        assert!(!state.plan().sign);
+        assert!(state.plan().encrypt);
+        state.cycle_from(-1);
+        assert!(state.plan().encrypt, "overrides survive cycling");
     }
 
     #[test]
-    fn reply_prefills_the_header_block() {
-        let draft = reply(None);
-        let expected = "From: Tester <tester@example.com>\n\
-                        To: alba@example.com\n\
-                        Cc: \n\
-                        Subject: Re: Greetings\n\
-                        In-Reply-To: <id-1@example.com>\n\
-                        References: <id-1@example.com>\n\n";
-        assert!(draft.starts_with(expected), "{draft}");
-    }
-
-    #[test]
-    fn reply_quotes_below_an_attribution_line() {
-        let draft = reply(None);
-        let quoted = "On Thu, 23 Jul 2026 at 09:00, \
-                      Alba Fenwick wrote:\n\
-                      > First line.\n\
-                      >\n\
-                      > Second line.\n";
-        assert!(draft.contains(quoted), "{draft}");
-        assert!(draft.ends_with("\n-- \nKind regards\n"), "{draft}");
-    }
-
-    #[test]
-    fn list_replies_carry_explicit_recipients() {
-        let draft = reply_draft_to(
-            &identity(),
-            &source(),
-            "devel@example.com",
-            "mara@example.com, quin@example.com",
-            None,
-        );
-        let parsed = parse_draft(&draft).unwrap();
-        assert_eq!(parsed.to, ["devel@example.com"]);
-        assert_eq!(parsed.cc, ["mara@example.com", "quin@example.com"]);
-        assert_eq!(parsed.subject, "Re: Greetings");
+    fn outgoing_requires_recipients_and_a_full_from() {
+        let mut state = test_state();
         assert_eq!(
-            parsed.in_reply_to.as_deref(),
-            Some("id-1@example.com")
+            state.outgoing().unwrap_err(),
+            "no recipients in To"
         );
-    }
-
-    #[test]
-    fn unsubscribe_drafts_prefill_from_the_mailto_uri() {
-        let mailto = antiphon_render::MailtoUnsubscribe {
-            address: "leave@example.com".to_string(),
-            subject: Some("unsubscribe me".to_string()),
-            body: Some("please".to_string()),
-        };
-        let draft = unsubscribe_draft(&identity(), &mailto);
-        assert!(draft.contains("To: leave@example.com\n"));
-        assert!(draft.contains("Subject: unsubscribe me\n"));
-        assert!(draft.contains("\n\nplease\n"), "{draft}");
-
-        let bare = antiphon_render::MailtoUnsubscribe {
-            address: "leave@example.com".to_string(),
-            subject: None,
-            body: None,
-        };
-        let draft = unsubscribe_draft(&identity(), &bare);
-        assert!(draft.contains("Subject: \n"));
-    }
-
-    #[test]
-    fn reply_subjects_gain_re_exactly_once() {
-        let cases = [
-            ("Greetings", "Re: Greetings"),
-            ("Re: Greetings", "Re: Greetings"),
-            ("RE: Greetings", "RE: Greetings"),
-            ("re: Greetings", "re: Greetings"),
-        ];
-        for (subject, expected) in cases {
-            assert_eq!(reply_subject(subject), expected, "{subject}");
-        }
-    }
-
-    #[test]
-    fn fresh_drafts_leave_recipients_and_subject_open() {
-        let draft = fresh_draft(&identity(), None, "");
-        assert!(
-            draft.starts_with(
-                "From: Tester <tester@example.com>\nTo: \n"
-            )
-        );
-        assert!(!draft.contains("In-Reply-To"));
-        assert!(draft.ends_with("-- \nKind regards\n"));
-    }
-
-    #[test]
-    fn drafts_round_trip_through_the_parser() {
-        let mut draft = reply(None);
-        draft.push_str("Thanks, noted.\n");
-        let parsed = parse_draft(&draft).unwrap();
-        assert_eq!(parsed.from, "tester@example.com");
-        assert_eq!(parsed.from_name.as_deref(), Some("Tester"));
-        assert_eq!(parsed.to, ["alba@example.com"]);
-        assert!(parsed.cc.is_empty());
-        assert_eq!(parsed.subject, "Re: Greetings");
+        state.fields.to = "alba@example.com".to_string();
+        assert!(state.outgoing().is_ok());
+        state.choices[0].identity.address = "not-an-address".into();
         assert_eq!(
-            parsed.in_reply_to.as_deref(),
-            Some("id-1@example.com")
+            state.outgoing().unwrap_err(),
+            "From needs a full address"
         );
-        assert_eq!(parsed.references, ["id-1@example.com"]);
-        assert!(parsed.body.contains("> First line."));
-        assert!(parsed.body.ends_with("Thanks, noted.\n"));
     }
 
     #[test]
-    fn unknown_headers_are_an_error() {
-        let draft = "From: a@b.c\nTo: d@e.f\nX-Loud: yes\n\nhi\n";
-        let error = parse_draft(draft).unwrap_err();
-        assert_eq!(error, "unknown header: x-loud");
+    fn recipient_fields_accept_commas_and_angle_brackets() {
+        let mut state = test_state();
+        state.fields.to =
+            "Mara <mara@example.com>, quin@example.com".to_string();
+        state.fields.cc = "<cc@example.com>".to_string();
+        state.fields.bcc = "hidden@example.com".to_string();
+        let outgoing = state.outgoing().unwrap();
+        assert_eq!(
+            outgoing.to,
+            ["mara@example.com", "quin@example.com"]
+        );
+        assert_eq!(outgoing.cc, ["cc@example.com"]);
+        let envelope = envelope("personal", &outgoing);
+        assert_eq!(envelope.recipients.len(), 4);
+        assert_eq!(envelope.from, "tester@example.com");
     }
 
     #[test]
-    fn recipient_lists_accept_commas_and_angle_brackets() {
-        let draft = "From: a@b.c\n\
-                     To: Mara <mara@example.com>, quin@example.com\n\
-                     Cc: <cc@example.com>\n\nhi\n";
-        let parsed = parse_draft(draft).unwrap();
-        assert_eq!(parsed.to, ["mara@example.com", "quin@example.com"]);
-        assert_eq!(parsed.cc, ["cc@example.com"]);
-        let envelope = envelope("personal", &parsed);
-        assert_eq!(envelope.recipients.len(), 3);
-        assert_eq!(envelope.from, "a@b.c");
-    }
-
-    #[test]
-    fn empty_recipients_and_headerless_drafts_fail() {
-        let unfilled = fresh_draft(&identity(), None, "");
-        let error = parse_draft(&unfilled).unwrap_err();
-        assert_eq!(error, "no recipients in To");
-        assert!(parse_draft("no headers at all").is_err());
+    fn bcc_recipients_never_reach_the_headers() {
+        let mut state = test_state();
+        state.fields.to = "alba@example.com".to_string();
+        state.fields.bcc = "hidden@example.com".to_string();
+        state.fields.subject = "quiet".to_string();
+        state.body = "Body here.\n".to_string();
+        let outgoing = state.outgoing().unwrap();
+        let raw = assemble(&outgoing, 1_753_380_000);
+        let text = String::from_utf8(raw).unwrap();
+        assert!(!text.contains("hidden@example.com"), "{text}");
         assert!(
-            parse_draft("From: a@b.c\nnot a header\n\nhi\n")
-                .unwrap_err()
-                .contains("malformed header line")
+            envelope("personal", &outgoing)
+                .recipients
+                .contains(&"hidden@example.com".to_string())
         );
-    }
-
-    #[test]
-    fn unchanged_drafts_are_detected() {
-        let written = fresh_draft(&identity(), None, "");
-        assert!(draft_unchanged(&written, &written.clone()));
-        let edited = format!("{written}A new body line.\n");
-        assert!(!draft_unchanged(&written, &edited));
     }
 
     #[test]
     fn assembly_derives_the_message_id_domain_from_the_sender() {
-        let parsed = parse_draft(
-            "From: Tester <tester@example.com>\n\
-             To: alba@example.com\n\nBody here.\n",
-        )
-        .unwrap();
-        let raw = assemble(&parsed, 1_753_380_000);
+        let mut state = test_state();
+        state.fields.to = "alba@example.com".to_string();
+        state.body = "Body here.\n".to_string();
+        let outgoing = state.outgoing().unwrap();
+        let raw = assemble(&outgoing, 1_753_380_000);
         let text = String::from_utf8(raw).unwrap();
         assert!(text.contains(".antiphon@example.com>"));
         assert!(text.contains("format=flowed"));
         assert!(text.contains("Body here."));
+    }
+
+    #[test]
+    fn threading_headers_ride_along_from_the_prefill() {
+        let fields = DraftFields {
+            to: "alba@example.com".to_string(),
+            in_reply_to: Some("id-1@example.com".to_string()),
+            references: vec!["id-1@example.com".to_string()],
+            ..DraftFields::default()
+        };
+        let state = ComposeState::new(
+            test_state().choices,
+            0,
+            fields,
+            (None, None),
+        );
+        let outgoing = state.outgoing().unwrap();
+        let raw = assemble(&outgoing, 1_753_380_000);
+        let text = String::from_utf8(raw).unwrap();
+        assert!(text.contains("In-Reply-To: <id-1@example.com>"));
+        assert!(text.contains("References: <id-1@example.com>"));
     }
 }

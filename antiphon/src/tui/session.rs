@@ -2,14 +2,12 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use antiphon_config::Composer;
-use antiphon_pgp::Keyring;
 use antiphon_store::{Outbox, StoreLayout};
 use ratatui::DefaultTerminal;
 
 use super::app::App;
-use super::compose::{self, ParsedDraft};
-use super::crypto::{self, ComposeCrypto};
-use super::dispatch::EditorRequest;
+use super::compose::{self, ComposeState};
+use super::crypto;
 use super::draw;
 use super::editor::{EditorPane, EditorSession};
 
@@ -17,13 +15,19 @@ const DRAFTS_DIR: &str = "drafts";
 const FALLBACK_EDITOR: &str = "vi";
 const COMPOSE_ABORTED: &str = "compose aborted";
 
-pub(super) fn begin_compose(
+/// Hands the compose body to the editor: a body-only file,
+/// never the headers, which stay structured fields. Embedded
+/// runs the editor on a pty inside the client; suspend hands
+/// the terminal over and settles on return.
+pub(super) fn open_body_editor(
     terminal: &mut DefaultTerminal,
     app: &mut App,
     layout: &StoreLayout,
-    request: EditorRequest,
 ) -> std::io::Result<()> {
-    let path = match write_draft(layout, &request.text) {
+    let Some(state) = &app.compose else {
+        return Ok(());
+    };
+    let path = match write_body(layout, &state.body) {
         Ok(path) => path,
         Err(error) => {
             app.notice = Some(format!("draft: {error}"));
@@ -31,21 +35,24 @@ pub(super) fn begin_compose(
         }
     };
     let embedded = app.composer == Composer::Embedded
-        && open_embedded(terminal, app, &request, &path)?;
+        && open_embedded(terminal, app, &path)?;
     if embedded {
         return Ok(());
     }
-    suspend_compose(terminal, app, layout, &request, &path)
+    let status = run_editor(terminal, &path);
+    terminal.clear()?;
+    match status {
+        Ok(status) => {
+            finish_body_edit(app, layout, &path, status.success())
+        }
+        Err(error) => app.notice = Some(format!("editor: {error}")),
+    }
+    Ok(())
 }
 
-/// The embedded default: the editor child runs on a pty and
-/// its screen renders inside the client. Returns false when
-/// the pty cannot be created, handing over to the suspend
-/// fallback.
 fn open_embedded(
     terminal: &mut DefaultTerminal,
     app: &mut App,
-    request: &EditorRequest,
     path: &Path,
 ) -> std::io::Result<bool> {
     let size = terminal.size()?;
@@ -59,38 +66,10 @@ fn open_embedded(
         return Ok(false);
     };
     app.open_editor(EditorPane {
-        account: request.account.clone(),
-        written: request.text.clone(),
         path: path.to_path_buf(),
-        crypto: request.crypto.clone(),
         session,
     });
     Ok(true)
-}
-
-fn suspend_compose(
-    terminal: &mut DefaultTerminal,
-    app: &mut App,
-    layout: &StoreLayout,
-    request: &EditorRequest,
-    path: &Path,
-) -> std::io::Result<()> {
-    let status = run_editor(terminal, path);
-    terminal.clear()?;
-    app.notice = Some(match status {
-        Ok(status) => finish_compose(
-            layout,
-            &app.keyring,
-            &request.account,
-            &request.text,
-            path,
-            &request.crypto,
-            status.success(),
-        ),
-        Err(error) => format!("editor: {error}"),
-    });
-    super::nudge_daemon();
-    Ok(())
 }
 
 /// The one place the terminal leaves ratatui's hands: restore,
@@ -116,46 +95,51 @@ fn editor_command() -> String {
         .unwrap_or_else(|| FALLBACK_EDITOR.to_string())
 }
 
-fn write_draft(
+fn write_body(
     layout: &StoreLayout,
-    text: &str,
+    body: &str,
 ) -> std::io::Result<PathBuf> {
     let dir = layout.root().join(DRAFTS_DIR);
     std::fs::create_dir_all(&dir)?;
     let name =
         format!("draft-{}-{}.eml", unix_now(), std::process::id());
     let path = dir.join(name);
-    std::fs::write(&path, text)?;
+    std::fs::write(&path, body)?;
     Ok(path)
 }
 
-pub(super) fn finish_compose(
+/// Settles a finished body edit: a failed editor aborts the
+/// compose, a clean exit queues the message with the current
+/// fields and seal plan.
+pub(super) fn finish_body_edit(
+    app: &mut App,
     layout: &StoreLayout,
-    keyring: &Keyring,
-    account: &str,
-    written: &str,
     path: &Path,
-    crypto: &ComposeCrypto,
     success: bool,
-) -> String {
+) {
     if !success {
         let _ = std::fs::remove_file(path);
-        return COMPOSE_ABORTED.to_string();
+        app.abort_compose(COMPOSE_ABORTED);
+        return;
     }
-    let edited = match std::fs::read_to_string(path) {
-        Ok(edited) => edited,
-        Err(error) => return format!("draft: {error}"),
+    match std::fs::read_to_string(path) {
+        Ok(edited) => {
+            if let Some(state) = app.compose.as_mut() {
+                state.body = edited;
+            }
+        }
+        Err(error) => {
+            app.notice = Some(format!("draft: {error}"));
+            return;
+        }
+    }
+    let Some(state) = app.compose.take() else {
+        return;
     };
-    if compose::draft_unchanged(written, &edited) {
-        let _ = std::fs::remove_file(path);
-        return COMPOSE_ABORTED.to_string();
-    }
-    match compose::parse_draft(&edited) {
-        Ok(parsed) => queue_message(
-            layout, keyring, account, &parsed, path, crypto,
-        ),
-        Err(error) => error,
-    }
+    app.view = super::app::View::List;
+    let notice = queue_message(layout, app, &state, path);
+    app.notice = Some(notice);
+    super::nudge_daemon();
 }
 
 /// Seals (signs and/or encrypts) the assembled message per the
@@ -164,19 +148,21 @@ pub(super) fn finish_compose(
 /// outbox, so a message is never sent unprotected by accident.
 fn queue_message(
     layout: &StoreLayout,
-    keyring: &Keyring,
-    account: &str,
-    parsed: &ParsedDraft,
+    app: &App,
+    state: &ComposeState,
     path: &Path,
-    crypto: &ComposeCrypto,
 ) -> String {
-    let raw = compose::assemble(parsed, unix_now());
-    let envelope = compose::envelope(account, parsed);
+    let outgoing = match state.outgoing() {
+        Ok(outgoing) => outgoing,
+        Err(error) => return error,
+    };
+    let raw = compose::assemble(&outgoing, unix_now());
+    let envelope = compose::envelope(state.account(), &outgoing);
     let sealed = match crypto::seal(
         &raw,
         &envelope.recipients,
-        crypto,
-        keyring,
+        &state.crypto(),
+        &app.keyring,
         None,
     ) {
         Ok(sealed) => sealed,
@@ -192,7 +178,7 @@ fn queue_message(
             let _ = std::fs::remove_file(path);
             format!(
                 "queued: {} to {} recipient(s)",
-                parsed.subject,
+                outgoing.subject,
                 envelope.recipients.len()
             )
         }

@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use super::app::App;
-use super::crypto::PgpPlan;
 
 /// Per-message overrides of the identity's pgp defaults:
 /// command name, whether it targets signing (else encryption),
@@ -126,15 +125,6 @@ impl App {
         self.prompt.take()
     }
 
-    /// The pgp plan for a compose starting now: the identity
-    /// default with any armed per-message overrides consumed.
-    pub fn take_pgp_plan(&mut self, default_sign: bool) -> PgpPlan {
-        PgpPlan {
-            sign: self.pending_sign.take().unwrap_or(default_sign),
-            encrypt: self.pending_encrypt.take().unwrap_or(false),
-        }
-    }
-
     fn pgp_toggle(&mut self, command: &str) -> bool {
         let Some((_, is_sign, value)) =
             PGP_TOGGLES.iter().find(|(name, _, _)| *name == command)
@@ -192,6 +182,7 @@ mod tests {
     use antiphon_core::Action;
 
     use super::super::app::app_with_messages;
+    use super::super::crypto::PgpPlan;
     use super::*;
 
     #[test]
@@ -225,35 +216,29 @@ mod tests {
     }
 
     #[test]
-    fn pgp_toggles_shape_the_next_compose_plan() {
-        let cases: &[(bool, &[&str], bool, bool)] = &[
-            (false, &[], false, false),
-            (true, &[], true, false),
-            (true, &["nosign"], false, false),
-            (false, &["sign"], true, false),
-            (false, &["encrypt"], false, true),
-            (false, &["sign", "encrypt"], true, true),
-            (true, &["encrypt"], true, true),
-            (true, &["encrypt", "noencrypt"], true, false),
-            (false, &["encrypt", "nosign"], false, true),
-            (false, &["sign", "nosign"], false, false),
+    fn pgp_toggles_arm_the_next_compose_overrides() {
+        let cases: &[(&[&str], Option<bool>, Option<bool>)] = &[
+            (&[], None, None),
+            (&["nosign"], Some(false), None),
+            (&["sign"], Some(true), None),
+            (&["encrypt"], None, Some(true)),
+            (&["sign", "encrypt"], Some(true), Some(true)),
+            (&["encrypt", "noencrypt"], None, Some(false)),
+            (&["encrypt", "nosign"], Some(false), Some(true)),
+            (&["sign", "nosign"], Some(false), None),
         ];
-        for (default_sign, commands, sign, encrypt) in cases {
+        for (commands, sign, encrypt) in cases {
             let mut app = app_with_messages(1);
             for command in *commands {
                 app.run_command(command);
             }
-            let plan = app.take_pgp_plan(*default_sign);
-            let expected = PgpPlan {
-                sign: *sign,
-                encrypt: *encrypt,
-            };
-            assert_eq!(plan, expected, "{commands:?}");
+            assert_eq!(app.pending_sign, *sign, "{commands:?}");
+            assert_eq!(app.pending_encrypt, *encrypt, "{commands:?}");
         }
     }
 
     #[test]
-    fn pgp_overrides_are_consumed_by_one_compose() {
+    fn armed_overrides_reach_the_compose_plan() {
         let mut app = app_with_messages(1);
         app.run_command("sign");
         app.run_command("encrypt");
@@ -262,17 +247,17 @@ mod tests {
                 .as_deref()
                 .is_some_and(|n| n.contains("encryption on"))
         );
-        let armed = app.take_pgp_plan(false);
+        let mut state = super::super::compose::test_state();
+        state.sign_override = app.pending_sign.take();
+        state.encrypt_override = app.pending_encrypt.take();
         assert_eq!(
-            armed,
+            state.plan(),
             PgpPlan {
                 sign: true,
                 encrypt: true,
             }
         );
-        let next = app.take_pgp_plan(false);
-        assert_eq!(next, PgpPlan::default());
-        assert!(app.take_pgp_plan(true).sign);
+        assert!(app.pending_sign.is_none(), "consumed by one compose");
     }
 
     #[test]

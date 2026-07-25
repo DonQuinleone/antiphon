@@ -60,8 +60,8 @@ fn confirm_line(theme: &Theme, list: &str) -> Line<'static> {
 
 fn status_line(app: &App) -> Line<'static> {
     let theme = app.theme;
-    if let Some(pane) = &app.editor {
-        return compose_status(theme, pane);
+    if let Some(state) = &app.compose {
+        return compose_status(theme, state);
     }
     let text = match &app.notice {
         Some(notice) => notice.clone(),
@@ -86,13 +86,13 @@ fn status_line(app: &App) -> Line<'static> {
 
 fn compose_status(
     theme: &Theme,
-    pane: &super::editor::EditorPane,
+    state: &super::compose::ComposeState,
 ) -> Line<'static> {
     let mut spans = vec![Span::styled(
-        format!("compose \u{b7} {}", pane.account),
+        format!("compose \u{b7} {}", state.account()),
         Style::new().fg(theme.text_muted),
     )];
-    if let Some(label) = pane.crypto.plan.label() {
+    if let Some(label) = state.plan().label() {
         spans.push(Span::styled(
             format!(" {label}"),
             Style::new().fg(theme.accent),

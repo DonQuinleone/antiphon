@@ -10,6 +10,7 @@ use ratatui::widgets::{
 use tui_term::widget::PseudoTerminal;
 
 use super::app::{App, View};
+use super::headers;
 use super::message_list::{draw_list, format_date};
 use super::pager::draw_pager;
 use super::scope::ViewScope;
@@ -17,6 +18,7 @@ use super::sidebar::SidebarEntry;
 use super::status::draw_status;
 
 const STATUS_HEIGHT: u16 = 1;
+const FIELD_SUMMARY_ROWS: u16 = headers::FIELD_COUNT as u16;
 const READING_PANE_SHARE: u16 = 40;
 const LIST_HEADER_ROWS: u16 = 1;
 const SIDEBAR_WIDTH_MIN: u16 = 10;
@@ -32,6 +34,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
         area,
     );
     let (content, status) = split_status(area);
+    if app.view == View::Compose {
+        headers::draw_headers(frame, app, content);
+        draw_status(frame, app, status);
+        return;
+    }
     if app.view == View::Editor {
         draw_editor(frame, app, content);
         draw_status(frame, app, status);
@@ -256,19 +263,32 @@ pub(super) fn header_line(
     ])
 }
 
-/// Rows left for the editor pane once the statusline has
-/// taken its line; the pty is kept exactly this size.
+/// Rows left for the editor pane once the statusline and the
+/// header field summary have taken theirs; the pty is kept
+/// exactly this size.
 pub(super) fn editor_rows(height: u16) -> u16 {
-    height.saturating_sub(STATUS_HEIGHT)
+    height.saturating_sub(STATUS_HEIGHT + FIELD_SUMMARY_ROWS)
 }
 
+/// The body editor with the header fields summarised above
+/// it, aerc style: the fields stay ours, the pty gets only
+/// the body.
 fn draw_editor(frame: &mut Frame, app: &App, area: Rect) {
     let Some(pane) = &app.editor else {
         return;
     };
+    let [summary, editor] = Layout::vertical([
+        Constraint::Length(FIELD_SUMMARY_ROWS),
+        Constraint::Min(0),
+    ])
+    .areas(area);
+    if let Some(state) = &app.compose {
+        let lines = headers::field_lines(app.theme, state, false);
+        frame.render_widget(Paragraph::new(lines), summary);
+    }
     frame.render_widget(
         PseudoTerminal::new(pane.session.screen()),
-        area,
+        editor,
     );
 }
 
