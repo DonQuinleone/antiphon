@@ -112,7 +112,21 @@ pub(crate) fn mail_secret(
         "storing the mail password in your Keychain as \
          `{service}`"
     );
-    keychain_store(&service, address)?;
+    keychain_store(&service, address, None)?;
+    Ok(format!("security find-generic-password -w -s {service}"))
+}
+
+/// The settings form's masked field already holds the secret
+/// in memory, so it is handed to `security` directly rather
+/// than through the interactive prompt `mail_secret` relies on.
+#[cfg(target_os = "macos")]
+pub(crate) fn store_keychain_secret(
+    name: &str,
+    address: &str,
+    secret: &str,
+) -> Result<String, String> {
+    let service = format!("antiphon-mail-{name}");
+    keychain_store(&service, address, Some(secret))?;
     Ok(format!("security find-generic-password -w -s {service}"))
 }
 
@@ -123,19 +137,30 @@ fn vault_secret() -> Result<String, String> {
          Keychain as `antiphon-vault` and the daemon reads it \
          from there"
     );
-    keychain_store("antiphon-vault", &whoami())?;
+    keychain_store("antiphon-vault", &whoami(), None)?;
     Ok("security find-generic-password -w -s antiphon-vault"
         .to_string())
 }
 
-/// `security` prompts for the secret itself, hidden, so it
-/// never touches our argv or environment.
+/// With `secret` absent, `security` prompts for it itself,
+/// hidden, so it never touches our argv or environment; the
+/// settings form supplies `secret` directly since it captured
+/// it through its own masked field instead.
 #[cfg(target_os = "macos")]
-fn keychain_store(service: &str, account: &str) -> Result<(), String> {
-    let status = Command::new("security")
+fn keychain_store(
+    service: &str,
+    account: &str,
+    secret: Option<&str>,
+) -> Result<(), String> {
+    let mut command = Command::new("security");
+    command
         .args(["add-generic-password", "-U", "-s", service, "-a"])
         .arg(account)
-        .arg("-w")
+        .arg("-w");
+    if let Some(secret) = secret {
+        command.arg(secret);
+    }
+    let status = command
         .status()
         .map_err(|error| format!("running security: {error}"))?;
     if !status.success() {

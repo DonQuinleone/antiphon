@@ -178,7 +178,7 @@ fn from_outcome(code: KeyCode) -> HeadersOutcome {
     }
 }
 
-fn byte_index(text: &str, chars: usize) -> usize {
+pub(super) fn byte_index(text: &str, chars: usize) -> usize {
     text.char_indices()
         .nth(chars)
         .map(|(index, _)| index)
@@ -292,7 +292,7 @@ fn field_line(
     ])
 }
 
-fn with_cursor(value: &str, cursor: usize) -> String {
+pub(super) fn with_cursor(value: &str, cursor: usize) -> String {
     let at = byte_index(value, cursor);
     let mut out = value.to_string();
     out.insert(at, CURSOR);

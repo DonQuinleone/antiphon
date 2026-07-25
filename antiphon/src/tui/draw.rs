@@ -61,6 +61,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     if app.view == View::Settings {
         draw_settings(frame, app, content);
         draw_status(frame, app, status);
+        super::account_form_draw::draw_form(frame, app, area);
         return;
     }
     if app.view == View::Editor {

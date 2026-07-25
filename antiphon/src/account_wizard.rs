@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use antiphon_config::{AccountFile, Dirs, load};
+use antiphon_config::{AccountFile, Dirs};
 
 use crate::setup::{mail_secret, prompt, required, validate_address};
 
@@ -17,7 +17,9 @@ pub(crate) struct AccountAnswers {
 }
 
 impl AccountAnswers {
-    fn from_existing(account: &AccountFile) -> AccountAnswers {
+    pub(crate) fn from_existing(
+        account: &AccountFile,
+    ) -> AccountAnswers {
         AccountAnswers {
             name: account.account.name.clone(),
             address: account
@@ -83,6 +85,28 @@ pub(crate) fn prompt_account(
     })
 }
 
+/// The settings form's masked Keychain field, already holding
+/// the secret in memory: stored the same way `mail_secret`
+/// stores its interactively-typed one, just without the
+/// terminal prompt in between.
+#[cfg(target_os = "macos")]
+pub(crate) fn store_supplied_secret(
+    name: &str,
+    address: &str,
+    secret: &str,
+) -> Result<String, String> {
+    crate::setup::store_keychain_secret(name, address, secret)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn store_supplied_secret(
+    _name: &str,
+    _address: &str,
+    _secret: &str,
+) -> Result<String, String> {
+    Err("the Keychain is only available on macOS".to_string())
+}
+
 fn prompt_address(default: Option<&str>) -> Result<String, String> {
     let Some(default) = default else {
         return required("e-mail address", validate_address);
@@ -94,31 +118,6 @@ fn prompt_address(default: Option<&str>) -> Result<String, String> {
             Err(error) => println!("{error}"),
         }
     }
-}
-
-/// Runs the account Q&A fresh and writes a brand new account
-/// file; fails rather than overwriting if the name is taken.
-pub(crate) fn run_add_account(dirs: &Dirs) -> Result<(), String> {
-    let answers = prompt_account(None)?;
-    write_account(dirs, &answers)
-}
-
-/// Runs the account Q&A again with the current answers as
-/// defaults, then overwrites the account file (renaming it if
-/// the account name itself changed).
-pub(crate) fn run_edit_account(
-    dirs: &Dirs,
-    file_stem: &str,
-) -> Result<(), String> {
-    let loaded = load(dirs).map_err(|error| error.to_string())?;
-    let existing = loaded
-        .accounts
-        .iter()
-        .find(|account| account.file_stem == file_stem)
-        .ok_or_else(|| format!("account {file_stem} not found"))?;
-    let defaults = AccountAnswers::from_existing(&existing.account);
-    let answers = prompt_account(Some(&defaults))?;
-    write_account_file(dirs, &answers, Some(file_stem))
 }
 
 /// A brand new account: fails rather than overwriting if the

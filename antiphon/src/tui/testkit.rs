@@ -52,6 +52,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         pager_attachments: Vec::new(),
         link_picker: None,
         folder_picker: None,
+        account_form: None,
         drawer_open: false,
         drawer_selected: 0,
         header_names: antiphon_config::Ui::default().headers,

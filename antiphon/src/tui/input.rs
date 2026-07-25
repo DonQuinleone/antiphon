@@ -13,9 +13,9 @@ use super::dispatch::dispatch;
 use super::identity::ComposeContext;
 use super::settings::{self, SettingsOutcome};
 use super::{
-    attach, draw, drawer, folder_picker, headers, link_picker,
-    mark_all_read, pager, pager_body, patches, review, run_query,
-    run_search, session,
+    account_form, attach, draw, drawer, folder_picker, headers,
+    link_picker, mark_all_read, pager, pager_body, patches, review,
+    run_query, run_search, session,
 };
 
 const MOUSE_WHEEL_ROWS: usize = 3;
@@ -88,26 +88,19 @@ pub(super) fn review_key(
     Ok(())
 }
 
-/// Keys in the settings view: most toggles and selections
-/// settle in place, only add/edit need the terminal, to
-/// suspend the TUI for the setup wizard's Q&A.
-pub(super) fn settings_key(
-    terminal: &mut DefaultTerminal,
-    app: &mut App,
-    key: KeyEvent,
-) -> std::io::Result<()> {
+/// Keys in the settings view: the account form, once open,
+/// takes every key itself; everything else is a plain toggle
+/// or selection settled in place.
+pub(super) fn settings_key(app: &mut App, key: KeyEvent) {
+    if app.account_form.is_some() {
+        account_form::feed(app, key);
+        return;
+    }
     match settings::feed(app, key) {
-        SettingsOutcome::Stay => Ok(()),
+        SettingsOutcome::Stay => {}
         SettingsOutcome::Close => {
             app.settings = None;
             app.view = View::List;
-            Ok(())
-        }
-        SettingsOutcome::AddAccount => {
-            settings::run_account_wizard(terminal, app, None)
-        }
-        SettingsOutcome::EditAccount(name) => {
-            settings::run_account_wizard(terminal, app, Some(name))
         }
     }
 }

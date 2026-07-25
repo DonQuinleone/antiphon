@@ -1,5 +1,4 @@
 use antiphon_config::{Dirs, NamedAccount};
-use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use super::app::{App, View};
@@ -36,15 +35,13 @@ pub(super) struct SettingsState {
     pub(super) daemon_hint: Option<String>,
 }
 
-/// What a settings key asks of the event loop; everything an
-/// in-memory toggle can settle happens inside `feed` itself,
-/// only the account wizard's terminal suspension bubbles up.
+/// What a settings key asks of the event loop; add and edit
+/// open the account form in place, so only closing the whole
+/// settings view bubbles up.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum SettingsOutcome {
     Stay,
     Close,
-    AddAccount,
-    EditAccount(String),
 }
 
 impl App {
@@ -112,11 +109,16 @@ fn feed_accounts(app: &mut App, key: KeyEvent) -> SettingsOutcome {
             move_account_selection(app, -1);
             SettingsOutcome::Stay
         }
-        KeyCode::Char('a') => SettingsOutcome::AddAccount,
-        KeyCode::Char('e') => match selected_account_name(app) {
-            Some(name) => SettingsOutcome::EditAccount(name),
-            None => SettingsOutcome::Stay,
-        },
+        KeyCode::Char('a') => {
+            app.open_account_form_add();
+            SettingsOutcome::Stay
+        }
+        KeyCode::Char('e') => {
+            if let Some(name) = selected_account_name(app) {
+                app.open_account_form_edit(&name);
+            }
+            SettingsOutcome::Stay
+        }
         KeyCode::Char('d') => {
             arm_delete(app);
             SettingsOutcome::Stay
@@ -263,35 +265,6 @@ fn summary_of(entry: &NamedAccount) -> AccountSummary {
     }
 }
 
-/// The one place the terminal leaves ratatui's hands for
-/// settings: restore, run the setup wizard's Q&A in-process
-/// (no subprocess involved, unlike the body editor), then take
-/// the screen back, exactly the way `session::run_editor` does
-/// for the composer.
-pub(super) fn run_account_wizard(
-    terminal: &mut DefaultTerminal,
-    app: &mut App,
-    edit_name: Option<String>,
-) -> std::io::Result<()> {
-    super::release_mouse();
-    ratatui::restore();
-    let result = match &edit_name {
-        Some(name) => {
-            crate::account_wizard::run_edit_account(&app.dirs, name)
-        }
-        None => crate::account_wizard::run_add_account(&app.dirs),
-    };
-    *terminal = ratatui::init();
-    super::grab_mouse();
-    terminal.clear()?;
-    app.notice = Some(match result {
-        Ok(()) => "account saved".to_string(),
-        Err(error) => format!("account: {error}"),
-    });
-    app.refresh_settings_accounts();
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::testkit::app_with_messages;
@@ -362,16 +335,34 @@ mod tests {
     }
 
     #[test]
-    fn a_and_e_ask_for_the_wizard() {
+    fn a_opens_a_blank_form_and_e_opens_it_prefilled() {
+        use super::super::testkit::TempDir;
+
+        let dir = TempDir::new();
+        let accounts_dir = dir.path.join("accounts");
+        std::fs::create_dir_all(&accounts_dir).unwrap();
+        std::fs::write(
+            accounts_dir.join("work.toml"),
+            "[account]\nname = \"work\"\n\n\
+             [imap]\nhost = \"imap.example.com\"\nuser = \"u\"\n\n\
+             [[identity]]\naddress = \"u@example.com\"\n",
+        )
+        .unwrap();
+
         let mut app = app_with_settings(&["work"]);
+        app.dirs.config = dir.path.clone();
+
         assert_eq!(
             feed(&mut app, key(KeyCode::Char('a'))),
-            SettingsOutcome::AddAccount
+            SettingsOutcome::Stay
         );
-        assert_eq!(
-            feed(&mut app, key(KeyCode::Char('e'))),
-            SettingsOutcome::EditAccount("work".to_string())
-        );
+        assert!(app.account_form.is_some());
+        app.account_form = None;
+
+        feed(&mut app, key(KeyCode::Char('e')));
+        let form =
+            app.account_form.as_ref().expect("edit opens a form");
+        assert_eq!(form.editing.as_deref(), Some("work"));
     }
 
     #[test]

@@ -1,3 +1,5 @@
+mod account_form;
+mod account_form_draw;
 mod actions;
 mod app;
 mod attach;
@@ -238,9 +240,7 @@ fn event_loop(
             KeyRoute::Review => {
                 input::review_key(terminal, app, layout, key)?
             }
-            KeyRoute::Settings => {
-                input::settings_key(terminal, app, key)?
-            }
+            KeyRoute::Settings => input::settings_key(app, key),
             KeyRoute::Prompt => {
                 input::prompt_key(app, layout, key);
                 let mut request =
