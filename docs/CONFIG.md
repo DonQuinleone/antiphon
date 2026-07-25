@@ -164,6 +164,13 @@ without any `List-Post` header falls back to reply-all with a
 warning naming the recipient count rather than guessing an
 address.
 
+`:accept`, `:tentative` and `:decline` answer the calendar
+invite of the open message: each opens an ordinary compose to
+the organiser with the RFC 5546 reply attached as a calendar
+part, so nothing is sent before the review screen's y. The
+organiser's copy updates your attendance when their client
+processes the part, which the big providers all do.
+
 `:unsubscribe` acts on the current message's
 `List-Unsubscribe` header. An RFC 8058 one-click entry asks
 for confirmation naming the list, then queues the POST for

@@ -63,6 +63,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         preview: None,
         own_addresses: Vec::new(),
         contacts: Vec::new(),
+        pending_rsvp: None,
         keyring: Keyring::default(),
         reading_pane: ReadingPane::Below,
         sidebar: true,

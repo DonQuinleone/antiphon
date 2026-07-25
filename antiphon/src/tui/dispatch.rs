@@ -38,6 +38,57 @@ pub(super) fn pending_template_request(
     Some(state_for(app, context, account, identity, fields))
 }
 
+const RSVP_ATTACHMENT_NAME: &str = "invite.ics";
+const RSVP_CONTENT_TYPE: &str = "text/calendar; method=REPLY";
+
+/// :accept, :tentative and :decline on an open invite become
+/// an ordinary compose to the organiser, the RFC 5546 REPLY
+/// riding along as a calendar part; nothing sends before the
+/// review screen's confirmation like any other message.
+pub(super) fn pending_rsvp_request(
+    app: &mut App,
+    context: &ComposeContext,
+) -> Option<ComposeState> {
+    let rsvp = app.pending_rsvp.take()?;
+    let basis = reply_basis(app, context)?;
+    let now = chrono::Utc::now().timestamp();
+    let Some((fields, attachment)) =
+        rsvp_parts(&basis.raw, &basis.identity.address, rsvp, now)
+    else {
+        app.notice = Some("no calendar invite in this message".into());
+        return None;
+    };
+    let account = basis.account.clone();
+    let identity = basis.identity.clone();
+    let mut state =
+        state_for(app, context, &account, &identity, fields);
+    state.add_attachment(attachment);
+    Some(state)
+}
+
+fn rsvp_parts(
+    raw: &[u8],
+    address: &str,
+    rsvp: antiphon_render::Rsvp,
+    now_unix: i64,
+) -> Option<(DraftFields, super::attach::Attachment)> {
+    let reply =
+        antiphon_render::itip_reply(raw, address, rsvp, now_unix)?;
+    let fields = DraftFields {
+        to: reply.organiser,
+        subject: reply.subject.clone(),
+        body: format!("{}\n", reply.subject),
+        ..DraftFields::default()
+    };
+    let attachment = super::attach::Attachment {
+        path: std::path::PathBuf::new(),
+        filename: RSVP_ATTACHMENT_NAME.to_string(),
+        content_type: RSVP_CONTENT_TYPE,
+        bytes: reply.ics.into_bytes(),
+    };
+    Some((fields, attachment))
+}
+
 pub(super) fn pending_unsubscribe_request(
     app: &mut App,
     context: &ComposeContext,
@@ -381,4 +432,77 @@ fn toggle_preview_html(app: &mut App) {
         }
         .to_string(),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NOON: i64 = 1_784_800_000;
+
+    fn invite_message() -> Vec<u8> {
+        let ics = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//Example//Test//EN",
+            "METHOD:REQUEST",
+            "BEGIN:VEVENT",
+            "UID:planning-7@example.com",
+            "DTSTAMP:20260724T210000Z",
+            "DTSTART:20260801T140000Z",
+            "SUMMARY:Planning call",
+            "ORGANIZER;CN=Alba:mailto:alba@example.com",
+            "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:me@example.com",
+            "END:VEVENT",
+            "END:VCALENDAR",
+        ]
+        .join("\r\n");
+        format!(
+            "From: alba@example.com\r\n\
+             To: me@example.com\r\n\
+             Subject: invite\r\n\
+             MIME-Version: 1.0\r\n\
+             Content-Type: text/calendar; method=REQUEST\r\n\
+             \r\n\
+             {ics}\r\n"
+        )
+        .into_bytes()
+    }
+
+    #[test]
+    fn an_invite_becomes_a_reply_compose_with_a_calendar_part() {
+        let raw = invite_message();
+        let (fields, attachment) = rsvp_parts(
+            &raw,
+            "me@example.com",
+            antiphon_render::Rsvp::Accept,
+            NOON,
+        )
+        .unwrap();
+        assert_eq!(fields.to, "alba@example.com");
+        assert_eq!(fields.subject, "Accepted: Planning call");
+        assert!(fields.body.contains("Accepted"));
+        assert_eq!(attachment.filename, "invite.ics");
+        assert_eq!(
+            attachment.content_type,
+            "text/calendar; method=REPLY"
+        );
+        let ics = String::from_utf8(attachment.bytes).unwrap();
+        assert!(ics.contains("PARTSTAT=ACCEPTED"), "{ics}");
+        assert!(ics.contains("METHOD:REPLY"), "{ics}");
+    }
+
+    #[test]
+    fn a_plain_message_yields_no_rsvp() {
+        let raw = b"Subject: hello\r\n\r\nplain text\r\n";
+        assert!(
+            rsvp_parts(
+                raw,
+                "me@example.com",
+                antiphon_render::Rsvp::Decline,
+                NOON
+            )
+            .is_none()
+        );
+    }
 }

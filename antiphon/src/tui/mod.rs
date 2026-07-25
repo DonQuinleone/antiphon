@@ -54,8 +54,8 @@ use antiphon_pgp::Keyring;
 use actions::{OpIntent, account_names};
 use app::{App, DEFAULT_QUERY, KeyRoute, View};
 use dispatch::{
-    pending_resume_request, pending_template_request,
-    pending_unsubscribe_request,
+    pending_resume_request, pending_rsvp_request,
+    pending_template_request, pending_unsubscribe_request,
 };
 use identity::ComposeContext;
 use scope::ViewScope;
@@ -221,6 +221,9 @@ fn event_loop(
                 }
                 if request.is_none() {
                     request = pending_resume_request(app, context);
+                }
+                if request.is_none() {
+                    request = pending_rsvp_request(app, context);
                 }
                 if let Some(state) = request {
                     app.start_compose(state);

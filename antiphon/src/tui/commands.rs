@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use antiphon_render::Rsvp;
+
 use super::app::App;
 
 /// Per-message overrides of the identity's pgp defaults:
@@ -161,12 +163,23 @@ impl App {
         match command {
             "q" | "quit" => self.quit = true,
             "unsubscribe" => self.unsubscribe_command(),
+            "accept" => self.rsvp_command(Rsvp::Accept),
+            "tentative" => self.rsvp_command(Rsvp::Tentative),
+            "decline" => self.rsvp_command(Rsvp::Decline),
             "frames" => self.notice = Some(self.frame_stats.summary()),
             "" => {}
             other => {
                 self.notice = Some(format!("unknown command: {other}"))
             }
         }
+    }
+
+    fn rsvp_command(&mut self, rsvp: Rsvp) {
+        if self.pager_invite.is_empty() {
+            self.notice = Some("no calendar invite open".into());
+            return;
+        }
+        self.pending_rsvp = Some(rsvp);
     }
 
     fn arg_command(&mut self, command: &str) -> bool {
