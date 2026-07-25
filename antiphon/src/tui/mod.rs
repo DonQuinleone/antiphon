@@ -343,6 +343,14 @@ fn keymap_key(
     let Resolution::Match(action) = keymap.feed(key) else {
         return;
     };
+    let count = if action.repeatable() {
+        keymap.take_count()
+    } else {
+        1
+    };
+    for _ in 1..count {
+        app.apply(action);
+    }
     let request = dispatch(app, action, context);
     if app.take_requery() {
         let query = app.current_query.clone();

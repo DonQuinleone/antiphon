@@ -1,10 +1,13 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::action::Action;
 use crate::sequence::{Chord, KeySequence, SequenceError};
+
+const COUNT_RADIX: u32 = 10;
+const COUNT_CEILING: u32 = 9999;
 
 const DEFAULT_BINDINGS: &[(Action, &str)] = &[
     (Action::MoveDown, "j"),
@@ -87,6 +90,7 @@ pub struct Keymap {
     pairs: HashMap<(Chord, Chord), Action>,
     prefixes: HashSet<Chord>,
     pending: Option<Chord>,
+    count: u32,
     listing: Vec<(Action, String)>,
 }
 
@@ -130,12 +134,21 @@ impl Keymap {
             pairs: HashMap::new(),
             prefixes: HashSet::new(),
             pending: None,
+            count: 0,
             listing,
         };
         for entry in entries {
             keymap.bind(entry.action, entry.sequence);
         }
         Ok(keymap)
+    }
+
+    /// The pending count prefix, consumed on read; one when
+    /// none was typed.
+    pub fn take_count(&mut self) -> u32 {
+        let count = self.count.max(1);
+        self.count = 0;
+        count
     }
 
     /// The effective bindings, defaults merged with the
@@ -156,8 +169,23 @@ impl Keymap {
         }
     }
 
+    /// A vim-style count prefix: digits accumulate before a
+    /// binding and repeat it, e.g. 4j. A count only ever
+    /// starts on a non-zero digit, so 0 stays bindable.
     pub fn feed(&mut self, event: KeyEvent) -> Resolution {
         let chord = Chord::of(event);
+        if self.pending.is_none()
+            && let KeyCode::Char(digit @ '0'..='9') = chord.code
+            && chord.modifiers.is_empty()
+            && (self.count > 0 || digit != '0')
+            && !self.singles.contains_key(&chord)
+            && !self.prefixes.contains(&chord)
+        {
+            let value = u32::from(digit as u8 - b'0');
+            self.count =
+                (self.count * COUNT_RADIX + value).min(COUNT_CEILING);
+            return Resolution::Pending;
+        }
         if let Some(prefix) = self.pending.take() {
             return match self.pairs.get(&(prefix, chord)) {
                 Some(action) => Resolution::Match(*action),
@@ -223,6 +251,35 @@ mod tests {
                 ((*name).to_owned(), (*text).to_owned())
             })
             .collect()
+    }
+
+    #[test]
+    fn count_prefixes_accumulate_and_consume() {
+        let mut keymap = Keymap::new(&overrides(&[])).unwrap();
+        assert_eq!(
+            keymap.feed(press(KeyCode::Char('4'))),
+            Resolution::Pending
+        );
+        assert_eq!(
+            keymap.feed(press(KeyCode::Char('2'))),
+            Resolution::Pending
+        );
+        assert_eq!(
+            keymap.feed(press(KeyCode::Char('j'))),
+            Resolution::Match(Action::MoveDown)
+        );
+        assert_eq!(keymap.take_count(), 42);
+        assert_eq!(keymap.take_count(), 1);
+    }
+
+    #[test]
+    fn a_leading_zero_never_starts_a_count() {
+        let mut keymap = Keymap::new(&overrides(&[])).unwrap();
+        assert_eq!(
+            keymap.feed(press(KeyCode::Char('0'))),
+            Resolution::NoMatch
+        );
+        assert_eq!(keymap.take_count(), 1);
     }
 
     #[test]

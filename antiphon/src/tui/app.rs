@@ -285,6 +285,11 @@ impl App {
                 self.scroll_pager(-(PAGER_HALF_PAGE_ROWS as i32))
             }
             Action::Top => self.pager_scroll = 0,
+            Action::Bottom => {
+                self.pager_scroll =
+                    self.pager_line_count().clamp(0, u16::MAX as i32)
+                        as u16
+            }
             Action::Back | Action::Quit => self.view = View::List,
             _ => self.not_built_notice(),
         }
