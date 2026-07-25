@@ -1,4 +1,4 @@
-//! LUKS2 vault backend (DESIGN.md section 5): a loopback
+//! LUKS2 vault backend: a loopback
 //! container file holding a LUKS2 volume with ext4 inside,
 //! mounted at the store root. Antiphon only orchestrates the
 //! system tools; it contains no crypto of its own.

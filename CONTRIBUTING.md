@@ -12,11 +12,10 @@ is a read-only mirror.
   https://todo.sr.ht/~donquinleone/antiphon
 - Builds: https://builds.sr.ht/~donquinleone/antiphon
 
-Antiphon is developed against a written design,
-[DESIGN.md](DESIGN.md), which records the architecture and
-the reasoning behind every major decision. Before proposing a
-feature, check it: if the idea is listed as deferred or out
-of scope,
+Antiphon is deliberate about scope: plaintext-first mail,
+local-first storage, encryption at rest, and no bespoke
+crypto or protocol parsing. Before proposing a feature,
+consider whether it fits that shape; if it cuts against it,
 open a ticket to argue the case rather than sending a patch.
 
 ## Sending patches

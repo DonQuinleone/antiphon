@@ -266,8 +266,7 @@ impl App {
     }
 
     pub(super) fn not_built_notice(&mut self) {
-        self.notice =
-            Some("not built yet; see DESIGN.md milestones".to_string());
+        self.notice = Some("not built yet".to_string());
     }
 
     fn apply_in_pager(&mut self, action: Action) {

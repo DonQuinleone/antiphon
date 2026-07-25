@@ -56,9 +56,13 @@ account passwords are and never stored in config.
 [vault]
 backend = "auto"
 passphrase_cmd = "pass show antiphon/vault"
-idle_lock_minutes = 0        # 0 = open until logout or suspend
-unlock = ["touchid", "yubikey", "passphrase"]
+idle_lock_minutes = 30       # 0 = open until the daemon stops
 ```
+
+Any command that prints the passphrase works: `pass` or
+`secret-tool lookup` on Linux, or on macOS
+`security find-generic-password -w -s antiphon-vault` for a
+Keychain item (`antiphon setup` creates exactly that).
 
 The `unlock` list will govern interactive fast paths such as
 Touch ID and YubiKey when they arrive; today the passphrase

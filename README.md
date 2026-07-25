@@ -63,7 +63,19 @@ and expect them to be fixed fast.
 You need Rust (stable), `notmuch` and `gnupg`:
 
 ```bash
-brew install notmuch gnupg   # macOS
+brew install notmuch gnupg            # macOS
+```
+
+```bash
+sudo apt install notmuch gnupg        # Debian, Ubuntu
+```
+
+```bash
+sudo dnf install notmuch gnupg2       # Fedora
+```
+
+```bash
+sudo pacman -S notmuch gnupg          # Arch
 ```
 
 Build and install both binaries:
@@ -82,10 +94,22 @@ antiphon setup
 ```
 
 It asks for your address and server details, stores your
-secrets safely (the macOS Keychain, or any command that
-prints a secret), creates the vault, and starts the daemon.
-When it finishes, run `antiphon` and watch your mailbox fill.
-Press `?` at any time for the key cheatsheet.
+secrets, creates the vault, and starts the daemon. On macOS,
+secrets go into your Keychain; on Linux, you provide a
+command that prints each secret, so any manager works:
+
+```
+pass show mail/personal
+```
+
+```
+secret-tool lookup service mail account personal
+```
+
+Antiphon never stores a password itself, only the command
+that produces it. When setup finishes, run `antiphon` and
+watch your mailbox fill. Press `?` at any time for the key
+cheatsheet.
 
 ## Documentation
 
@@ -107,10 +131,6 @@ with `git send-email`, bugs to the
 [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow. The
 [GitHub repository](https://github.com/DonQuinleone/antiphon)
 is a read-only mirror.
-
-Antiphon has a written design document ([DESIGN.md](DESIGN.md))
-that records the architecture and the reasoning behind it;
-worth a read before proposing anything structural.
 
 ## Licence
 
