@@ -273,6 +273,7 @@ pub(super) fn run_account_wizard(
     app: &mut App,
     edit_name: Option<String>,
 ) -> std::io::Result<()> {
+    super::release_mouse();
     ratatui::restore();
     let result = match &edit_name {
         Some(name) => {
@@ -281,6 +282,7 @@ pub(super) fn run_account_wizard(
         None => crate::account_wizard::run_add_account(&app.dirs),
     };
     *terminal = ratatui::init();
+    super::grab_mouse();
     terminal.clear()?;
     app.notice = Some(match result {
         Ok(()) => "account saved".to_string(),

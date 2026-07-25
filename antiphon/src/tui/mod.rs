@@ -149,7 +149,7 @@ pub fn run(
         run_query(&mut app, layout, query);
     }
     let mut terminal = ratatui::init();
-    let _ = execute!(std::io::stdout(), EnableMouseCapture);
+    grab_mouse();
     let outcome = event_loop(
         &mut terminal,
         &mut app,
@@ -158,7 +158,7 @@ pub fn run(
         &context,
         &loaded.config.saved_searches,
     );
-    let _ = execute!(std::io::stdout(), DisableMouseCapture);
+    release_mouse();
     ratatui::restore();
     match outcome {
         Ok(()) => ExitCode::SUCCESS,
@@ -269,6 +269,18 @@ fn event_loop(
         drain_ops(app);
     }
     Ok(())
+}
+
+/// Every suspension of the TUI must release the mouse too:
+/// leaving capture armed sprays SGR escape codes into
+/// whatever reads the terminal next, as the account wizard
+/// found out.
+pub(super) fn grab_mouse() {
+    let _ = execute!(std::io::stdout(), EnableMouseCapture);
+}
+
+pub(super) fn release_mouse() {
+    let _ = execute!(std::io::stdout(), DisableMouseCapture);
 }
 
 fn poll_interval(app: &App) -> Duration {

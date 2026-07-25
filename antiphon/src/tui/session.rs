@@ -83,6 +83,7 @@ fn run_editor(
     terminal: &mut DefaultTerminal,
     path: &Path,
 ) -> std::io::Result<std::process::ExitStatus> {
+    super::release_mouse();
     ratatui::restore();
     let status = std::process::Command::new("sh")
         .arg("-c")
@@ -90,6 +91,7 @@ fn run_editor(
         .arg(path)
         .status();
     *terminal = ratatui::init();
+    super::grab_mouse();
     status
 }
 
