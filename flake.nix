@@ -45,7 +45,11 @@
               --replace-fail "%h/.cargo/bin/antiphond" \
               "$out/bin/antiphond"
           '';
-          nativeCheckInputs = [ pkgs.git ];
+          nativeCheckInputs = [
+            pkgs.git
+            pkgs.notmuch
+            pkgs.gnupg
+          ];
           meta = {
             description =
               "A modern mail client for the terminal";
