@@ -214,6 +214,18 @@ fn keymap_key(
     context: &ComposeContext,
     key: KeyEvent,
 ) -> std::io::Result<()> {
+    // Backspace scrolls the pager up out of the box (the
+    // keymap holds one sequence per action, so this pairs
+    // with enter's Open-as-scroll without stealing a
+    // rebindable action; bind move-up = "backspace" to own
+    // it globally).
+    if app.view == View::Pager
+        && app.prompt.is_none()
+        && key.code == KeyCode::Backspace
+    {
+        app.apply(antiphon_core::Action::MoveUp);
+        return Ok(());
+    }
     let Resolution::Match(action) = keymap.feed(key) else {
         return Ok(());
     };

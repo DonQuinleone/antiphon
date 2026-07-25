@@ -60,6 +60,7 @@ impl std::error::Error for SequenceError {}
 
 const NAMED_KEYS: &[(&str, KeyCode)] = &[
     ("enter", KeyCode::Enter),
+    ("backspace", KeyCode::Backspace),
     ("esc", KeyCode::Esc),
     ("tab", KeyCode::Tab),
     ("space", KeyCode::Char(' ')),
@@ -167,6 +168,7 @@ mod tests {
             ),
             ("shift-tab", one(KeyCode::Tab, KeyModifiers::SHIFT)),
             ("enter", one(KeyCode::Enter, none)),
+            ("backspace", one(KeyCode::Backspace, none)),
             ("esc", one(KeyCode::Esc, none)),
             ("tab", one(KeyCode::Tab, none)),
             ("space", one(KeyCode::Char(' '), none)),

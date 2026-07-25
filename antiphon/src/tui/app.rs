@@ -236,7 +236,7 @@ impl App {
 
     fn apply_in_pager(&mut self, action: Action) {
         match action {
-            Action::MoveDown => {
+            Action::MoveDown | Action::Open => {
                 self.scroll_pager(PAGER_SCROLL_ROWS as i32)
             }
             Action::MoveUp => {
