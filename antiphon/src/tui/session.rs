@@ -121,7 +121,23 @@ pub(super) fn finish_body_edit(
     };
     if success {
         match std::fs::read_to_string(path) {
-            Ok(edited) => state.body = edited,
+            Ok(edited) => {
+                // Quitting the first edit without writing
+                // anything abandons the compose outright: an
+                // untouched body means nothing worth keeping.
+                let untouched = edited.trim() == state.body.trim();
+                if untouched
+                    && !state.reviewed
+                    && state.attachments.is_empty()
+                {
+                    let _ = std::fs::remove_file(path);
+                    app.compose = None;
+                    app.view = View::List;
+                    app.notice = Some("compose abandoned".to_string());
+                    return;
+                }
+                state.body = edited;
+            }
             Err(error) => {
                 app.notice = Some(format!("draft: {error}"));
                 return;

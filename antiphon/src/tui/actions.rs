@@ -51,6 +51,14 @@ impl App {
         match action {
             Action::MoveDown => self.select_forward(1),
             Action::MoveUp => self.select_back(1),
+            Action::PaneScrollDown => {
+                self.preview_scroll =
+                    self.preview_scroll.saturating_add(1)
+            }
+            Action::PaneScrollUp => {
+                self.preview_scroll =
+                    self.preview_scroll.saturating_sub(1)
+            }
             Action::HalfPageDown => self.select_forward(HALF_PAGE_ROWS),
             Action::HalfPageUp => self.select_back(HALF_PAGE_ROWS),
             Action::Top => self.selected = 0,
