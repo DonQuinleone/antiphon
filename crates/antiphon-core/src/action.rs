@@ -40,6 +40,7 @@ pub enum Action {
     ThreadView,
     Archive,
     MoveTo,
+    Settings,
 }
 
 const NAMES: &[(Action, &str)] = &[
@@ -81,6 +82,7 @@ const NAMES: &[(Action, &str)] = &[
     (Action::ThreadView, "thread-view"),
     (Action::Archive, "archive"),
     (Action::MoveTo, "move-to"),
+    (Action::Settings, "settings"),
 ];
 
 impl Action {

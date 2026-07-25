@@ -199,6 +199,10 @@ pub(super) fn keymap_key(
         mark_all_read::mark_all_read(app, layout);
         return;
     }
+    if action == antiphon_core::Action::Settings {
+        app.open_settings();
+        return;
+    }
     let request = dispatch(app, action, context);
     if app.take_requery() {
         let query = app.current_query.clone();
