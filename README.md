@@ -132,12 +132,12 @@ cheatsheet.
 
 | Guide | Covers |
 | ----- | ------ |
-| [Configuration](docs/CONFIG.md) | every key, strictly parsed |
-| [The vault](docs/VAULT.md) | encryption at rest, unlocking, locking |
-| [OpenPGP](docs/PGP.md) | verification, signing, encryption |
-| [Running the daemon](docs/DAEMON.md) | launchd, systemd, dinit, runit, autostart |
-| [Patches](docs/PATCHES.md) | reading, applying and sending patch series |
-| [Migrating from NeoMutt](docs/MIGRATING.md) | the concept map and the move |
+| [User guide](https://docs.antiphon.net/guide/getting-started/) | getting started through security |
+| [Configuration](https://docs.antiphon.net/customise/configuration/) | every key, strictly parsed |
+| [Appearance](https://docs.antiphon.net/customise/appearance/) | seventeen themes and your own |
+| [Sync and the daemon](https://docs.antiphon.net/guide/sync/) | supervisors on every platform |
+| [Migrating from NeoMutt](https://docs.antiphon.net/guide/migrating/) | the concept map and the move |
+| [Developer guide](https://docs.antiphon.net/develop/architecture/) | architecture, building, contributing |
 
 ## Contributing
 
@@ -151,4 +151,4 @@ is a read-only mirror.
 
 ## Licence
 
-GPL-3.0-or-later. See [COPYING](COPYING).
+GPL-3.0-or-later. See [LICENSE](LICENSE).

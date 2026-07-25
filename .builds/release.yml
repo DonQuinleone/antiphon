@@ -23,7 +23,7 @@ tasks:
       mkdir "$name"
       cp target/release/antiphon target/release/antiphond "$name/"
       cp -R dist/systemd dist/dinit dist/runit dist/autostart \
-        COPYING README.md "$name/"
+        LICENSE README.md "$name/"
       tar -czf "$name.tar.gz" "$name"
       sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
   - publish: |
