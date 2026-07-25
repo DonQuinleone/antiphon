@@ -18,6 +18,7 @@ mod identity;
 mod input;
 mod link_picker;
 mod lists;
+mod mark_all_read;
 mod message_list;
 mod pager;
 mod pager_body;

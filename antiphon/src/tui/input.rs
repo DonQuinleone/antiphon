@@ -12,8 +12,9 @@ use super::commands::PromptKind;
 use super::dispatch::dispatch;
 use super::identity::ComposeContext;
 use super::{
-    attach, draw, drawer, folder_picker, headers, link_picker, pager,
-    pager_body, patches, review, run_query, run_search, session,
+    attach, draw, drawer, folder_picker, headers, link_picker,
+    mark_all_read, pager, pager_body, patches, review, run_query,
+    run_search, session,
 };
 
 const MOUSE_WHEEL_ROWS: usize = 3;
@@ -173,6 +174,12 @@ pub(super) fn keymap_key(
     };
     for _ in 1..count {
         app.apply(action);
+    }
+    if action == antiphon_core::Action::MarkAllRead
+        && app.view == View::List
+    {
+        mark_all_read::mark_all_read(app, layout);
+        return;
     }
     let request = dispatch(app, action, context);
     if app.take_requery() {

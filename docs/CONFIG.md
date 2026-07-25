@@ -121,7 +121,10 @@ Actions: `move-down`, `move-up`, `top`, `bottom`,
 `sidebar-next`, `sidebar-previous`, `sidebar-open`,
 `toggle-sidebar`, `cycle-reading-pane`, `sync`, `reply`,
 `reply-list`, `compose`, `mark-read`, `mark-unread`,
-`toggle-flagged`, `delete-message`, `toggle-html` (`h`:
+`toggle-flagged`, `delete-message`, `mark-all-read` (`,r`:
+marks every unread message the current listing's query
+covers, folder or search, read in one go, not only the rows
+on screen), `toggle-html` (`h`:
 flip the open or previewed message between plain and html
 parts), `toggle-headers` (`t`: flip the pager and reading
 pane between the configured `headers` set and every header
