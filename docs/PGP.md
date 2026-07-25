@@ -74,8 +74,9 @@ error in place of the body.
 trusted) and whether gpg-agent is reachable, with how many
 signing keys it holds.
 
-## Deferred
+## Not there yet
 
-Smartcard-specific UX (touch prompts in the statusline) and
-key discovery (WKD, keyservers) are named in the design and
-land after v1's core flow is proven.
+Smartcard touch prompts in the statusline and automatic key
+discovery (WKD, keyservers) are on the roadmap. Until then,
+the keyring directory is the whole trust story: what you put
+in it is what verifies.

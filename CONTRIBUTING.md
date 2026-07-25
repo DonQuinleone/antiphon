@@ -12,9 +12,11 @@ is a read-only mirror.
   https://todo.sr.ht/~donquinleone/antiphon
 - Builds: https://builds.sr.ht/~donquinleone/antiphon
 
-antiphon is pre-alpha and built milestone by milestone against
-[DESIGN.md](DESIGN.md). Before proposing a feature, check the
-design document: if it is listed as deferred or out of scope,
+Antiphon is developed against a written design,
+[DESIGN.md](DESIGN.md), which records the architecture and
+the reasoning behind every major decision. Before proposing a
+feature, check it: if the idea is listed as deferred or out
+of scope,
 open a ticket to argue the case rather than sending a patch.
 
 ## Sending patches

@@ -1,84 +1,116 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)"
-            srcset="assets/banner-dark.svg">
-    <img src="assets/banner-light.svg" width="480"
-         alt="antiphon: a modern mail client for the terminal">
-  </picture>
+  <img src="https://git.sr.ht/~donquinleone/antiphon/blob/master/assets/banner.svg"
+       width="480"
+       alt="antiphon: a modern mail client for the terminal">
 </p>
 
-[![builds.sr.ht status](https://builds.sr.ht/~donquinleone/antiphon.svg)](https://builds.sr.ht/~donquinleone/antiphon)
+<p align="center">
+  <a href="https://builds.sr.ht/~donquinleone/antiphon"><img
+    src="https://builds.sr.ht/~donquinleone/antiphon.svg"
+    alt="build status"></a>
+</p>
 
-[Source](https://git.sr.ht/~donquinleone/antiphon) |
-[Mailing list](https://lists.sr.ht/~donquinleone/antiphon-devel) |
-[Tracker](https://todo.sr.ht/~donquinleone/antiphon) |
-[Builds](https://builds.sr.ht/~donquinleone/antiphon)
+Antiphon is a mail client for people who live in the terminal
+and refuse to choose between speed, security and civilised
+e-mail.
 
-> Pre-alpha, built milestone by milestone against
-> [DESIGN.md](DESIGN.md). Already working: the themed client
-> over a local notmuch store (list, pager, live search,
-> vim-flavoured rebindable keys), composing and replying in
-> your own editor embedded in the client (durable outbox,
-> templates, identity-matched replies), multiple plain-auth
-> IMAP accounts synced by `antiphond` through a crash-safe
-> operation log, always-scoped search with saved searches, and
-> the encrypted vault ([docs/VAULT.md](docs/VAULT.md)) sealing
-> the store at rest. Not yet: OpenPGP, OAuth accounts, and
-> everything else the design defers to later milestones.
+Your mail lives in a local Maildir, indexed by notmuch, so
+search across a hundred thousand messages returns before you
+finish blinking. A separate daemon does all the talking to
+your servers, so the interface never stutters waiting on a
+network. The entire store sits inside an encrypted vault that
+seals when you walk away, and OpenPGP runs through Sequoia
+and your own gpg-agent, keyring and smartcard included.
 
-Antiphon is a Rust TUI mail client built for people who live in
-the terminal and refuse to choose between speed, security and
-civilised e-mail. Local Maildir as the source of truth, indexed
-by notmuch, synced by a separate daemon (antiphond) so the UI
-never blocks on the network, and the whole store sealed inside a
-platform-native encrypted vault at rest.
+## Highlights
 
-Planned for v1 (see [DESIGN.md](DESIGN.md) for the full scope):
+- **Local first.** Maildir plus notmuch full-text search,
+  always scoped to the accounts in view. Instant everything,
+  even offline; flags, moves and sends queue durably and
+  replay when the network returns.
+- **Sealed at rest.** The store, index, tokens and state live
+  inside an encrypted vault (encrypted APFS on macOS, LUKS2 or
+  gocryptfs on Linux). Back it up with anything; the copy is
+  ciphertext.
+- **A daemon that behaves.** antiphond syncs on a timer, sends
+  from a crash-safe outbox, files your sent mail, uploads
+  drafts, applies your filing rules and posts desktop
+  notifications. It answers instantly even mid-sync, and it
+  runs under launchd, systemd, dinit, runit or plain
+  `antiphon` launch.
+- **OpenPGP without ceremony.** Verification against a keyring
+  you curate; signing and decryption through gpg-agent, so
+  pinentry and your smartcard work exactly as they do
+  everywhere else. Sign-inside-encrypt, per identity or per
+  message.
+- **Patches are first-class.** Unified diffs render
+  highlighted, a thread saves as a series `git am`
+  understands, and `antiphon sendmail` slots straight into
+  `git send-email`.
+- **Composing that respects you.** Header fields first, your
+  own `$EDITOR` for the body, a review screen before anything
+  leaves, attachments included. Plaintext always;
+  format=flowed; no HTML composing, ever.
+- **Your keys, your colours.** Vim-flavoured and fully
+  rebindable (`?` shows the live cheatsheet), themed with a
+  truecolor palette and a gallery of familiar schemes.
 
-- Multiple accounts with unified views: IMAP, Microsoft 365
-  (OAuth2, Graph send) and Google Workspace (OAuth2)
-- Full-text search over hundreds of thousands of messages,
-  always scoped to the accounts in view
-- Plaintext-first composing in your own editor, embedded in the
-  client; format=flowed; per-identity signatures
-- OpenPGP signing and encryption via Sequoia and gpg-agent,
-  including smartcards
-- Mailing lists done properly: reply-to-list, patch rendering,
-  one-key unsubscribe
-- Encrypted vault (LUKS2, encrypted APFS, or gocryptfs) with
-  passphrase, Touch ID and YubiKey unlock
-- Vim-flavoured, fully rebindable keys; themeable, with a
-  gallery of familiar schemes
+## Getting started
 
-## Building
+Antiphon is pre-1.0 and moving quickly. Expect rough edges,
+and expect them to be fixed fast.
 
-Requires stable Rust (MSRV 1.95).
+You need Rust (stable), `notmuch` and `gnupg`:
+
+```bash
+brew install notmuch gnupg   # macOS
+```
+
+Build and install both binaries:
 
 ```bash
 git clone https://git.sr.ht/~donquinleone/antiphon
 cd antiphon
-cargo build --workspace
+cargo install --path antiphon --locked
+cargo install --path antiphond --locked
 ```
 
-Launching `antiphon` starts the sync daemon automatically when
-none is running; to run antiphond under launchd, systemd,
-dinit, runit or a desktop's autostart instead, see
-[docs/DAEMON.md](docs/DAEMON.md) and the ready-made units in
-[dist/](dist/). The configuration reference is
-[docs/CONFIG.md](docs/CONFIG.md), the encrypted store is
-covered in [docs/VAULT.md](docs/VAULT.md), and
-[docs/MIGRATING.md](docs/MIGRATING.md) maps the way over
-from NeoMutt.
+Then let the wizard do the rest:
+
+```bash
+antiphon setup
+```
+
+It asks for your address and server details, stores your
+secrets safely (the macOS Keychain, or any command that
+prints a secret), creates the vault, and starts the daemon.
+When it finishes, run `antiphon` and watch your mailbox fill.
+Press `?` at any time for the key cheatsheet.
+
+## Documentation
+
+| Guide | Covers |
+| ----- | ------ |
+| [Configuration](docs/CONFIG.md) | every key, strictly parsed |
+| [The vault](docs/VAULT.md) | encryption at rest, unlocking, locking |
+| [OpenPGP](docs/PGP.md) | verification, signing, encryption |
+| [Running the daemon](docs/DAEMON.md) | launchd, systemd, dinit, runit, autostart |
+| [Patches](docs/PATCHES.md) | reading, applying and sending patch series |
+| [Migrating from NeoMutt](docs/MIGRATING.md) | the concept map and the move |
 
 ## Contributing
 
 Development happens on SourceHut: patches go to the
 [mailing list](https://lists.sr.ht/~donquinleone/antiphon-devel)
-with `git send-email`, and bugs to the
-[tracker](https://todo.sr.ht/~donquinleone/antiphon); see
+with `git send-email`, bugs to the
+[tracker](https://todo.sr.ht/~donquinleone/antiphon). See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow. The
 [GitHub repository](https://github.com/DonQuinleone/antiphon)
 is a read-only mirror.
+
+Antiphon has a written design document ([DESIGN.md](DESIGN.md))
+that records the architecture and the reasoning behind it;
+worth a read before proposing anything structural.
 
 ## Licence
 

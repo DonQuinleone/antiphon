@@ -60,9 +60,10 @@ idle_lock_minutes = 0        # 0 = open until logout or suspend
 unlock = ["touchid", "yubikey", "passphrase"]
 ```
 
-The `unlock` list governs the interactive fast paths as the
-hardware backends land; `touchid` and `yubikey` are declared
-but not yet wired. However the vault opens, the secret reaches
+The `unlock` list will govern interactive fast paths such as
+Touch ID and YubiKey when they arrive; today the passphrase
+command is the one that matters. However the vault opens, the
+secret reaches
 the underlying tool over a private channel (standard input or a
 controlled helper), never on a command line another process
 could read.
@@ -96,6 +97,4 @@ antiphon
 store, so migrate an old unencrypted store by moving it aside,
 creating the vault, and copying the mail back in while it is
 mounted. `antiphon doctor` reports the vault's state (open,
-sealed or absent) and every resolved path. FIDO2 and PGP
-smartcard keyslot enrolment is named in the design and awaits
-hardware testing.
+sealed or absent) and every resolved path.
