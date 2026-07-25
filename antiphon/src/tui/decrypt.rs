@@ -20,9 +20,26 @@ pub fn read_message(
     keyring: &Keyring,
     gnupg_home: Option<&Path>,
 ) -> Opened {
+    read_message_preferring(
+        raw,
+        keyring,
+        gnupg_home,
+        antiphon_render::BodyPreference::Plain,
+    )
+}
+
+pub fn read_message_preferring(
+    raw: &[u8],
+    keyring: &Keyring,
+    gnupg_home: Option<&Path>,
+    preference: antiphon_render::BodyPreference,
+) -> Opened {
     let Some(ciphertext) = mime::encrypted_payload(raw) else {
         return Opened {
-            body: antiphon_render::body_text(raw).text,
+            body: antiphon_render::body_text_preferring(
+                raw, preference,
+            )
+            .text,
             signature: antiphon_pgp::verify(raw, keyring),
             invite: antiphon_render::invite_lines(raw),
         };

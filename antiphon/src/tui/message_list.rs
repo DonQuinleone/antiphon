@@ -20,6 +20,10 @@ const ELLIPSIS: char = '\u{2026}';
 const DATE_HEADING: &str = "DATE";
 const SUBJECT_HEADING: &str = "SUBJECT";
 const FROM_TO_HEADING: &str = "FROM/TO";
+const STATUS_COLS: u16 = 3;
+const REPLIED_TAG: &str = "replied";
+const FORWARDED_TAG: &str = "passed";
+const ATTACHMENT_TAG: &str = "attachment";
 const OWN_MAIL_PREFIX: &str = "\u{2192} ";
 const FLAGGED_TAG: &str = "flagged";
 
@@ -37,7 +41,7 @@ fn columns(
     format: &str,
 ) -> Columns {
     let date = date_width(messages, format);
-    let taken = date + FROM_WIDTH + 2 * COLUMN_GAP;
+    let taken = STATUS_COLS + date + FROM_WIDTH + 3 * COLUMN_GAP;
     Columns {
         date,
         from: FROM_WIDTH,
@@ -79,6 +83,7 @@ pub(super) fn draw_list(frame: &mut Frame, app: &App, area: Rect) {
     let subject_heading =
         format!("{:1$}{SUBJECT_HEADING}", "", MARK_COLS as usize);
     let header = Row::new(vec![
+        String::new(),
         DATE_HEADING.to_string(),
         FROM_TO_HEADING.to_string(),
         subject_heading,
@@ -91,6 +96,7 @@ pub(super) fn draw_list(frame: &mut Frame, app: &App, area: Rect) {
     let table = Table::new(
         rows,
         [
+            Constraint::Length(STATUS_COLS),
             Constraint::Length(columns.date),
             Constraint::Length(columns.from),
             Constraint::Min(0),
@@ -114,10 +120,30 @@ fn message_row(
 ) -> Row<'static> {
     let theme = app.theme;
     Row::new(vec![
+        status_cell(theme, message),
         date_cell(theme, format_date(message.date_unix, format)),
         from_cell(app, columns, message),
         subject_cell(theme, columns, message),
     ])
+}
+
+/// R replied, F forwarded, A attachment, from the tags the
+/// store already keeps (maildir R/P flags, notmuch's own
+/// attachment tagging).
+fn status_cell(
+    theme: &Theme,
+    message: &MessageSummary,
+) -> Line<'static> {
+    let has = |tag: &str| {
+        message.tags.iter().any(|candidate| candidate == tag)
+    };
+    let text = format!(
+        "{}{}{}",
+        if has(REPLIED_TAG) { 'R' } else { ' ' },
+        if has(FORWARDED_TAG) { 'F' } else { ' ' },
+        if has(ATTACHMENT_TAG) { 'A' } else { ' ' },
+    );
+    Line::from(Span::styled(text, Style::new().fg(theme.text_muted)))
 }
 
 /// The rendered date splits at its last space: the left part
@@ -293,14 +319,15 @@ mod tests {
             ],
             ISO,
         );
+        let status_x = STATUS_COLS as usize + COLUMN_GAP as usize;
         let date_cols = format_date(NOON_ISH, ISO).chars().count();
-        let from_x = date_cols + COLUMN_GAP as usize;
+        let from_x = status_x + date_cols + COLUMN_GAP as usize;
         let subject_x =
             from_x + FROM_WIDTH as usize + COLUMN_GAP as usize;
 
         let buffer = render(&app, 80, 6);
         let header = row_chars(&buffer, 0);
-        assert_eq!(column_of(&header, DATE_HEADING), Some(0));
+        assert_eq!(column_of(&header, DATE_HEADING), Some(status_x));
         assert_eq!(column_of(&header, FROM_TO_HEADING), Some(from_x));
         assert_eq!(
             column_of(&header, SUBJECT_HEADING),
@@ -315,7 +342,11 @@ mod tests {
             let y = (index + 1) as u16;
             let row = row_chars(&buffer, y);
             let date = format_date(app.messages[index].date_unix, ISO);
-            assert_eq!(column_of(&row, &date), Some(0), "row {y}");
+            assert_eq!(
+                column_of(&row, &date),
+                Some(status_x),
+                "row {y}"
+            );
             assert_eq!(column_of(&row, name), Some(from_x), "row {y}");
             assert_eq!(
                 column_of(&row, subject),
@@ -332,15 +363,17 @@ mod tests {
         let long_subject = "a very long subject line that cannot \
                             possibly fit in what remains of the row";
         let app = listed_app(&[(long_from, long_subject)], ISO);
-        let buffer = render(&app, 60, 4);
+        let buffer = render(&app, 64, 4);
         let row = row_chars(&buffer, 1);
 
-        let from_x = format_date(NOON_ISH, ISO).chars().count()
+        let from_x = STATUS_COLS as usize
+            + COLUMN_GAP as usize
+            + format_date(NOON_ISH, ISO).chars().count()
             + COLUMN_GAP as usize;
         let from_end = from_x + FROM_WIDTH as usize - 1;
         assert_eq!(row[from_end], ELLIPSIS, "{row:?}");
         assert_eq!(row[from_end + 1], ' ', "gutter must stay clear");
-        assert_eq!(row[59], ELLIPSIS, "{row:?}");
+        assert_eq!(row[63], ELLIPSIS, "{row:?}");
     }
 
     #[test]
@@ -356,16 +389,17 @@ mod tests {
         let rendered = format_date(NOON_ISH + 1, ISO);
         let split = rendered.rfind(' ').unwrap();
         let theme = app.theme;
+        let offset = STATUS_COLS as usize + COLUMN_GAP as usize;
         for x in 0..split {
             assert_eq!(
-                foreground(&buffer, x as u16, 2),
+                foreground(&buffer, (offset + x) as u16, 2),
                 Some(theme.list_date),
                 "column {x}"
             );
         }
         for x in (split + 1)..rendered.chars().count() {
             assert_eq!(
-                foreground(&buffer, x as u16, 2),
+                foreground(&buffer, (offset + x) as u16, 2),
                 Some(theme.list_time),
                 "column {x}"
             );
@@ -380,9 +414,10 @@ mod tests {
         );
         let buffer = render(&app, 40, 6);
         let rendered = format_date(NOON_ISH + 1, "%Y");
+        let offset = STATUS_COLS as usize + COLUMN_GAP as usize;
         for x in 0..rendered.chars().count() {
             assert_eq!(
-                foreground(&buffer, x as u16, 2),
+                foreground(&buffer, (offset + x) as u16, 2),
                 Some(app.theme.list_date),
                 "column {x}"
             );

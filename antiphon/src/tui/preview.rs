@@ -30,6 +30,7 @@ pub(super) fn refresh(app: &mut App) {
         return;
     }
     let lines = load_lines(&path);
+    app.preview_scroll = 0;
     app.preview = Some(Preview { path, lines });
 }
 

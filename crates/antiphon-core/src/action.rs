@@ -27,6 +27,9 @@ pub enum Action {
     MarkRead,
     MarkUnread,
     ToggleFlagged,
+    ToggleHtml,
+    PaneScrollDown,
+    PaneScrollUp,
     DeleteMessage,
 }
 
@@ -56,6 +59,9 @@ const NAMES: &[(Action, &str)] = &[
     (Action::MarkRead, "mark-read"),
     (Action::MarkUnread, "mark-unread"),
     (Action::ToggleFlagged, "toggle-flagged"),
+    (Action::ToggleHtml, "toggle-html"),
+    (Action::PaneScrollDown, "pane-down"),
+    (Action::PaneScrollUp, "pane-up"),
     (Action::DeleteMessage, "delete-message"),
 ];
 

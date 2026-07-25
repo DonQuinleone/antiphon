@@ -14,7 +14,9 @@ pub use compose::{
     Draft, TemplateVars, build_message, expand_template,
 };
 pub use extract::{
-    BodyKind, BodyText, body_text, delivered_addresses, rendered_body,
+    BodyKind, BodyPreference, BodyText, body_text,
+    body_text_preferring, delivered_addresses, has_html_part,
+    rendered_body,
 };
 pub use flowed::flow;
 pub use invite::invite_lines;

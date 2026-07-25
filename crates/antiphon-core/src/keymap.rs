@@ -33,6 +33,9 @@ const DEFAULT_BINDINGS: &[(Action, &str)] = &[
     (Action::MarkUnread, "M"),
     (Action::ToggleFlagged, "F"),
     (Action::DeleteMessage, "d"),
+    (Action::ToggleHtml, "H"),
+    (Action::PaneScrollDown, "J"),
+    (Action::PaneScrollUp, "K"),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

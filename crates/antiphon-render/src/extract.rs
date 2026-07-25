@@ -52,9 +52,43 @@ pub fn rendered_body(raw: &[u8]) -> RenderedBody {
 }
 
 fn raw_body(raw: &[u8]) -> RawBody {
+    raw_body_preferring(raw, BodyPreference::Plain)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BodyPreference {
+    Plain,
+    Html,
+}
+
+/// Whether the message HAS an html part at all, so the UI can
+/// offer the toggle only when it means something.
+pub fn has_html_part(raw: &[u8]) -> bool {
+    MessageParser::default().parse(raw).is_some_and(|message| {
+        message
+            .html_bodies()
+            .any(|part| matches!(part.body, PartType::Html(_)))
+    })
+}
+
+fn raw_body_preferring(
+    raw: &[u8],
+    preference: BodyPreference,
+) -> RawBody {
     let Some(message) = MessageParser::default().parse(raw) else {
         return RawBody::Empty;
     };
+    let html = message
+        .html_bodies()
+        .find(|part| matches!(part.body, PartType::Html(_)))
+        .map(|part| {
+            part.text_contents().unwrap_or_default().to_owned()
+        });
+    if preference == BodyPreference::Html
+        && let Some(html) = html.clone()
+    {
+        return RawBody::Html(html);
+    }
     let plain = message
         .text_bodies()
         .find(|part| matches!(part.body, PartType::Text(_)))
@@ -63,16 +97,39 @@ fn raw_body(raw: &[u8]) -> RawBody {
     if let Some(text) = plain {
         return RawBody::Plain(text);
     }
-    let html = message
-        .html_bodies()
-        .find(|part| matches!(part.body, PartType::Html(_)))
-        .map(|part| {
-            part.text_contents().unwrap_or_default().to_owned()
-        });
     match html {
         Some(html) => RawBody::Html(html),
         None => RawBody::Empty,
     }
+}
+
+/// Unlike body_text, an html part renders through the html
+/// converter here instead of collapsing to a notice, so the
+/// pager's html view shows real content.
+pub fn body_text_preferring(
+    raw: &[u8],
+    preference: BodyPreference,
+) -> BodyText {
+    match raw_body_preferring(raw, preference) {
+        RawBody::Plain(text) => BodyText {
+            text,
+            kind: BodyKind::Plain,
+        },
+        RawBody::Html(html) => BodyText {
+            text: rendered_html_text(&html),
+            kind: BodyKind::Plain,
+        },
+        RawBody::Empty => empty(),
+    }
+}
+
+fn rendered_html_text(html: &str) -> String {
+    let lines: Vec<String> = html_body(html)
+        .lines
+        .into_iter()
+        .map(|line| line.text)
+        .collect();
+    lines.join("\n")
 }
 
 fn plain_text(part: &MessagePart) -> String {

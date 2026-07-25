@@ -92,6 +92,10 @@ pub(super) fn dispatch(
         app.notice = None;
         return list_reply_request(app, context);
     }
+    if action == Action::ToggleHtml && app.view == View::Pager {
+        toggle_html(app);
+        return None;
+    }
     let opening = action == Action::Open && app.view == View::List;
     if !opening {
         app.apply(action);
@@ -102,6 +106,8 @@ pub(super) fn dispatch(
         Ok(raw) => {
             let opened =
                 decrypt::read_message(&raw, &app.keyring, None);
+            app.pager_raw = raw;
+            app.pager_html = false;
             app.open_pager(
                 opened.body,
                 opened.signature,
@@ -252,4 +258,37 @@ fn finish_reply(
         text,
         crypto: compose_crypto(app, &basis.identity),
     })
+}
+
+/// Re-renders the open message with the other body part; the
+/// raw bytes stay in hand so no file or agent round-trip
+/// repeats beyond the render itself.
+fn toggle_html(app: &mut App) {
+    if !antiphon_render::has_html_part(&app.pager_raw) {
+        app.notice = Some("this message has no html part".to_string());
+        return;
+    }
+    app.pager_html = !app.pager_html;
+    let preference = if app.pager_html {
+        antiphon_render::BodyPreference::Html
+    } else {
+        antiphon_render::BodyPreference::Plain
+    };
+    let opened = decrypt::read_message_preferring(
+        &app.pager_raw,
+        &app.keyring,
+        None,
+        preference,
+    );
+    let scroll = app.pager_scroll;
+    app.open_pager(opened.body, opened.signature, opened.invite);
+    app.pager_scroll = scroll;
+    app.notice = Some(
+        if app.pager_html {
+            "showing the html part"
+        } else {
+            "showing the plain part"
+        }
+        .to_string(),
+    );
 }

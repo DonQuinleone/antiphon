@@ -4,7 +4,9 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+use ratatui::widgets::{
+    Block, Borders, List, ListItem, Paragraph, Wrap,
+};
 use tui_term::widget::PseudoTerminal;
 
 use super::app::{App, View};
@@ -215,7 +217,11 @@ fn draw_reading_pane(frame: &mut Frame, app: &App, area: Rect) {
         Line::default(),
     ];
     lines.extend(preview_lines(app));
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    let pane = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false })
+        .scroll((app.preview_scroll, 0));
+    frame.render_widget(pane, area);
 }
 
 fn preview_lines(app: &App) -> Vec<Line<'static>> {
