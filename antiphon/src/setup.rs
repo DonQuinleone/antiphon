@@ -1,5 +1,7 @@
 use std::io::{BufRead, Write};
-use std::process::{Command, ExitCode};
+#[cfg(target_os = "macos")]
+use std::process::Command;
+use std::process::ExitCode;
 
 use antiphon_config::{Dirs, load};
 use antiphon_store::StoreLayout;
