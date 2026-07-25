@@ -2,8 +2,8 @@ use antiphon_pgp::{Signature, SignatureStatus};
 use antiphon_render::PatchLine;
 use antiphon_ui::Theme;
 use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::Style;
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
@@ -11,24 +11,77 @@ use super::app::App;
 use super::draw::header_line;
 use super::message_list::format_date;
 
-pub(super) fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
-    let lines = pager_lines(app);
-    if lines.is_empty() {
-        return;
-    }
-    let paragraph = Paragraph::new(lines)
-        .wrap(Wrap { trim: false })
-        .scroll((app.pager_scroll, 0));
-    frame.render_widget(paragraph, area);
+const KEYBAR: &str =
+    "j/k:Scroll  h:Html  r:Reply  L:List-reply  q:Back  ?:Help";
+const KEYBAR_ROWS: u16 = 1;
+const RULE_ROWS: u16 = 1;
+const MIN_TAG_GAP_COLS: usize = 2;
+const ELLIPSIS: char = '\u{2026}';
+
+pub(super) struct PagerChrome {
+    pub keybar: Rect,
+    pub headers: Rect,
+    pub rule: Rect,
+    pub body: Rect,
 }
 
-fn pager_lines(app: &App) -> Vec<Line<'static>> {
+pub(super) fn chrome(app: &App, area: Rect) -> PagerChrome {
+    let header_rows = header_lines(app, area.width).len() as u16;
+    let [keybar, headers, rule, body] = Layout::vertical([
+        Constraint::Length(KEYBAR_ROWS),
+        Constraint::Length(header_rows),
+        Constraint::Length(RULE_ROWS),
+        Constraint::Min(0),
+    ])
+    .areas(area);
+    PagerChrome {
+        keybar,
+        headers,
+        rule,
+        body,
+    }
+}
+
+pub(super) fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
+    let chrome = chrome(app, area);
+    frame.render_widget(keybar(app.theme, area.width), chrome.keybar);
+    frame.render_widget(
+        Paragraph::new(header_lines(app, area.width)),
+        chrome.headers,
+    );
+    frame.render_widget(rule(app.theme, area.width), chrome.rule);
+    let body = Paragraph::new(body_lines(app))
+        .wrap(Wrap { trim: false })
+        .scroll((app.pager_scroll, 0));
+    frame.render_widget(body, chrome.body);
+}
+
+fn keybar(theme: &Theme, width: u16) -> Paragraph<'static> {
+    let bar = Style::new()
+        .fg(theme.text_primary)
+        .bg(theme.surface)
+        .add_modifier(Modifier::BOLD);
+    Paragraph::new(Line::from(Span::styled(
+        format!("{KEYBAR:<width$}", width = width as usize),
+        bar,
+    )))
+}
+
+fn rule(theme: &Theme, width: u16) -> Paragraph<'static> {
+    Paragraph::new(Line::from(Span::styled(
+        "\u{2500}".repeat(width as usize),
+        Style::new().fg(theme.border),
+    )))
+}
+
+fn header_lines(app: &App, width: u16) -> Vec<Line<'static>> {
     let theme = app.theme;
     let Some(message) = app.selected_message() else {
         return Vec::new();
     };
+    let top = header_line(theme, "From:", message.from.clone());
     let mut lines = vec![
-        header_line(theme, "From:", message.from.clone()),
+        with_tags(theme, top, &message.tags, width),
         header_line(theme, "To:", message.to.clone()),
         header_line(
             theme,
@@ -36,20 +89,66 @@ fn pager_lines(app: &App) -> Vec<Line<'static>> {
             format_date(message.date_unix, &app.date_format),
         ),
         header_line(theme, "Subject:", message.subject.clone()),
-        header_line(theme, "Tags:", message.tags.join(", ")),
     ];
     if let Some(line) = signature_line(theme, &app.pager_signature) {
         lines.push(line);
     }
+    lines
+}
+
+/// The first header row carries the tags right-aligned and
+/// muted; a narrow terminal truncates them with an ellipsis
+/// rather than wrapping the row.
+fn with_tags(
+    theme: &Theme,
+    mut line: Line<'static>,
+    tags: &[String],
+    width: u16,
+) -> Line<'static> {
+    if tags.is_empty() {
+        return line;
+    }
+    let used: usize = line
+        .spans
+        .iter()
+        .map(|span| span.content.chars().count())
+        .sum();
+    let room = (width as usize).saturating_sub(used + MIN_TAG_GAP_COLS);
+    if room == 0 {
+        return line;
+    }
+    let tags_text = fitted(&tags.join(", "), room);
+    let pad = (width as usize)
+        .saturating_sub(used + tags_text.chars().count());
+    line.spans.push(Span::raw(" ".repeat(pad)));
+    line.spans.push(Span::styled(
+        tags_text,
+        Style::new().fg(theme.text_muted),
+    ));
+    line
+}
+
+fn fitted(text: &str, room: usize) -> String {
+    if text.chars().count() <= room {
+        return text.to_string();
+    }
+    let mut cut: String =
+        text.chars().take(room.saturating_sub(1)).collect();
+    cut.push(ELLIPSIS);
+    cut
+}
+
+fn body_lines(app: &App) -> Vec<Line<'static>> {
+    let theme = app.theme;
+    let mut lines = Vec::new();
     if !app.pager_invite.is_empty() {
-        lines.push(Line::default());
         lines.extend(
             app.pager_invite
                 .iter()
                 .map(|text| invite_line(theme, text)),
         );
+        lines.push(Line::default());
     }
-    lines.push(Line::default());
     lines.extend(app.pager_body.lines().enumerate().map(
         |(index, body_line)| {
             let kind = app
@@ -125,7 +224,11 @@ fn signature_colour(
 #[cfg(test)]
 mod tests {
     use antiphon_ui::VESPERS;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
 
+    use super::super::testkit::app_with_messages;
     use super::*;
 
     fn line_text(line: &Line<'_>) -> String {
@@ -133,6 +236,100 @@ mod tests {
             .iter()
             .map(|span| span.content.as_ref())
             .collect()
+    }
+
+    fn row_text(buffer: &Buffer, y: u16) -> String {
+        (0..buffer.area.width)
+            .map(|x| buffer.cell((x, y)).unwrap().symbol().to_string())
+            .collect()
+    }
+
+    fn rendered(app: &App, width: u16, height: u16) -> Buffer {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| super::super::draw::draw(frame, app))
+            .unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    fn pager_app() -> App {
+        let mut app = app_with_messages(1);
+        app.messages[0].from = "alba@example.com".to_string();
+        app.messages[0].to = "quin@example.com".to_string();
+        app.messages[0].subject = "Rehearsal".to_string();
+        app.messages[0].tags =
+            vec!["lists".to_string(), "patch".to_string()];
+        app.open_pager(
+            "body line\n".to_string(),
+            Signature::none(),
+            Vec::new(),
+        );
+        app
+    }
+
+    #[test]
+    fn the_pager_keeps_its_chrome_and_the_statusline() {
+        let app = pager_app();
+        let buffer = rendered(&app, 60, 14);
+        assert!(
+            row_text(&buffer, 0).starts_with("j/k:Scroll"),
+            "{:?}",
+            row_text(&buffer, 0)
+        );
+        assert!(row_text(&buffer, 1).contains("From:"));
+        assert!(row_text(&buffer, 2).contains("To:"));
+        assert!(row_text(&buffer, 3).contains("Date:"));
+        assert!(row_text(&buffer, 4).contains("Subject: Rehearsal"));
+        let rule = row_text(&buffer, 5);
+        assert!(
+            rule.chars().all(|ch| ch == '\u{2500}'),
+            "rule under the headers: {rule:?}"
+        );
+        assert!(row_text(&buffer, 6).starts_with("body line"));
+        let status = row_text(&buffer, 13);
+        assert!(
+            status.contains("messages"),
+            "statusline stays: {status:?}"
+        );
+    }
+
+    #[test]
+    fn tags_sit_right_aligned_on_the_top_header_row() {
+        let app = pager_app();
+        let buffer = rendered(&app, 60, 14);
+        let top = row_text(&buffer, 1);
+        assert!(top.trim_end().ends_with("lists, patch"), "{top:?}");
+        assert!(top.starts_with("From: alba@example.com"));
+        let x = top.find("lists, patch").unwrap() as u16;
+        let cell = buffer.cell((x, 1)).unwrap();
+        assert_eq!(cell.style().fg, Some(VESPERS.text_muted));
+    }
+
+    #[test]
+    fn overlong_tags_truncate_with_an_ellipsis() {
+        let theme = &VESPERS;
+        let tags = vec![
+            "a-very-long-tag".to_string(),
+            "another-long-tag".to_string(),
+        ];
+        let base = header_line(
+            theme,
+            "From:",
+            "someone@example.com".to_string(),
+        );
+        let line = with_tags(theme, base, &tags, 40);
+        let text = line_text(&line);
+        assert!(text.chars().count() <= 40, "{text:?}");
+        assert!(text.ends_with('\u{2026}'), "{text:?}");
+
+        let narrow = header_line(
+            theme,
+            "From:",
+            "someone@example.com".to_string(),
+        );
+        let untouched = with_tags(theme, narrow.clone(), &tags, 20);
+        assert_eq!(line_text(&untouched), line_text(&narrow));
     }
 
     #[test]
@@ -179,9 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn invite_blocks_sit_between_headers_and_body() {
-        use super::super::testkit::app_with_messages;
-
+    fn invite_blocks_lead_the_body() {
         let mut app = app_with_messages(1);
         app.theme = &VESPERS;
         app.open_pager(
@@ -192,26 +387,16 @@ mod tests {
                 "  reply:     accept/decline not yet wired".to_string(),
             ],
         );
-        let lines = pager_lines(&app);
+        let lines = body_lines(&app);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        let invite = texts
-            .iter()
-            .position(|text| text == "calendar invite: Stand-up")
-            .expect("the invite block is injected");
-        let body = texts
-            .iter()
-            .position(|text| text == "body line")
-            .expect("the body still renders");
-        assert!(invite < body, "{texts:?}");
+        assert_eq!(texts[0], "calendar invite: Stand-up");
+        assert_eq!(lines[0].spans[0].style.fg, Some(VESPERS.accent));
         assert_eq!(
-            lines[invite].spans[0].style.fg,
-            Some(VESPERS.accent)
+            texts[1],
+            "  reply:     accept/decline not yet wired"
         );
-        assert_eq!(
-            texts[invite + 1],
-            "  reply:     \
-             accept/decline not yet wired"
-        );
+        assert_eq!(texts[2], "");
+        assert_eq!(texts[3], "body line");
 
         app.open_pager(
             "plain\n".to_string(),
@@ -219,12 +404,8 @@ mod tests {
             Vec::new(),
         );
         let texts: Vec<String> =
-            pager_lines(&app).iter().map(line_text).collect();
-        assert!(
-            !texts
-                .iter()
-                .any(|text| text.starts_with("calendar invite"))
-        );
+            body_lines(&app).iter().map(line_text).collect();
+        assert_eq!(texts, ["plain"]);
     }
 
     #[test]
