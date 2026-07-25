@@ -44,7 +44,17 @@ pub fn body_text(raw: &[u8]) -> BodyText {
 }
 
 pub fn rendered_body(raw: &[u8]) -> RenderedBody {
-    match raw_body(raw) {
+    rendered_body_preferring(raw, BodyPreference::Plain)
+}
+
+/// The linked rendering of whichever part
+/// body_text_preferring would pick, so the two stay aligned
+/// line for line.
+pub fn rendered_body_preferring(
+    raw: &[u8],
+    preference: BodyPreference,
+) -> RenderedBody {
+    match raw_body_preferring(raw, preference) {
         RawBody::Plain(text) => plain_body(&text),
         RawBody::Html(html) => html_body(&html),
         RawBody::Empty => RenderedBody::default(),

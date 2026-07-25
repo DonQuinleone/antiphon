@@ -66,6 +66,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     if app.view == View::Pager {
         draw_pager(frame, app, content);
         draw_status(frame, app, status);
+        super::link_picker::draw_picker(frame, app, area);
         return;
     }
     let (sidebar, main) =
@@ -85,7 +86,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
 }
 
-fn split_status(area: Rect) -> (Rect, Rect) {
+pub(super) fn split_status(area: Rect) -> (Rect, Rect) {
     let [content, status] = Layout::vertical([
         Constraint::Min(0),
         Constraint::Length(STATUS_HEIGHT),
@@ -266,7 +267,7 @@ fn preview_lines(app: &App) -> Vec<Line<'static>> {
         .lines
         .iter()
         .map(|line| {
-            let colour = super::pager::prose_colour(theme, line);
+            let colour = super::pager_body::prose_colour(theme, line);
             Line::from(Span::styled(
                 line.clone(),
                 Style::new().fg(colour),

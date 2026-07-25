@@ -20,13 +20,13 @@ pub use compose::{
 pub use extract::{
     BodyKind, BodyPreference, BodyText, body_text,
     body_text_preferring, delivered_addresses, has_html_part,
-    rendered_body,
+    rendered_body, rendered_body_preferring,
 };
 pub use flowed::flow;
 pub use headers::{MessageHeader, all_headers, selected_headers};
 pub use invite::invite_lines;
 pub use itip::{ItipReply, Rsvp, itip_reply};
-pub use links::{BodyLine, Link, LinkSpan, RenderedBody};
+pub use links::{BodyLine, Link, LinkSpan, RenderedBody, scan_text};
 pub use list::{
     ListHeaders, ListPost, ListReply, list_headers, reply_to_list,
 };

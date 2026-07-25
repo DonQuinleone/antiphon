@@ -34,13 +34,31 @@ impl RenderedBody {
         let lines = self
             .lines
             .iter()
-            .flat_map(|line| wrap_line(line, width))
+            .flat_map(|line| line.wrapped(width))
             .collect();
         RenderedBody {
             lines,
             links: self.links.clone(),
         }
     }
+}
+
+impl BodyLine {
+    /// This line cut to the width, spans clipped and
+    /// re-based per piece, so callers can wrap line by line
+    /// and keep their own per-line state aligned.
+    pub fn wrapped(&self, width: usize) -> Vec<BodyLine> {
+        if width == 0 {
+            return vec![self.clone()];
+        }
+        wrap_line(self, width)
+    }
+}
+
+/// Plain text scanned for bare urls: the same shape html
+/// rendering produces, for bodies that are already text.
+pub fn scan_text(text: &str) -> RenderedBody {
+    plain_body(text)
 }
 
 pub(crate) struct LinkRegistry {

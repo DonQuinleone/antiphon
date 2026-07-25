@@ -11,9 +11,11 @@ mod draw;
 mod editor;
 mod headers;
 mod identity;
+mod link_picker;
 mod lists;
 mod message_list;
 mod pager;
+mod pager_body;
 mod patches;
 mod prefill;
 mod preview;
@@ -35,8 +37,11 @@ use antiphon_store::{
 };
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{
-    self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode,
+    KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+    MouseEventKind,
 };
+use ratatui::crossterm::execute;
 
 use antiphon_ipc::{
     IpcClient, OpId, OpKind, Operation, Request, socket_path,
@@ -61,6 +66,7 @@ const IPC_WAIT: Duration = Duration::from_secs(2);
 const REFRESH_EVERY: Duration = Duration::from_secs(2);
 const LIST_WINDOW: usize = 500;
 const DAEMON_ASSIGNS_ID: u64 = 0;
+const MOUSE_WHEEL_ROWS: usize = 3;
 const UNREAD_QUERY: &str = "tag:unread";
 const PGP_KEYRING_DIR: &str = "pgp";
 
@@ -114,6 +120,7 @@ pub fn run(
         run_query(&mut app, layout, query);
     }
     let mut terminal = ratatui::init();
+    let _ = execute!(std::io::stdout(), EnableMouseCapture);
     let outcome = event_loop(
         &mut terminal,
         &mut app,
@@ -122,6 +129,7 @@ pub fn run(
         &context,
         &loaded.config.saved_searches,
     );
+    let _ = execute!(std::io::stdout(), DisableMouseCapture);
     ratatui::restore();
     match outcome {
         Ok(()) => ExitCode::SUCCESS,
@@ -169,7 +177,13 @@ fn event_loop(
             );
             continue;
         }
-        let Event::Key(key) = event::read()? else {
+        let event = event::read()?;
+        if let Event::Mouse(mouse) = event {
+            pager_mouse(terminal, app, mouse)?;
+            drain_ops(app);
+            continue;
+        }
+        let Event::Key(key) = event else {
             continue;
         };
         if key.kind != KeyEventKind::Press {
@@ -328,6 +342,12 @@ fn keymap_key(
         }
         return;
     }
+    if app.link_picker.is_some() {
+        if let Some(url) = link_picker::feed(app, key) {
+            link_picker::open_url(app, &url);
+        }
+        return;
+    }
     // Backspace scrolls the pager up out of the box (the
     // keymap holds one sequence per action, so this pairs
     // with enter's Open-as-scroll without stealing a
@@ -359,6 +379,60 @@ fn keymap_key(
     if let Some(state) = request {
         app.start_compose(state);
     }
+}
+
+/// Mouse input serves the pager alone: the wheel scrolls it
+/// and a left click on a link span hands the url to the
+/// system opener, through the exact rows the draw produced.
+fn pager_mouse(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    mouse: MouseEvent,
+) -> std::io::Result<()> {
+    let receptive = app.view == View::Pager
+        && app.prompt.is_none()
+        && app.link_picker.is_none();
+    if !receptive {
+        return Ok(());
+    }
+    match mouse.kind {
+        MouseEventKind::ScrollDown => {
+            wheel(app, antiphon_core::Action::MoveDown)
+        }
+        MouseEventKind::ScrollUp => {
+            wheel(app, antiphon_core::Action::MoveUp)
+        }
+        MouseEventKind::Down(MouseButton::Left) => {
+            let size = terminal.size()?;
+            click(app, size, mouse.column, mouse.row);
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn wheel(app: &mut App, action: antiphon_core::Action) {
+    for _ in 0..MOUSE_WHEEL_ROWS {
+        app.apply(action);
+    }
+}
+
+fn click(
+    app: &mut App,
+    size: ratatui::layout::Size,
+    column: u16,
+    row: u16,
+) {
+    let area =
+        ratatui::layout::Rect::new(0, 0, size.width, size.height);
+    let (content, _) = draw::split_status(area);
+    let chrome = pager::chrome(app, content);
+    let Some(url) =
+        pager_body::link_url_at(app, chrome.body, column, row)
+    else {
+        return;
+    };
+    link_picker::open_url(app, &url);
 }
 
 /// Pump pty output into the parser, keep the pty sized to the

@@ -48,6 +48,8 @@ pub(super) fn app_with_messages(count: usize) -> App {
         pager_html: false,
         pager_headers: Vec::new(),
         pager_headers_all: Vec::new(),
+        pager_rendered: antiphon_render::RenderedBody::default(),
+        link_picker: None,
         header_names: antiphon_config::Ui::default().headers,
         headers_all: false,
         preview_scroll: 0,

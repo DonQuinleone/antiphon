@@ -1,7 +1,7 @@
 use antiphon_config::{Composer, Loaded, ReadingPane};
 use antiphon_core::Action;
 use antiphon_pgp::{Keyring, Signature};
-use antiphon_render::{MailtoUnsubscribe, MessageHeader};
+use antiphon_render::{MailtoUnsubscribe, MessageHeader, RenderedBody};
 use antiphon_store::MessageSummary;
 use antiphon_ui::{Theme, VESPERS};
 
@@ -9,6 +9,7 @@ use super::actions::{OpIntent, account_names};
 use super::commands::{FrameStats, PatchCommand, Prompt};
 use super::compose::ComposeState;
 use super::editor::EditorPane;
+use super::link_picker::LinkPicker;
 use super::scope::{self, ViewScope};
 use super::sidebar::{self, AccountEntry, SidebarEntry};
 use antiphon_store::ScopeError;
@@ -57,6 +58,8 @@ pub struct App {
     pub pager_html: bool,
     pub pager_headers: Vec<MessageHeader>,
     pub pager_headers_all: Vec<MessageHeader>,
+    pub pager_rendered: RenderedBody,
+    pub link_picker: Option<LinkPicker>,
     pub header_names: Vec<String>,
     pub headers_all: bool,
     pub preview_scroll: u16,
@@ -129,6 +132,8 @@ impl App {
             pager_html: false,
             pager_headers: Vec::new(),
             pager_headers_all: Vec::new(),
+            pager_rendered: RenderedBody::default(),
+            link_picker: None,
             header_names: loaded.config.ui.headers.clone(),
             headers_all: false,
             preview_scroll: 0,
@@ -221,12 +226,37 @@ impl App {
         signature: Signature,
         invite: Vec<String>,
     ) {
+        let rendered = antiphon_render::scan_text(&body);
+        self.open_with(body, rendered, signature, invite);
+    }
+
+    /// A message read through decrypt::read_message keeps the
+    /// link spans its rendering produced (html labels
+    /// included); open_pager rescans plain text instead.
+    pub fn open_message(&mut self, opened: super::decrypt::Opened) {
+        self.open_with(
+            opened.body,
+            opened.rendered,
+            opened.signature,
+            opened.invite,
+        );
+    }
+
+    fn open_with(
+        &mut self,
+        body: String,
+        rendered: RenderedBody,
+        signature: Signature,
+        invite: Vec<String>,
+    ) {
         self.set_unread(false);
         self.pager_patch = patch_lines(self.selected_message(), &body);
         self.pager_body = body;
+        self.pager_rendered = rendered;
         self.pager_signature = signature;
         self.pager_invite = invite;
         self.pager_scroll = 0;
+        self.link_picker = None;
         self.pager_headers = antiphon_render::selected_headers(
             &self.pager_raw,
             &self.header_names,
@@ -316,9 +346,18 @@ impl App {
             Action::ToggleHeaders => {
                 self.headers_all = !self.headers_all
             }
+            Action::OpenLink => self.open_link_picker(),
             Action::Back | Action::Quit => self.view = View::List,
             _ => self.not_built_notice(),
         }
+    }
+
+    fn open_link_picker(&mut self) {
+        if self.pager_rendered.links.is_empty() {
+            self.notice = Some("no links in this message".to_string());
+            return;
+        }
+        self.link_picker = Some(LinkPicker::default());
     }
 
     fn scroll_pager(&mut self, rows: i32) {

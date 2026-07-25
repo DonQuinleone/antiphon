@@ -106,10 +106,19 @@ Actions: `move-down`, `move-up`, `top`, `bottom`,
 flip the open or previewed message between plain and html
 parts), `toggle-headers` (`t`: flip the pager and reading
 pane between the configured `headers` set and every header
-of the message), `pane-down`/`pane-up` (`J`/`K`: scroll the
-reading pane), `help` (`?`: the keybinding cheatsheet,
-generated live from these bindings with your overrides
-applied).
+of the message), `open-link` (`o`: a numbered picker over
+the links of the open message; type the number and press
+enter, or move with `j`/`k`, and the url goes to the system
+opener, `open` on macOS and `xdg-open` elsewhere; `esc`
+closes), `pane-down`/`pane-up` (`J`/`K`: scroll the reading
+pane), `help` (`?`: the keybinding cheatsheet, generated
+live from these bindings with your overrides applied).
+
+In the pager, link spans render underlined in the accent
+colour. The mouse works there too: the wheel scrolls, and a
+left click on a link opens it. Only `http`, `https` and
+`mailto` urls are ever handed to the opener, and Antiphon
+itself never fetches anything.
 
 `next-account` (`gt`) and `previous-account` (`gT`) cycle the
 view scope: unified, then each account in turn. `sidebar-next`

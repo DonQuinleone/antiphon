@@ -67,6 +67,9 @@ impl App {
             Action::ToggleHeaders => {
                 self.headers_all = !self.headers_all
             }
+            Action::OpenLink => {
+                self.notice = Some("open a message first".to_string())
+            }
             Action::NextAccount => self.shift_scope(scope::next_scope),
             Action::PreviousAccount => {
                 self.shift_scope(scope::previous_scope)

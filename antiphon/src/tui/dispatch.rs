@@ -177,11 +177,7 @@ pub(super) fn dispatch(
                 decrypt::read_message(&raw, &app.keyring, None);
             app.pager_raw = raw;
             app.pager_html = false;
-            app.open_pager(
-                opened.body,
-                opened.signature,
-                opened.invite,
-            );
+            app.open_message(opened);
         }
         Err(error) => {
             app.pager_raw = Vec::new();
@@ -350,7 +346,7 @@ fn toggle_html(app: &mut App) {
         preference,
     );
     let scroll = app.pager_scroll;
-    app.open_pager(opened.body, opened.signature, opened.invite);
+    app.open_message(opened);
     app.pager_scroll = scroll;
     app.notice = Some(
         if app.pager_html {

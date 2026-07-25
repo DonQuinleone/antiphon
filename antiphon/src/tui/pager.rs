@@ -1,16 +1,17 @@
 use antiphon_pgp::{Signature, SignatureStatus};
-use antiphon_render::{MessageHeader, PatchLine};
+use antiphon_render::MessageHeader;
 use antiphon_ui::Theme;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::widgets::Paragraph;
 
 use super::app::App;
+use super::pager_body;
 
-const KEYBAR: &str = "j/k:Scroll  t:Headers  h:Html  r:Reply  \
-                      L:List-reply  q:Back  ?:Help";
+const KEYBAR: &str = "j/k:Scroll  o:Links  t:Headers  h:Html  \
+                      r:Reply  q:Back  ?:Help";
 const KEYBAR_ROWS: u16 = 1;
 const RULE_ROWS: u16 = 1;
 const MIN_TAG_GAP_COLS: usize = 2;
@@ -48,9 +49,13 @@ pub(super) fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
         chrome.headers,
     );
     frame.render_widget(rule(app.theme, area.width), chrome.rule);
-    let body = Paragraph::new(body_lines(app))
-        .wrap(Wrap { trim: false })
-        .scroll((app.pager_scroll, 0));
+    let rows =
+        pager_body::wrapped_rows(app, chrome.body.width as usize);
+    let lines: Vec<Line<'static>> = rows
+        .iter()
+        .map(|row| pager_body::styled(app.theme, row))
+        .collect();
+    let body = Paragraph::new(lines).scroll((app.pager_scroll, 0));
     frame.render_widget(body, chrome.body);
 }
 
@@ -161,67 +166,6 @@ fn fitted(text: &str, room: usize) -> String {
         text.chars().take(room.saturating_sub(1)).collect();
     cut.push(ELLIPSIS);
     cut
-}
-
-fn body_lines(app: &App) -> Vec<Line<'static>> {
-    let theme = app.theme;
-    let mut lines = Vec::new();
-    if !app.pager_invite.is_empty() {
-        lines.extend(
-            app.pager_invite
-                .iter()
-                .map(|text| invite_line(theme, text)),
-        );
-        lines.push(Line::default());
-    }
-    lines.extend(app.pager_body.lines().enumerate().map(
-        |(index, body_line)| {
-            let kind = app
-                .pager_patch
-                .get(index)
-                .copied()
-                .unwrap_or(PatchLine::Text);
-            Line::from(Span::styled(
-                body_line.to_string(),
-                Style::new()
-                    .fg(pager_line_colour(theme, kind, body_line)),
-            ))
-        },
-    ));
-    lines
-}
-
-fn invite_line(theme: &Theme, text: &str) -> Line<'static> {
-    Line::from(Span::styled(
-        text.to_string(),
-        Style::new().fg(theme.accent),
-    ))
-}
-
-fn pager_line_colour(
-    theme: &Theme,
-    kind: PatchLine,
-    line: &str,
-) -> ratatui::style::Color {
-    match kind {
-        PatchLine::Addition => theme.diff_add,
-        PatchLine::Removal => theme.diff_remove,
-        PatchLine::FileHeader => theme.accent_strong,
-        PatchLine::HunkHeader => theme.accent,
-        PatchLine::NoNewline | PatchLine::Envelope => theme.text_muted,
-        PatchLine::Text => prose_colour(theme, line),
-    }
-}
-
-pub(super) fn prose_colour(
-    theme: &Theme,
-    line: &str,
-) -> ratatui::style::Color {
-    if line.trim_start().starts_with('>') {
-        theme.text_muted
-    } else {
-        theme.text_primary
-    }
 }
 
 fn signature_line(
@@ -445,68 +389,5 @@ mod tests {
     #[test]
     fn unsigned_message_shows_no_signature_line() {
         assert!(signature_line(&VESPERS, &Signature::none()).is_none());
-    }
-
-    #[test]
-    fn invite_blocks_lead_the_body() {
-        let mut app = app_with_messages(1);
-        app.theme = &VESPERS;
-        app.open_pager(
-            "body line\n".to_string(),
-            Signature::none(),
-            vec![
-                "calendar invite: Stand-up".to_string(),
-                "  reply:     accept/decline not yet wired".to_string(),
-            ],
-        );
-        let lines = body_lines(&app);
-        let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts[0], "calendar invite: Stand-up");
-        assert_eq!(lines[0].spans[0].style.fg, Some(VESPERS.accent));
-        assert_eq!(
-            texts[1],
-            "  reply:     accept/decline not yet wired"
-        );
-        assert_eq!(texts[2], "");
-        assert_eq!(texts[3], "body line");
-
-        app.open_pager(
-            "plain\n".to_string(),
-            Signature::none(),
-            Vec::new(),
-        );
-        let texts: Vec<String> =
-            body_lines(&app).iter().map(line_text).collect();
-        assert_eq!(texts, ["plain"]);
-    }
-
-    #[test]
-    fn patch_classifications_map_to_theme_roles() {
-        let theme = &VESPERS;
-        let cases = [
-            (PatchLine::Addition, "+new", theme.diff_add),
-            (PatchLine::Removal, "-old", theme.diff_remove),
-            (
-                PatchLine::FileHeader,
-                "diff --git a/f b/f",
-                theme.accent_strong,
-            ),
-            (PatchLine::HunkHeader, "@@ -1 +1 @@", theme.accent),
-            (
-                PatchLine::NoNewline,
-                "\\ No newline at end of file",
-                theme.text_muted,
-            ),
-            (PatchLine::Envelope, "---", theme.text_muted),
-            (PatchLine::Text, "prose", theme.text_primary),
-            (PatchLine::Text, "> quoted", theme.text_muted),
-        ];
-        for (kind, line, expected) in cases {
-            assert_eq!(
-                pager_line_colour(theme, kind, line),
-                expected,
-                "{kind:?} `{line}`"
-            );
-        }
     }
 }

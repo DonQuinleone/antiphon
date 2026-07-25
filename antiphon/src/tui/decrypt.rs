@@ -2,11 +2,14 @@ use std::path::Path;
 
 use antiphon_pgp::{Keyring, Signature, mime};
 use antiphon_pgp_agent::GpgAgent;
+use antiphon_render::RenderedBody;
 
-/// A message opened for reading: the rendered body, its
-/// signature verdict, and any calendar invite block.
+/// A message opened for reading: the body text, the same
+/// body with its link spans, the signature verdict, and any
+/// calendar invite block.
 pub struct Opened {
     pub body: String,
+    pub rendered: RenderedBody,
     pub signature: Signature,
     pub invite: Vec<String>,
 }
@@ -40,6 +43,9 @@ pub fn read_message_preferring(
                 raw, preference,
             )
             .text,
+            rendered: antiphon_render::rendered_body_preferring(
+                raw, preference,
+            ),
             signature: antiphon_pgp::verify(raw, keyring),
             invite: antiphon_render::invite_lines(raw),
         };
@@ -49,8 +55,10 @@ pub fn read_message_preferring(
     let entity = match decrypted {
         Ok(entity) => entity,
         Err(error) => {
+            let body = format!("cannot decrypt: {error}");
             return Opened {
-                body: format!("cannot decrypt: {error}"),
+                rendered: antiphon_render::scan_text(&body),
+                body,
                 signature: Signature::none(),
                 invite: Vec::new(),
             };
@@ -58,7 +66,13 @@ pub fn read_message_preferring(
     };
     let merged = mime::merge_decrypted(raw, &entity);
     Opened {
-        body: antiphon_render::body_text(&merged).text,
+        body: antiphon_render::body_text_preferring(
+            &merged, preference,
+        )
+        .text,
+        rendered: antiphon_render::rendered_body_preferring(
+            &merged, preference,
+        ),
         signature: antiphon_pgp::verify(&merged, keyring),
         invite: antiphon_render::invite_lines(&merged),
     }
