@@ -1,7 +1,9 @@
 use antiphon_config::{Composer, Loaded, ReadingPane};
 use antiphon_core::Action;
 use antiphon_pgp::{Keyring, Signature};
-use antiphon_render::{MailtoUnsubscribe, MessageHeader, RenderedBody};
+use antiphon_render::{
+    MailtoUnsubscribe, MessageAttachment, MessageHeader, RenderedBody,
+};
 use antiphon_store::MessageSummary;
 use antiphon_ui::{Theme, VESPERS};
 
@@ -59,7 +61,10 @@ pub struct App {
     pub pager_headers: Vec<MessageHeader>,
     pub pager_headers_all: Vec<MessageHeader>,
     pub pager_rendered: RenderedBody,
+    pub pager_attachments: Vec<MessageAttachment>,
     pub link_picker: Option<LinkPicker>,
+    pub drawer_open: bool,
+    pub drawer_selected: usize,
     pub header_names: Vec<String>,
     pub headers_all: bool,
     pub preview_scroll: u16,
@@ -133,7 +138,10 @@ impl App {
             pager_headers: Vec::new(),
             pager_headers_all: Vec::new(),
             pager_rendered: RenderedBody::default(),
+            pager_attachments: Vec::new(),
             link_picker: None,
+            drawer_open: false,
+            drawer_selected: 0,
             header_names: loaded.config.ui.headers.clone(),
             headers_all: false,
             preview_scroll: 0,
@@ -257,6 +265,10 @@ impl App {
         self.pager_invite = invite;
         self.pager_scroll = 0;
         self.link_picker = None;
+        self.pager_attachments =
+            antiphon_render::attachments(&self.pager_raw);
+        self.drawer_open = false;
+        self.drawer_selected = 0;
         self.pager_headers = antiphon_render::selected_headers(
             &self.pager_raw,
             &self.header_names,
@@ -347,9 +359,19 @@ impl App {
                 self.headers_all = !self.headers_all
             }
             Action::OpenLink => self.open_link_picker(),
+            Action::Attachments => self.toggle_drawer(),
             Action::Back | Action::Quit => self.view = View::List,
             _ => self.not_built_notice(),
         }
+    }
+
+    fn toggle_drawer(&mut self) {
+        if self.pager_attachments.is_empty() {
+            self.notice =
+                Some("no attachments on this message".to_string());
+            return;
+        }
+        self.drawer_open = !self.drawer_open;
     }
 
     fn open_link_picker(&mut self) {

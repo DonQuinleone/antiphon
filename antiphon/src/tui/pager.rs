@@ -10,8 +10,8 @@ use ratatui::widgets::Paragraph;
 use super::app::App;
 use super::pager_body;
 
-const KEYBAR: &str = "j/k:Scroll  o:Links  t:Headers  h:Html  \
-                      r:Reply  q:Back  ?:Help";
+const KEYBAR: &str = "j/k:Scroll  o:Links  A:Attach  \
+                      t:Headers  h:Html  r:Reply  q:Back  ?:Help";
 const KEYBAR_ROWS: u16 = 1;
 const RULE_ROWS: u16 = 1;
 const MIN_TAG_GAP_COLS: usize = 2;
@@ -22,15 +22,17 @@ pub(super) struct PagerChrome {
     pub headers: Rect,
     pub rule: Rect,
     pub body: Rect,
+    pub drawer: Rect,
 }
 
 pub(super) fn chrome(app: &App, area: Rect) -> PagerChrome {
     let header_rows = header_lines(app, area.width).len() as u16;
-    let [keybar, headers, rule, body] = Layout::vertical([
+    let [keybar, headers, rule, body, drawer] = Layout::vertical([
         Constraint::Length(KEYBAR_ROWS),
         Constraint::Length(header_rows),
         Constraint::Length(RULE_ROWS),
         Constraint::Min(0),
+        Constraint::Length(super::drawer::rows_needed(app)),
     ])
     .areas(area);
     PagerChrome {
@@ -38,6 +40,7 @@ pub(super) fn chrome(app: &App, area: Rect) -> PagerChrome {
         headers,
         rule,
         body,
+        drawer,
     }
 }
 
@@ -57,6 +60,7 @@ pub(super) fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
         .collect();
     let body = Paragraph::new(lines).scroll((app.pager_scroll, 0));
     frame.render_widget(body, chrome.body);
+    super::drawer::draw_drawer(frame, app, chrome.drawer);
 }
 
 fn keybar(theme: &Theme, width: u16) -> Paragraph<'static> {
@@ -158,7 +162,7 @@ fn with_tags(
     line
 }
 
-fn fitted(text: &str, room: usize) -> String {
+pub(super) fn fitted(text: &str, room: usize) -> String {
     if text.chars().count() <= room {
         return text.to_string();
     }

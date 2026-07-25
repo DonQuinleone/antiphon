@@ -8,6 +8,7 @@ mod invite;
 mod itip;
 mod links;
 mod list;
+mod parts;
 mod patch;
 mod series;
 mod unsubscribe;
@@ -30,6 +31,7 @@ pub use links::{BodyLine, Link, LinkSpan, RenderedBody, scan_text};
 pub use list::{
     ListHeaders, ListPost, ListReply, list_headers, reply_to_list,
 };
+pub use parts::{MessageAttachment, attachments};
 pub use patch::{PatchLine, classify_patch, is_patch};
 pub use series::{SeriesMessage, mbox, patch_series};
 pub use unsubscribe::{

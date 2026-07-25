@@ -34,6 +34,7 @@ pub enum Action {
     DeleteMessage,
     ToggleHeaders,
     OpenLink,
+    Attachments,
 }
 
 const NAMES: &[(Action, &str)] = &[
@@ -69,6 +70,7 @@ const NAMES: &[(Action, &str)] = &[
     (Action::DeleteMessage, "delete-message"),
     (Action::ToggleHeaders, "toggle-headers"),
     (Action::OpenLink, "open-link"),
+    (Action::Attachments, "attachments"),
 ];
 
 impl Action {

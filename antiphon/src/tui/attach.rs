@@ -54,7 +54,7 @@ pub(super) fn load(input: &str) -> Result<Attachment, String> {
     })
 }
 
-fn expand_tilde(input: &str) -> PathBuf {
+pub(super) fn expand_tilde(input: &str) -> PathBuf {
     let Some(rest) = input.strip_prefix("~/") else {
         return PathBuf::from(input);
     };

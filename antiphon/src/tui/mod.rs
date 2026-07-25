@@ -8,6 +8,7 @@ mod decrypt;
 mod dispatch;
 mod drafts;
 mod draw;
+mod drawer;
 mod editor;
 mod headers;
 mod identity;
@@ -348,6 +349,10 @@ fn keymap_key(
         }
         return;
     }
+    if app.view == View::Pager && app.drawer_open {
+        drawer::feed(app, key);
+        return;
+    }
     // Backspace scrolls the pager up out of the box (the
     // keymap holds one sequence per action, so this pairs
     // with enter's Open-as-scroll without stealing a
@@ -603,6 +608,9 @@ fn submit_prompt(app: &mut App, layout: &StoreLayout) {
         PromptKind::Search => run_search(app, layout, prompt.buffer),
         PromptKind::AttachmentPath => {
             add_attachment(app, &prompt.buffer)
+        }
+        PromptKind::SaveAttachment => {
+            drawer::save_selected(app, &prompt.buffer)
         }
         PromptKind::ConfirmUnsubscribe | PromptKind::ConfirmDraft => {}
     }

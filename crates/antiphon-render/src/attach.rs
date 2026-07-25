@@ -7,7 +7,7 @@ pub struct AttachmentPart<'a> {
     pub bytes: &'a [u8],
 }
 
-const OCTET_STREAM: &str = "application/octet-stream";
+pub(crate) const OCTET_STREAM: &str = "application/octet-stream";
 
 const CONTENT_TYPES: &[(&str, &str)] = &[
     ("asc", "text/plain"),

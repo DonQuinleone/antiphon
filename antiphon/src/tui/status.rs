@@ -26,6 +26,7 @@ fn prompt_line(theme: &Theme, prompt: &Prompt) -> Line<'static> {
         PromptKind::Search => "/",
         PromptKind::Command => ":",
         PromptKind::AttachmentPath => "attach: ",
+        PromptKind::SaveAttachment => "save to: ",
         PromptKind::ConfirmUnsubscribe => {
             return confirm_line(theme, &prompt.buffer);
         }

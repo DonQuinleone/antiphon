@@ -95,6 +95,7 @@ pub enum PromptKind {
     Command,
     ConfirmUnsubscribe,
     AttachmentPath,
+    SaveAttachment,
     ConfirmDraft,
 }
 
