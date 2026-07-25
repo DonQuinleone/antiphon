@@ -1,22 +1,28 @@
-image: alpine/latest
+image: debian/stable
 arch: aarch64
 packages:
-  - cargo
-  - rust
-  - notmuch-dev
   - hut
+  - curl
+  - build-essential
+  - pkg-config
+  - libnotmuch-dev
+  - scdoc
 oauth: git.sr.ht/OBJECTS:RW
 sources:
   - https://git.sr.ht/~donquinleone/antiphon
 environment:
-  target: aarch64-linux-musl
+  target: aarch64-linux-gnu
 tasks:
   - tag-only: |
       cd antiphon
       git describe --exact-match --tags HEAD >/dev/null 2>&1 \
         || complete-build
+  - toolchain: |
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --profile minimal
   - build: |
       cd antiphon
+      . "$HOME/.cargo/env"
       cargo build --release --locked -p antiphon -p antiphond
   - package: |
       cd antiphon
@@ -25,7 +31,7 @@ tasks:
       mkdir "$name"
       cp target/release/antiphon target/release/antiphond "$name/"
       cp -R dist/systemd dist/dinit dist/runit dist/autostart \
-        COPYING README.md "$name/"
+        LICENSE README.md "$name/"
       tar -czf "$name.tar.gz" "$name"
       sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
   - publish: |
