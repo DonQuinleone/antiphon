@@ -29,6 +29,7 @@ fn pager_lines(app: &App) -> Vec<Line<'static>> {
     };
     let mut lines = vec![
         header_line(theme, "From:", message.from.clone()),
+        header_line(theme, "To:", message.to.clone()),
         header_line(
             theme,
             "Date:",

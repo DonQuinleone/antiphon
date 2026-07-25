@@ -33,9 +33,10 @@ const DEFAULT_BINDINGS: &[(Action, &str)] = &[
     (Action::MarkUnread, "M"),
     (Action::ToggleFlagged, "F"),
     (Action::DeleteMessage, "d"),
-    (Action::ToggleHtml, "H"),
+    (Action::ToggleHtml, "h"),
     (Action::PaneScrollDown, "J"),
     (Action::PaneScrollUp, "K"),
+    (Action::Help, "?"),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -86,6 +87,7 @@ pub struct Keymap {
     pairs: HashMap<(Chord, Chord), Action>,
     prefixes: HashSet<Chord>,
     pending: Option<Chord>,
+    listing: Vec<(Action, String)>,
 }
 
 impl Keymap {
@@ -113,9 +115,14 @@ impl Keymap {
             *entry = Entry {
                 action,
                 sequence,
+                text: text.clone(),
                 user: true,
             };
         }
+        let listing: Vec<(Action, String)> = entries
+            .iter()
+            .map(|entry| (entry.action, entry.text.clone()))
+            .collect();
         entries.sort_by_key(|entry| entry.user);
 
         let mut keymap = Self {
@@ -123,11 +130,18 @@ impl Keymap {
             pairs: HashMap::new(),
             prefixes: HashSet::new(),
             pending: None,
+            listing,
         };
         for entry in entries {
             keymap.bind(entry.action, entry.sequence);
         }
         Ok(keymap)
+    }
+
+    /// The effective bindings, defaults merged with the
+    /// user's overrides, in the defaults' display order.
+    pub fn bindings(&self) -> &[(Action, String)] {
+        &self.listing
     }
 
     fn bind(&mut self, action: Action, sequence: KeySequence) {
@@ -170,6 +184,7 @@ impl Default for Keymap {
 struct Entry {
     action: Action,
     sequence: KeySequence,
+    text: String,
     user: bool,
 }
 
@@ -181,6 +196,7 @@ fn default_entries() -> Vec<Entry> {
             sequence: text
                 .parse()
                 .expect("default key sequence parses"),
+            text: (*text).to_string(),
             user: false,
         })
         .collect()

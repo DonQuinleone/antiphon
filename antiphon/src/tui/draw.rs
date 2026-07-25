@@ -34,6 +34,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
         Block::new().style(Style::new().bg(app.theme.background)),
         area,
     );
+    if app.help {
+        draw_help(frame, app, area);
+        return;
+    }
     let (content, status) = split_status(area);
     if app.view == View::Compose {
         headers::draw_headers(frame, app, content);
@@ -220,6 +224,7 @@ fn draw_reading_pane(frame: &mut Frame, app: &App, area: Rect) {
     };
     let mut lines = vec![
         header_line(theme, "From:", message.from.clone()),
+        header_line(theme, "To:", message.to.clone()),
         header_line(
             theme,
             "Date:",
@@ -409,4 +414,28 @@ mod tests {
             );
         }
     }
+}
+
+/// The cheatsheet renders the LIVE keymap (defaults merged
+/// with the user's [keys] overrides), never a separate list.
+fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
+    let theme = app.theme;
+    let mut lines = vec![Line::from(Span::styled(
+        "keys \u{b7} any key closes",
+        Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
+    ))];
+    lines.push(Line::default());
+    for (key, action) in &app.key_bindings {
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("  {key:<12}"),
+                Style::new().fg(theme.accent_strong),
+            ),
+            Span::styled(
+                action.clone(),
+                Style::new().fg(theme.text_primary),
+            ),
+        ]));
+    }
+    frame.render_widget(Paragraph::new(lines), area);
 }

@@ -103,6 +103,11 @@ pub fn run(
     // Startup opens the default sidebar entry (the first
     // inbox), so the list shows it rather than highlighting
     // it over an unrelated query.
+    app.key_bindings = keymap
+        .bindings()
+        .iter()
+        .map(|(action, text)| (text.clone(), action.to_string()))
+        .collect();
     app.apply(antiphon_core::Action::SidebarOpen);
     if app.take_requery() {
         let query = app.current_query.clone();
@@ -208,6 +213,16 @@ fn poll_interval(app: &App) -> Duration {
 }
 
 fn editor_key(app: &mut App, key: KeyEvent) {
+    // ctrl-h lifts focus back to the header fields while the
+    // editor keeps running underneath; ctrl-e returns.
+    if key.code == KeyCode::Char('h')
+        && key
+            .modifiers
+            .contains(ratatui::crossterm::event::KeyModifiers::CONTROL)
+    {
+        app.view = View::Compose;
+        return;
+    }
     if let Some(pane) = app.editor.as_mut() {
         pane.session.send_key(key);
     }
@@ -289,6 +304,10 @@ fn keymap_key(
     context: &ComposeContext,
     key: KeyEvent,
 ) {
+    if app.help {
+        app.help = false;
+        return;
+    }
     // Backspace scrolls the pager up out of the box (the
     // keymap holds one sequence per action, so this pairs
     // with enter's Open-as-scroll without stealing a

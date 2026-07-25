@@ -153,8 +153,16 @@ pub(super) fn dispatch(
         app.notice = None;
         return list_reply_request(app, context);
     }
-    if action == Action::ToggleHtml && app.view == View::Pager {
-        toggle_html(app);
+    if action == Action::Help {
+        app.help = true;
+        return None;
+    }
+    if action == Action::ToggleHtml {
+        match app.view {
+            View::Pager => toggle_html(app),
+            View::List => toggle_preview_html(app),
+            _ => {}
+        }
         return None;
     }
     let opening = action == Action::Open && app.view == View::List;
@@ -348,6 +356,31 @@ fn toggle_html(app: &mut App) {
             "showing the html part"
         } else {
             "showing the plain part"
+        }
+        .to_string(),
+    );
+}
+
+/// The pane preview flips parts too; the flag resets when the
+/// selection moves so each message starts on its plain part.
+fn toggle_preview_html(app: &mut App) {
+    let Some(message) = app.selected_message() else {
+        return;
+    };
+    let Ok(raw) = std::fs::read(&message.path) else {
+        return;
+    };
+    if !antiphon_render::has_html_part(&raw) {
+        app.notice = Some("this message has no html part".to_string());
+        return;
+    }
+    app.preview_html = !app.preview_html;
+    app.preview = None;
+    app.notice = Some(
+        if app.preview_html {
+            "pane: html part"
+        } else {
+            "pane: plain part"
         }
         .to_string(),
     );

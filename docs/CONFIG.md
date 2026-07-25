@@ -96,7 +96,11 @@ Actions: `move-down`, `move-up`, `top`, `bottom`,
 `sidebar-next`, `sidebar-previous`, `sidebar-open`,
 `toggle-sidebar`, `cycle-reading-pane`, `sync`, `reply`,
 `reply-list`, `compose`, `mark-read`, `mark-unread`,
-`toggle-flagged`, `delete-message`.
+`toggle-flagged`, `delete-message`, `toggle-html` (`h`:
+flip the open or previewed message between plain and html
+parts), `pane-down`/`pane-up` (`J`/`K`: scroll the reading
+pane), `help` (`?`: the keybinding cheatsheet, generated
+live from these bindings with your overrides applied).
 
 `next-account` (`gt`) and `previous-account` (`gT`) cycle the
 view scope: unified, then each account in turn. `sidebar-next`

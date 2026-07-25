@@ -29,6 +29,10 @@ pub(super) fn open_body_editor(
     let Some(state) = &app.compose else {
         return Ok(());
     };
+    if app.editor.is_some() {
+        app.view = View::Editor;
+        return Ok(());
+    }
     let path = match write_body(layout, &state.body) {
         Ok(path) => path,
         Err(error) => {

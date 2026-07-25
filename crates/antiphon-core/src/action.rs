@@ -30,6 +30,7 @@ pub enum Action {
     ToggleHtml,
     PaneScrollDown,
     PaneScrollUp,
+    Help,
     DeleteMessage,
 }
 
@@ -62,6 +63,7 @@ const NAMES: &[(Action, &str)] = &[
     (Action::ToggleHtml, "toggle-html"),
     (Action::PaneScrollDown, "pane-down"),
     (Action::PaneScrollUp, "pane-up"),
+    (Action::Help, "help"),
     (Action::DeleteMessage, "delete-message"),
 ];
 

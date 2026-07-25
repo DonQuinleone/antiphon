@@ -21,6 +21,7 @@ const DATE_HEADING: &str = "DATE";
 const SUBJECT_HEADING: &str = "SUBJECT";
 const FROM_TO_HEADING: &str = "FROM/TO";
 const STATUS_COLS: u16 = 3;
+const STATUS_HEADING: &str = "#";
 const REPLIED_TAG: &str = "replied";
 const FORWARDED_TAG: &str = "passed";
 const ATTACHMENT_TAG: &str = "attachment";
@@ -65,12 +66,7 @@ fn date_width(messages: &[MessageSummary], format: &str) -> u16 {
 pub(super) fn draw_list(frame: &mut Frame, app: &App, area: Rect) {
     let theme = app.theme;
     if app.messages.is_empty() {
-        let label = app.active_search.as_deref().unwrap_or("this view");
-        let empty = Paragraph::new(Line::from(Span::styled(
-            format!("nothing in {label}"),
-            Style::new().fg(theme.text_muted),
-        )));
-        frame.render_widget(empty, area);
+        draw_empty(frame, app, area);
         return;
     }
     let columns = columns(area.width, &app.messages, &app.date_format);
@@ -83,7 +79,7 @@ pub(super) fn draw_list(frame: &mut Frame, app: &App, area: Rect) {
     let subject_heading =
         format!("{:1$}{SUBJECT_HEADING}", "", MARK_COLS as usize);
     let header = Row::new(vec![
-        String::new(),
+        STATUS_HEADING.to_string(),
         DATE_HEADING.to_string(),
         FROM_TO_HEADING.to_string(),
         subject_heading,
@@ -110,6 +106,52 @@ pub(super) fn draw_list(frame: &mut Frame, app: &App, area: Rect) {
     let mut state =
         TableState::default().with_selected(Some(app.selected));
     frame.render_stateful_widget(table, area, &mut state);
+}
+
+/// An empty view keeps its header row so the shape of the
+/// list never jumps, with the notice centred in the space
+/// the rows would fill.
+fn draw_empty(frame: &mut Frame, app: &App, area: Rect) {
+    let theme = app.theme;
+    let columns = columns(area.width, &[], &app.date_format);
+    let subject_heading =
+        format!("{:1$}{SUBJECT_HEADING}", "", MARK_COLS as usize);
+    let header = Row::new(vec![
+        STATUS_HEADING.to_string(),
+        DATE_HEADING.to_string(),
+        FROM_TO_HEADING.to_string(),
+        subject_heading,
+    ])
+    .style(
+        Style::new()
+            .fg(theme.text_muted)
+            .add_modifier(Modifier::BOLD),
+    );
+    let table = Table::new(
+        std::iter::empty::<Row>(),
+        [
+            Constraint::Length(STATUS_COLS),
+            Constraint::Length(columns.date),
+            Constraint::Length(columns.from),
+            Constraint::Min(0),
+        ],
+    )
+    .column_spacing(COLUMN_GAP)
+    .header(header);
+    frame.render_widget(table, area);
+    let label = app.active_search.as_deref().unwrap_or("this view");
+    let notice = Paragraph::new(Line::from(Span::styled(
+        format!("nothing in {label}"),
+        Style::new().fg(theme.text_muted),
+    )))
+    .alignment(ratatui::layout::Alignment::Center);
+    let row = Rect {
+        x: area.x,
+        y: area.y + 1 + area.height.saturating_sub(1) / 2,
+        width: area.width,
+        height: 1,
+    };
+    frame.render_widget(notice, row);
 }
 
 fn message_row(
@@ -466,13 +508,23 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_list_says_so() {
+    fn an_empty_list_keeps_headers_and_centres_the_notice() {
         let app = listed_app(&[], ISO);
-        let buffer = render(&app, 40, 4);
-        let row: String = row_chars(&buffer, 0).into_iter().collect();
+        let buffer = render(&app, 40, 5);
+        let header: String =
+            row_chars(&buffer, 0).into_iter().collect();
+        assert!(header.contains(DATE_HEADING), "{header:?}");
+        assert!(header.contains(STATUS_HEADING), "{header:?}");
+        let middle: String =
+            row_chars(&buffer, 3).into_iter().collect();
         assert!(
-            row.contains("nothing in"),
-            "expected the empty notice, got {row:?}"
+            middle.contains("nothing in"),
+            "expected the centred notice, got {middle:?}"
+        );
+        let leading = middle.len() - middle.trim_start().len();
+        assert!(
+            leading > 2,
+            "notice should be centred, got {middle:?}"
         );
     }
 
