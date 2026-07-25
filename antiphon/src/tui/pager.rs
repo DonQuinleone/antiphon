@@ -10,8 +10,18 @@ use ratatui::widgets::Paragraph;
 use super::app::App;
 use super::pager_body;
 
-const KEYBAR: &str = "j/k:Scroll  o:Links  A:Attach  \
-                      t:Headers  h:Html  r:Reply  q:Back  ?:Help";
+/// The keybar draws from the live keymap, so a rebound key
+/// renames its own entry; these are the actions worth a slot.
+const KEYBAR_ACTIONS: [(&str, &str); 8] = [
+    ("move-down", "Scroll"),
+    ("open-link", "Links"),
+    ("attachments", "Attach"),
+    ("toggle-headers", "Headers"),
+    ("toggle-html", "Html"),
+    ("reply", "Reply"),
+    ("archive", "Archive"),
+    ("help", "Help"),
+];
 const KEYBAR_ROWS: u16 = 1;
 const RULE_ROWS: u16 = 1;
 const MIN_TAG_GAP_COLS: usize = 2;
@@ -46,7 +56,7 @@ pub(super) fn chrome(app: &App, area: Rect) -> PagerChrome {
 
 pub(super) fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
     let chrome = chrome(app, area);
-    frame.render_widget(keybar(app.theme, area.width), chrome.keybar);
+    frame.render_widget(keybar(app, area.width), chrome.keybar);
     frame.render_widget(
         Paragraph::new(header_lines(app, area.width)),
         chrome.headers,
@@ -63,13 +73,26 @@ pub(super) fn draw_pager(frame: &mut Frame, app: &App, area: Rect) {
     super::drawer::draw_drawer(frame, app, chrome.drawer);
 }
 
-fn keybar(theme: &Theme, width: u16) -> Paragraph<'static> {
+fn keybar(app: &App, width: u16) -> Paragraph<'static> {
+    let theme = app.theme;
     let bar = Style::new()
         .fg(theme.text_primary)
         .bg(theme.surface)
         .add_modifier(Modifier::BOLD);
+    let entries: Vec<String> = KEYBAR_ACTIONS
+        .iter()
+        .filter_map(|(action, label)| {
+            let key = app
+                .key_bindings
+                .iter()
+                .find(|(_, name)| name == action)
+                .map(|(key, _)| key.as_str())?;
+            Some(format!("{key}:{label}"))
+        })
+        .collect();
+    let text = entries.join("  ");
     Paragraph::new(Line::from(Span::styled(
-        format!("{KEYBAR:<width$}", width = width as usize),
+        format!("{text:<width$}", width = width as usize),
         bar,
     )))
 }
@@ -254,7 +277,7 @@ mod tests {
         let app = pager_app();
         let buffer = rendered(&app, 60, 14);
         assert!(
-            row_text(&buffer, 0).starts_with("j/k:Scroll"),
+            row_text(&buffer, 0).starts_with("j:Scroll"),
             "{:?}",
             row_text(&buffer, 0)
         );

@@ -60,7 +60,11 @@ pub(super) fn app_with_messages(count: usize) -> App {
         preview_html: false,
         help: false,
         help_scroll: 0,
-        key_bindings: Vec::new(),
+        key_bindings: antiphon_core::Keymap::default()
+            .bindings()
+            .iter()
+            .map(|(action, text)| (text.clone(), action.to_string()))
+            .collect(),
         preview: None,
         own_addresses: Vec::new(),
         archive_folders: Vec::new(),
