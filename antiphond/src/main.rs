@@ -1,5 +1,6 @@
 mod accounts;
 mod daemon;
+mod drafts;
 mod ipc;
 mod mailflow;
 mod notify;

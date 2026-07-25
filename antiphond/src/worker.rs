@@ -106,6 +106,7 @@ fn execute(flow: &Mailflow, plan: Plan) {
     }
     if plan.outbox {
         flow.drain_outbox();
+        flow.drain_drafts();
     }
     if plan.ops {
         flow.drain_ops();

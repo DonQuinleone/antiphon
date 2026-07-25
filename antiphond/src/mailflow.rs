@@ -28,6 +28,7 @@ pub(crate) struct Mailflow {
 impl Mailflow {
     pub(crate) fn sync_pass(&self, announce: bool) {
         self.drain_outbox();
+        self.drain_drafts();
         self.sync_all(announce);
         self.drain_ops();
     }
@@ -100,7 +101,7 @@ impl Mailflow {
         }
     }
 
-    fn oauth_token(
+    pub(crate) fn oauth_token(
         &self,
         spec: &OauthAccount,
         force_refresh: bool,
@@ -355,7 +356,7 @@ fn announce_rules(account: &str, outcome: RuleOutcome) {
     );
 }
 
-fn error_chain(error: &dyn std::error::Error) -> String {
+pub(crate) fn error_chain(error: &dyn std::error::Error) -> String {
     let mut text = error.to_string();
     let mut source = error.source();
     while let Some(cause) = source {
