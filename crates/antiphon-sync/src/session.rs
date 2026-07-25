@@ -198,6 +198,21 @@ impl ImapSession {
         ))
     }
 
+    /// APPEND with the given flags; returns the new message's
+    /// (uid, uidvalidity) when the server grants APPENDUID
+    /// (RFC 4315), None from servers without UIDPLUS.
+    pub fn append(
+        &mut self,
+        folder: &str,
+        flags: Vec<Flag<'static>>,
+        raw: &[u8],
+    ) -> Result<Option<(u32, u32)>, ClientError> {
+        let appended = self
+            .runtime
+            .block_on(self.client.appenduid(folder, flags, raw))?;
+        Ok(appended.map(|(uid, validity)| (uid.get(), validity.get())))
+    }
+
     pub fn uid_expunge(&mut self, uid: u32) -> Result<(), ClientError> {
         let task = UidExpungeTask {
             sequence_set: single(uid),
@@ -347,13 +362,24 @@ fn items_body(
 }
 
 /// connect() delegates the XOAUTH2 exchange to imap-client's
-/// AuthenticateTask; these tests pin the SASL line and SASL-IR
-/// behaviour that delegation relies on.
+/// AuthenticateTask, and append() delegates APPEND to its
+/// AppendUidTask; these tests pin the SASL line, SASL-IR and
+/// APPENDUID behaviour that delegation relies on.
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+
     use imap_client::imap_types::auth::AuthMechanism;
     use imap_client::imap_types::command::CommandBody;
+    use imap_client::imap_types::core::{Literal, Text};
+    use imap_client::imap_types::extensions::binary::LiteralOrLiteral8;
+    use imap_client::imap_types::flag::Flag;
+    use imap_client::imap_types::mailbox::Mailbox;
+    use imap_client::imap_types::response::{
+        Code, StatusBody, StatusKind,
+    };
     use imap_client::tasks::Task;
+    use imap_client::tasks::tasks::appenduid::AppendUidTask;
     use imap_client::tasks::tasks::authenticate::AuthenticateTask;
 
     fn body_of(
@@ -384,6 +410,58 @@ mod tests {
             line.expect("initial response"),
             b"user=quin@example.com\x01auth=Bearer token-1\x01\x01"
         );
+    }
+
+    fn append_task(flags: Vec<Flag<'static>>) -> AppendUidTask {
+        let literal =
+            Literal::try_from(&b"Subject: d\r\n\r\nbody\r\n"[..])
+                .unwrap();
+        AppendUidTask::new(
+            Mailbox::try_from("Drafts").unwrap(),
+            LiteralOrLiteral8::Literal(literal),
+        )
+        .with_flags(flags)
+    }
+
+    fn tagged_ok(code: Option<Code<'static>>) -> StatusBody<'static> {
+        StatusBody {
+            kind: StatusKind::Ok,
+            code,
+            text: Text::try_from("APPEND done").unwrap(),
+        }
+    }
+
+    #[test]
+    fn append_task_sends_the_flags_with_the_message() {
+        let task = append_task(vec![Flag::Draft, Flag::Seen]);
+        let CommandBody::Append { mailbox, flags, .. } =
+            task.command_body()
+        else {
+            panic!("not an APPEND command");
+        };
+        assert_eq!(mailbox, Mailbox::try_from("Drafts").unwrap());
+        assert_eq!(flags, [Flag::Draft, Flag::Seen]);
+    }
+
+    #[test]
+    fn append_task_reads_uid_and_validity_from_appenduid() {
+        let code = Code::AppendUid {
+            uid_validity: NonZeroU32::new(3).unwrap(),
+            uid: NonZeroU32::new(7).unwrap(),
+        };
+        let granted = append_task(vec![Flag::Draft])
+            .process_tagged(tagged_ok(Some(code)))
+            .unwrap();
+        let (uid, validity) = granted.expect("APPENDUID granted");
+        assert_eq!((uid.get(), validity.get()), (7, 3));
+    }
+
+    #[test]
+    fn append_without_uidplus_still_succeeds_without_a_uid() {
+        let granted = append_task(vec![Flag::Draft])
+            .process_tagged(tagged_ok(None))
+            .unwrap();
+        assert!(granted.is_none());
     }
 
     #[test]

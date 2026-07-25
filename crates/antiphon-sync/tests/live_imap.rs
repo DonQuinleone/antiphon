@@ -4,14 +4,17 @@ use std::future::Future;
 use std::num::NonZeroU32;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use antiphon_store::{Op, OpKind, SearchIndex, StoreLayout};
-use antiphon_sync::{Auth, SyncAccount, replay, sync};
+use antiphon_store::{
+    DraftEnvelope, DraftSpool, Op, OpKind, SearchIndex, StoreLayout,
+};
+use antiphon_sync::{Auth, SyncAccount, push_drafts, replay, sync};
 use imap_client::client::tokio::Client;
-use imap_client::imap_types::core::Vec1;
+use imap_client::imap_types::core::{AString, Vec1};
 use imap_client::imap_types::fetch::{
     MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName,
 };
-use imap_client::imap_types::flag::Flag;
+use imap_client::imap_types::flag::{Flag, StoreType};
+use imap_client::imap_types::search::SearchKey;
 use imap_client::imap_types::sequence::{
     SeqOrUid, Sequence, SequenceSet,
 };
@@ -92,11 +95,12 @@ fn append_to_inbox(account: &SyncAccount, message: &str) {
 
 fn server_flags(
     account: &SyncAccount,
+    folder: &str,
     uid: u32,
 ) -> Option<Vec<String>> {
     block_on(async {
         let mut client = open_client(account).await;
-        client.select(INBOX).await.unwrap();
+        client.select(folder).await.unwrap();
         let set = SequenceSet(Vec1::from(Sequence::Single(
             SeqOrUid::Value(NonZeroU32::new(uid).unwrap()),
         )));
@@ -258,7 +262,7 @@ fn live_flag_replay_round_trip() {
         .unwrap()
         .expect("appended message missing after sync");
     let uid = uid_from_path(&path);
-    let before = server_flags(&account, uid)
+    let before = server_flags(&account, INBOX, uid)
         .expect("appended message missing on the server");
     eprintln!("uid {uid} before replay: {before:?}");
     assert!(
@@ -269,7 +273,7 @@ fn live_flag_replay_round_trip() {
     let flip = flag_op(1, &message_id, &["flagged"], &["unread"]);
     let report = replay(&account, &layout, &[flip]).unwrap();
     assert_eq!(report.synced, [1]);
-    let flagged = server_flags(&account, uid).unwrap();
+    let flagged = server_flags(&account, INBOX, uid).unwrap();
     eprintln!("uid {uid} after flag replay: {flagged:?}");
     assert!(
         flagged.iter().any(|flag| flag.contains("Flagged")),
@@ -283,7 +287,7 @@ fn live_flag_replay_round_trip() {
     let restore = flag_op(2, &message_id, &["unread"], &["flagged"]);
     let report = replay(&account, &layout, &[restore]).unwrap();
     assert_eq!(report.synced, [2]);
-    let restored = server_flags(&account, uid).unwrap();
+    let restored = server_flags(&account, INBOX, uid).unwrap();
     eprintln!("uid {uid} after restore replay: {restored:?}");
     assert!(
         !restored.iter().any(|flag| {
@@ -309,8 +313,113 @@ fn live_flag_replay_round_trip() {
     assert_eq!(report.dropped, [4]);
     assert_eq!(report.synced, [5]);
     assert!(
-        server_flags(&account, uid).is_none(),
+        server_flags(&account, INBOX, uid).is_none(),
         "deleted message still on the server"
     );
     eprintln!("uid {uid} deleted; mailbox left as found");
+}
+
+/// Spools a draft, pushes it through push_drafts, verifies the
+/// APPEND on the server (\Draft and \Seen set) through a fresh
+/// connection, then deletes it, leaving the drafts folder as
+/// it found it.
+#[test]
+#[ignore = "live IMAP; set ANTIPHON_TEST_IMAP_* to run"]
+fn live_draft_append_round_trip() {
+    let Some(account) = live_account() else {
+        eprintln!("live IMAP env vars unset; skipping");
+        return;
+    };
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_micros();
+    let message_id =
+        format!("draft-{stamp}-{}@test.invalid", std::process::id());
+    let message = format!(
+        "From: Antiphon Test <sender@example.com>\r\n\
+         Subject: draft round trip\r\n\
+         Message-ID: <{message_id}>\r\n\
+         Date: Thu, 01 Jan 2026 00:00:00 +0000\r\n\
+         \r\n\
+         draft body\r\n"
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let layout = StoreLayout::new(dir.path().join("store"));
+    layout.init().unwrap();
+    let spool = DraftSpool::open(&layout);
+    spool
+        .enqueue(
+            &DraftEnvelope {
+                account: String::from(ACCOUNT_NAME),
+            },
+            message.as_bytes(),
+        )
+        .unwrap();
+
+    let push = push_drafts(&account, &layout).unwrap();
+    let Some(folder) = push.folder.clone() else {
+        eprintln!("no server drafts folder; draft left spooled");
+        assert_eq!(push.left, 1);
+        assert_eq!(spool.pending().unwrap().len(), 1);
+        return;
+    };
+    eprintln!("filed {} draft(s) into {folder}", push.filed);
+    assert_eq!(push.filed, 1);
+    assert!(spool.pending().unwrap().is_empty());
+
+    let uid = block_on(async {
+        let mut client = open_client(&account).await;
+        client.select(folder.as_str()).await.unwrap();
+        let found = client
+            .uid_search(vec![SearchKey::Header(
+                AString::try_from("Message-ID").unwrap(),
+                AString::try_from(format!("<{message_id}>")).unwrap(),
+            )])
+            .await
+            .unwrap();
+        logout(client).await;
+        found.into_iter().next()
+    })
+    .expect("appended draft missing on the server");
+
+    let flags = server_flags(&account, &folder, uid.get()).unwrap();
+    eprintln!("uid {uid} flags after append: {flags:?}");
+    assert!(
+        flags.iter().any(|flag| flag.contains("Draft")),
+        "server does not report \\Draft: {flags:?}"
+    );
+    assert!(
+        flags.iter().any(|flag| flag.contains("Seen")),
+        "server does not report \\Seen: {flags:?}"
+    );
+
+    let twin_dirs = ["cur", "new"].map(|sub| {
+        layout
+            .account_maildir(ACCOUNT_NAME)
+            .join("drafts")
+            .join(sub)
+    });
+    let twins: usize = twin_dirs
+        .iter()
+        .filter_map(|dir| fs::read_dir(dir).ok())
+        .map(Iterator::count)
+        .sum();
+    eprintln!("local twin files delivered: {twins}");
+
+    block_on(async {
+        let mut client = open_client(&account).await;
+        client.select(folder.as_str()).await.unwrap();
+        let set = SequenceSet(Vec1::from(Sequence::Single(
+            SeqOrUid::Value(uid),
+        )));
+        client
+            .uid_store(set, StoreType::Add, vec![Flag::Deleted])
+            .await
+            .unwrap();
+        client.expunge().await.unwrap();
+        logout(client).await;
+    });
+    eprintln!("uid {uid} deleted; drafts folder left as found");
 }

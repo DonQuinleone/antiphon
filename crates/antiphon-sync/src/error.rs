@@ -51,6 +51,9 @@ pub enum SyncError {
     NotmuchSpawn {
         source: io::Error,
     },
+    Spool {
+        source: antiphon_store::SpoolError,
+    },
 }
 
 impl fmt::Display for SyncError {
@@ -94,6 +97,9 @@ impl fmt::Display for SyncError {
             Self::NotmuchSpawn { source } => {
                 write!(out, "running notmuch new: {source}")
             }
+            Self::Spool { source } => {
+                write!(out, "draft spool: {source}")
+            }
         }
     }
 }
@@ -109,6 +115,7 @@ impl std::error::Error for SyncError {
             Self::Io { source, .. } => Some(source),
             Self::Index { source } => Some(source),
             Self::NotmuchSpawn { source } => Some(source),
+            Self::Spool { source } => Some(source),
             Self::SmtpMessage { .. }
             | Self::State { .. }
             | Self::Folder { .. }

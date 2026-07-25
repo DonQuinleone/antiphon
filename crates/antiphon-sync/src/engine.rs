@@ -340,7 +340,10 @@ fn mirror_flags(
     Ok(updated)
 }
 
-fn state_path(layout: &StoreLayout, account: &SyncAccount) -> PathBuf {
+pub(crate) fn state_path(
+    layout: &StoreLayout,
+    account: &SyncAccount,
+) -> PathBuf {
     layout
         .sync_state_dir()
         .join(&account.name)
@@ -351,7 +354,7 @@ fn ensure_dir(dir: &Path) -> Result<(), SyncError> {
     fs::create_dir_all(dir).map_err(SyncError::io(dir))
 }
 
-fn run_notmuch_new(config: &Path) -> Result<(), SyncError> {
+pub(crate) fn run_notmuch_new(config: &Path) -> Result<(), SyncError> {
     let output = Command::new("notmuch")
         .arg("new")
         .env("NOTMUCH_CONFIG", config)

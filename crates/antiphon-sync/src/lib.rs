@@ -1,4 +1,5 @@
 mod auth;
+mod drafts;
 mod engine;
 mod error;
 mod folders;
@@ -13,6 +14,7 @@ mod state;
 mod tagging;
 
 pub use auth::Auth;
+pub use drafts::{DraftPush, push_drafts};
 pub use engine::{SyncAccount, sync};
 pub use error::SyncError;
 pub use progress::{
