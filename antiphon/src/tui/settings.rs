@@ -8,13 +8,23 @@ use super::settingscmd;
 pub(super) enum SettingsTab {
     Accounts,
     Essentials,
+    Folders,
 }
 
 impl SettingsTab {
-    fn other(self) -> SettingsTab {
+    fn next(self) -> SettingsTab {
         match self {
             SettingsTab::Accounts => SettingsTab::Essentials,
+            SettingsTab::Essentials => SettingsTab::Folders,
+            SettingsTab::Folders => SettingsTab::Accounts,
+        }
+    }
+
+    fn previous(self) -> SettingsTab {
+        match self {
+            SettingsTab::Accounts => SettingsTab::Folders,
             SettingsTab::Essentials => SettingsTab::Accounts,
+            SettingsTab::Folders => SettingsTab::Essentials,
         }
     }
 }
@@ -33,6 +43,8 @@ pub(super) struct SettingsState {
     pub(super) pending_delete: Option<String>,
     pub(super) essentials_selected: usize,
     pub(super) daemon_hint: Option<String>,
+    pub(super) folders: Vec<super::folders::FolderRow>,
+    pub(super) folder_selected: usize,
 }
 
 /// What a settings key asks of the event loop; add and edit
@@ -46,6 +58,7 @@ pub(super) enum SettingsOutcome {
 
 impl App {
     pub(super) fn open_settings(&mut self) {
+        let folders = self.folder_rows();
         self.settings = Some(SettingsState {
             tab: SettingsTab::Accounts,
             accounts: account_summaries(&self.dirs),
@@ -53,6 +66,8 @@ impl App {
             pending_delete: None,
             essentials_selected: 0,
             daemon_hint: None,
+            folders,
+            folder_selected: 0,
         });
         self.view = View::Settings;
     }
@@ -82,20 +97,25 @@ pub(super) fn feed(app: &mut App, key: KeyEvent) -> SettingsOutcome {
     }
     match key.code {
         KeyCode::Esc => SettingsOutcome::Close,
-        KeyCode::Tab | KeyCode::BackTab => {
-            switch_tab(app);
+        KeyCode::Tab => {
+            switch_tab(app, SettingsTab::next);
+            SettingsOutcome::Stay
+        }
+        KeyCode::BackTab => {
+            switch_tab(app, SettingsTab::previous);
             SettingsOutcome::Stay
         }
         _ => match tab {
             SettingsTab::Accounts => feed_accounts(app, key),
             SettingsTab::Essentials => feed_essentials(app, key),
+            SettingsTab::Folders => super::folders::feed(app, key),
         },
     }
 }
 
-fn switch_tab(app: &mut App) {
+fn switch_tab(app: &mut App, step: fn(SettingsTab) -> SettingsTab) {
     if let Some(state) = app.settings.as_mut() {
-        state.tab = state.tab.other();
+        state.tab = step(state.tab);
     }
 }
 
@@ -293,6 +313,8 @@ mod tests {
             pending_delete: None,
             essentials_selected: 0,
             daemon_hint: None,
+            folders: Vec::new(),
+            folder_selected: 0,
         });
         app.view = View::Settings;
         app

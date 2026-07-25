@@ -53,6 +53,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         link_picker: None,
         folder_picker: None,
         account_form: None,
+        folder_alias_edit: None,
         drawer_open: false,
         drawer_selected: 0,
         header_names: antiphon_config::Ui::default().headers,

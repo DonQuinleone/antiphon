@@ -6,6 +6,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::app::App;
+use super::folders::FolderRow;
+use super::headers::with_cursor;
 use super::settings::{SettingsState, SettingsTab};
 use super::settingscmd;
 
@@ -33,6 +35,9 @@ pub(super) fn draw_settings(frame: &mut Frame, app: &App, area: Rect) {
         SettingsTab::Essentials => {
             draw_essentials(frame, app, state, body_area)
         }
+        SettingsTab::Folders => {
+            draw_folders(frame, app, state, body_area)
+        }
     }
 }
 
@@ -40,6 +45,7 @@ fn tabs_line(theme: &Theme, active: SettingsTab) -> Line<'static> {
     let tabs = [
         (SettingsTab::Accounts, "Accounts"),
         (SettingsTab::Essentials, "Essentials"),
+        (SettingsTab::Folders, "Folders"),
     ];
     let spans = tabs
         .into_iter()
@@ -144,6 +150,63 @@ fn draw_essentials(
     frame.render_widget(Paragraph::new(lines), area);
 }
 
+fn draw_folders(
+    frame: &mut Frame,
+    app: &App,
+    state: &SettingsState,
+    area: Rect,
+) {
+    let theme = app.theme;
+    let mut lines = Vec::new();
+    if state.folders.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "no folders discovered yet",
+            Style::new().fg(theme.text_muted),
+        )));
+    }
+    for (index, row) in state.folders.iter().enumerate() {
+        lines.push(folder_line(
+            app,
+            row,
+            index == state.folder_selected,
+        ));
+    }
+    frame.render_widget(Paragraph::new(lines), area);
+}
+
+fn folder_line(
+    app: &App,
+    row: &FolderRow,
+    selected: bool,
+) -> Line<'static> {
+    let theme = app.theme;
+    let marker = mark(selected);
+    let mut style = Style::new().fg(theme.text_primary);
+    if selected {
+        style = style.bg(theme.selection_bg).fg(theme.selection_fg);
+    }
+    let alias = alias_text(app, row, selected);
+    Line::from(Span::styled(
+        format!(
+            "{marker}{:<NAME_WIDTH$}{:<ADDRESS_WIDTH$}{alias}",
+            row.account, row.folder,
+        ),
+        style,
+    ))
+}
+
+/// The selected row shows the in-progress edit, cursor and
+/// all, rather than the alias last saved.
+fn alias_text(app: &App, row: &FolderRow, selected: bool) -> String {
+    if !selected {
+        return row.alias.clone();
+    }
+    match &app.folder_alias_edit {
+        Some(edit) => with_cursor(&edit.text, edit.cursor),
+        None => row.alias.clone(),
+    }
+}
+
 fn mark(selected: bool) -> &'static str {
     if selected {
         SELECTED_MARK
@@ -190,6 +253,8 @@ mod tests {
             pending_delete: None,
             essentials_selected: 0,
             daemon_hint: None,
+            folders: Vec::new(),
+            folder_selected: 0,
         });
         let buffer = rendered(&app);
         assert!(row(&buffer, 0).contains("Accounts"));
@@ -213,6 +278,8 @@ mod tests {
             pending_delete: Some("work".to_string()),
             essentials_selected: 0,
             daemon_hint: None,
+            folders: Vec::new(),
+            folder_selected: 0,
         });
         let buffer = rendered(&app);
         let text: String =
@@ -232,6 +299,8 @@ mod tests {
             daemon_hint: Some(
                 "takes effect when antiphond restarts".to_string(),
             ),
+            folders: Vec::new(),
+            folder_selected: 0,
         });
         let buffer = rendered(&app);
         let text: String =
@@ -240,5 +309,37 @@ mod tests {
         assert!(text.contains("sync interval"));
         assert!(text.contains("sidebar width"));
         assert!(text.contains("takes effect when antiphond restarts"));
+    }
+
+    #[test]
+    fn folders_tab_lists_rows_and_the_selected_ones_edit_shows() {
+        let mut app = app_with_messages(1);
+        app.settings = Some(SettingsState {
+            tab: SettingsTab::Folders,
+            accounts: Vec::new(),
+            account_selected: 0,
+            pending_delete: None,
+            essentials_selected: 0,
+            daemon_hint: None,
+            folders: vec![FolderRow {
+                account: "work".to_string(),
+                folder: "lists/aerc".to_string(),
+                alias: "aerc-list".to_string(),
+            }],
+            folder_selected: 0,
+        });
+        app.folder_alias_edit =
+            Some(super::super::folders::AliasEdit {
+                text: "renamed".to_string(),
+                cursor: 7,
+            });
+        let buffer = rendered(&app);
+        let text: String =
+            (0..buffer.area.height).map(|y| row(&buffer, y)).collect();
+        assert!(text.contains("Folders"));
+        assert!(text.contains("work"));
+        assert!(text.contains("lists/aerc"));
+        assert!(text.contains("renamed"));
+        assert!(!text.contains("aerc-list"));
     }
 }

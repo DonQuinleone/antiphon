@@ -110,6 +110,11 @@ fn settings_hint(app: &App) -> String {
     let Some(state) = &app.settings else {
         return String::new();
     };
+    if app.folder_alias_edit.is_some() {
+        return "type the alias \u{b7} enter saves \u{b7} \
+             esc cancels"
+            .to_string();
+    }
     if state.pending_delete.is_some() {
         return "y confirm \u{b7} any other key cancels".to_string();
     }
@@ -119,7 +124,10 @@ fn settings_hint(app: &App) -> String {
              esc back"
             .to_string(),
         SettingsTab::Essentials => "j/k select \u{b7} h/l change \
-             \u{b7} tab accounts \u{b7} esc back"
+             \u{b7} tab folders \u{b7} esc back"
+            .to_string(),
+        SettingsTab::Folders => "j/k select \u{b7} enter edits \
+             alias \u{b7} tab accounts \u{b7} esc back"
             .to_string(),
     }
 }

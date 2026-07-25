@@ -15,6 +15,7 @@ mod draw;
 mod drawer;
 mod editor;
 mod folder_picker;
+mod folders;
 mod headers;
 mod help;
 mod identity;

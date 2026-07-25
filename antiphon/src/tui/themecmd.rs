@@ -98,8 +98,62 @@ pub(super) fn with_key(
     rewritten
 }
 
+/// Rewrites `[table]` in the config file at `path` to drop
+/// `key` entirely; a missing file, table or key is a no-op
+/// rather than an error, so removal is idempotent.
+pub(super) fn remove_key(
+    path: &Path,
+    table: &str,
+    key: &str,
+) -> io::Result<()> {
+    let existing = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
+    let rewritten = without_key(&existing, table, key);
+    write_atomically(path, &rewritten)
+}
+
+pub(super) fn without_key(
+    contents: &str,
+    table: &str,
+    key: &str,
+) -> String {
+    let mut lines: Vec<String> =
+        contents.lines().map(str::to_owned).collect();
+    let header = format!("[{table}]");
+    if let Some((start, end)) = table_range(&lines, &header)
+        && let Some(index) = key_line_in(&lines, key, start, end)
+    {
+        lines.remove(index);
+    }
+    if lines.is_empty() {
+        return String::new();
+    }
+    let mut rewritten = lines.join("\n");
+    rewritten.push('\n');
+    rewritten
+}
+
 fn key_line(key: &str, value: &str) -> String {
-    format!("{key} = {value}")
+    format!("{} = {value}", toml_key(key))
+}
+
+/// Bare unless `key` holds a character a bare TOML key
+/// cannot carry (a folder path's `/`, say): quoting is always
+/// safe, so it is used only where it is actually needed.
+fn toml_key(key: &str) -> String {
+    let bare = key
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_');
+    if bare {
+        key.to_string()
+    } else {
+        format!("\"{key}\"")
+    }
 }
 
 fn is_table_header(line: &str) -> bool {
@@ -131,11 +185,26 @@ fn key_line_in(
     (start + 1..end).find(|&index| is_key_line(&lines[index], key))
 }
 
+/// Matches `key` whether the line spells it bare or quoted,
+/// so a hand-written `archive = ...` is still found even
+/// though every key this module writes is now quoted.
 fn is_key_line(line: &str, key: &str) -> bool {
-    let Some(rest) = line.trim_start().strip_prefix(key) else {
-        return false;
-    };
-    rest.trim_start().starts_with('=')
+    let (found, rest) = split_key(line.trim_start());
+    found == key && rest.trim_start().starts_with('=')
+}
+
+/// The key token starting `line` (quoted or bare) and
+/// everything after it.
+fn split_key(line: &str) -> (&str, &str) {
+    if let Some(body) = line.strip_prefix('"')
+        && let Some(end) = body.find('"')
+    {
+        return (&body[..end], &body[end + 1..]);
+    }
+    let end = line
+        .find(|ch: char| ch == '=' || ch.is_whitespace())
+        .unwrap_or(line.len());
+    (&line[..end], &line[end..])
 }
 
 /// Replaces only the value after `=`, so the key's spelling,
@@ -249,6 +318,74 @@ mod tests {
         for name in antiphon_ui::Theme::names() {
             assert!(listed.contains(name), "{name} not listed");
         }
+    }
+
+    #[test]
+    fn a_key_needing_quotes_is_written_and_found_quoted() {
+        let before = "[folder_names]\nother = \"x\"\n";
+        let after =
+            with_key(before, "folder_names", "lists/aerc", "\"aerc\"");
+        assert_eq!(
+            after,
+            "[folder_names]\n\"lists/aerc\" = \"aerc\"\nother = \"x\"\n"
+        );
+        let updated =
+            with_key(&after, "folder_names", "lists/aerc", "\"list\"");
+        assert!(updated.contains("\"lists/aerc\" = \"list\""));
+        assert!(!updated.contains("\"aerc\"\n\"lists/aerc\""));
+    }
+
+    #[test]
+    fn a_hand_written_bare_key_is_still_found_and_replaced() {
+        let before = "[folder_names]\narchive = \"Archive\"\n";
+        let after =
+            with_key(before, "folder_names", "archive", "\"Old\"");
+        assert_eq!(after, "[folder_names]\narchive = \"Old\"\n");
+    }
+
+    #[test]
+    fn without_key_drops_only_the_named_entry() {
+        let before = "[folder_names]\n\"lists/aerc\" = \"aerc\"\n\
+                      archive = \"Archive\"\n";
+        let after = without_key(before, "folder_names", "lists/aerc");
+        assert_eq!(after, "[folder_names]\narchive = \"Archive\"\n");
+    }
+
+    #[test]
+    fn without_key_is_a_no_op_when_nothing_matches() {
+        let before = "[folder_names]\narchive = \"Archive\"\n";
+        assert_eq!(
+            without_key(before, "folder_names", "missing"),
+            before
+        );
+        assert_eq!(without_key(before, "elsewhere", "archive"), before);
+        assert_eq!(without_key("", "folder_names", "archive"), "");
+    }
+
+    #[test]
+    fn remove_key_on_a_missing_file_is_a_no_op() {
+        let dir = TempDir::new();
+        let path = dir.path.join("missing.toml");
+        remove_key(&path, "folder_names", "archive")
+            .expect("a missing file is not an error");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn remove_key_deletes_the_line_from_a_real_file() {
+        let dir = TempDir::new();
+        let path = dir.path.join("account.toml");
+        std::fs::write(
+            &path,
+            "[folder_names]\n\"lists/aerc\" = \"aerc\"\n",
+        )
+        .unwrap();
+        remove_key(&path, "folder_names", "lists/aerc")
+            .expect("remove an existing key");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "[folder_names]\n"
+        );
     }
 
     /// Every essentials key that `settingscmd` writes goes
