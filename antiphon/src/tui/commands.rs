@@ -16,8 +16,9 @@ type ArgHandler = fn(&mut App, &str);
 
 /// Commands taking one argument: name, usage line, and the
 /// handler arming the app state the event loop consumes.
-const ARG_COMMANDS: [(&str, &str, ArgHandler); 3] = [
+const ARG_COMMANDS: [(&str, &str, ArgHandler); 4] = [
     ("template", "template <name>", arm_template),
+    ("resume", "resume <draft-path>", arm_resume),
     ("save-patches", "save-patches <path>", arm_save_patches),
     ("apply", "apply <repo-dir>", arm_apply),
 ];
@@ -30,6 +31,10 @@ pub enum PatchCommand {
 
 fn arm_template(app: &mut App, name: &str) {
     app.pending_template = Some(name.to_string());
+}
+
+fn arm_resume(app: &mut App, path: &str) {
+    app.pending_resume = Some(path.into());
 }
 
 fn arm_save_patches(app: &mut App, path: &str) {
@@ -181,8 +186,8 @@ impl App {
 mod tests {
     use antiphon_core::Action;
 
-    use super::super::app::app_with_messages;
     use super::super::crypto::PgpPlan;
+    use super::super::testkit::app_with_messages;
     use super::*;
 
     #[test]
@@ -281,6 +286,13 @@ mod tests {
         );
         app.run_command("template reply");
         assert_eq!(app.pending_template.as_deref(), Some("reply"));
+        app.run_command("resume");
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("usage: resume <draft-path>")
+        );
+        app.run_command("resume /tmp/draft-1.eml");
+        assert_eq!(app.pending_resume, Some("/tmp/draft-1.eml".into()));
     }
 
     #[test]

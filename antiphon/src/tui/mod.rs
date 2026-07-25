@@ -5,6 +5,7 @@ mod compose;
 mod crypto;
 mod decrypt;
 mod dispatch;
+mod drafts;
 mod draw;
 mod editor;
 mod headers;
@@ -15,6 +16,7 @@ mod pager;
 mod patches;
 mod prefill;
 mod preview;
+mod review;
 mod scope;
 mod session;
 mod sidebar;
@@ -44,7 +46,8 @@ use actions::{OpIntent, account_names};
 use app::{App, DEFAULT_QUERY, KeyRoute, View};
 use commands::PromptKind;
 use dispatch::{
-    dispatch, pending_template_request, pending_unsubscribe_request,
+    dispatch, pending_resume_request, pending_template_request,
+    pending_unsubscribe_request,
 };
 use identity::ComposeContext;
 use scope::ViewScope;
@@ -144,7 +147,7 @@ fn event_loop(
     let mut last_refresh = Instant::now();
     let mut last_unread: Option<u32> = None;
     while !app.quit {
-        tick_editor(terminal, app, layout)?;
+        tick_editor(terminal, app)?;
         preview::refresh(app);
         let drawing = Instant::now();
         terminal.draw(|frame| draw::draw(frame, app))?;
@@ -171,12 +174,16 @@ fn event_loop(
             KeyRoute::Compose => {
                 compose_key(terminal, app, layout, key)?
             }
+            KeyRoute::Review => review_key(terminal, app, layout, key)?,
             KeyRoute::Prompt => {
                 prompt_key(app, layout, key);
                 let mut request =
                     pending_template_request(app, context);
                 if request.is_none() {
                     request = pending_unsubscribe_request(app, context);
+                }
+                if request.is_none() {
+                    request = pending_resume_request(app, context);
                 }
                 if let Some(state) = request {
                     app.start_compose(state);
@@ -205,6 +212,46 @@ fn editor_key(app: &mut App, key: KeyEvent) {
     }
 }
 
+/// Esc in the fields stage backs out to wherever the compose
+/// came from: the review screen once one exists, else out of
+/// the compose entirely.
+fn cancel_headers(app: &mut App) {
+    let reviewed =
+        app.compose.as_ref().is_some_and(|state| state.reviewed);
+    if reviewed {
+        app.view = View::Review;
+        return;
+    }
+    app.abort_compose("compose aborted");
+}
+
+/// Keys on the review screen: toggles stay put, everything
+/// else needs the terminal or the store and is acted on here.
+fn review_key(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    layout: &StoreLayout,
+    key: KeyEvent,
+) -> std::io::Result<()> {
+    use review::ReviewOutcome;
+
+    let Some(state) = app.compose.as_mut() else {
+        return Ok(());
+    };
+    match review::feed(state, key) {
+        ReviewOutcome::Stay => {}
+        ReviewOutcome::EditBody => {
+            return session::open_body_editor(terminal, app, layout);
+        }
+        ReviewOutcome::EditHeaders => app.view = View::Compose,
+        ReviewOutcome::Send => session::send_compose(app, layout),
+        ReviewOutcome::SaveDraft => {
+            session::save_draft_and_close(app, layout)
+        }
+    }
+    Ok(())
+}
+
 /// Keys in the fields stage feed the header state machine;
 /// the outcomes needing the terminal or store are acted on
 /// here.
@@ -225,7 +272,7 @@ fn compose_key(
             session::open_body_editor(terminal, app, layout)
         }
         HeadersOutcome::Cancel => {
-            app.abort_compose("compose aborted");
+            cancel_headers(app);
             Ok(())
         }
     }
@@ -268,7 +315,6 @@ fn keymap_key(
 fn tick_editor(
     terminal: &mut DefaultTerminal,
     app: &mut App,
-    layout: &StoreLayout,
 ) -> std::io::Result<()> {
     let Some(pane) = app.editor.as_mut() else {
         return Ok(());
@@ -281,7 +327,7 @@ fn tick_editor(
         return Ok(());
     };
     let pane = app.close_editor().expect("editor pane present");
-    session::finish_body_edit(app, layout, &pane.path, success);
+    session::finish_body_edit(app, &pane.path, success);
     Ok(())
 }
 

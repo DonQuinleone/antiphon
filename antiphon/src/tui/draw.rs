@@ -13,6 +13,7 @@ use super::app::{App, View};
 use super::headers;
 use super::message_list::{draw_list, format_date};
 use super::pager::draw_pager;
+use super::review;
 use super::scope::ViewScope;
 use super::sidebar::SidebarEntry;
 use super::status::draw_status;
@@ -36,6 +37,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let (content, status) = split_status(area);
     if app.view == View::Compose {
         headers::draw_headers(frame, app, content);
+        draw_status(frame, app, status);
+        return;
+    }
+    if app.view == View::Review {
+        review::draw_review(frame, app, content);
         draw_status(frame, app, status);
         return;
     }
@@ -298,7 +304,7 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::buffer::Buffer;
 
-    use super::super::app::{app_with_folders, app_with_messages};
+    use super::super::testkit::{app_with_folders, app_with_messages};
     use super::*;
 
     fn row_text(buffer: &Buffer, y: u16) -> String {

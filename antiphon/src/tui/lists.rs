@@ -159,8 +159,8 @@ fn queue_one_click(url: &str) -> String {
 mod tests {
     use antiphon_render::ListPost;
 
-    use super::super::app::app_with_messages;
     use super::super::testkit::TempDir;
+    use super::super::testkit::app_with_messages;
     use super::*;
 
     fn headers(

@@ -26,6 +26,7 @@ pub(super) struct ComposeState {
     pub references: Vec<String>,
     pub sign_override: Option<bool>,
     pub encrypt_override: Option<bool>,
+    pub reviewed: bool,
 }
 
 impl ComposeState {
@@ -44,6 +45,7 @@ impl ComposeState {
             references: fields.references,
             sign_override: overrides.0,
             encrypt_override: overrides.1,
+            reviewed: false,
         }
     }
 

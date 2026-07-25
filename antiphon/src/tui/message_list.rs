@@ -254,7 +254,7 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::buffer::Buffer;
 
-    use super::super::app::app_with_messages;
+    use super::super::testkit::app_with_messages;
     use super::*;
 
     const ISO: &str = "%Y-%m-%d %H:%M";

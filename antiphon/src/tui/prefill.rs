@@ -19,6 +19,7 @@ pub struct ReplySource<'a> {
 pub struct DraftFields {
     pub to: String,
     pub cc: String,
+    pub bcc: String,
     pub subject: String,
     pub in_reply_to: Option<String>,
     pub references: Vec<String>,
@@ -76,6 +77,7 @@ pub fn reply_fields(
         in_reply_to: Some(source.message_id.to_string()),
         references: vec![source.message_id.to_string()],
         body: with_signature(identity, &body),
+        ..DraftFields::default()
     }
 }
 

@@ -197,7 +197,25 @@ identity the resolution engine picked. `tab`/`shift-tab` move
 between fields, `enter` advances and, on From (or `ctrl-e`
 from anywhere), opens `$EDITOR` on the body alone; headers
 never pass through the editor. `esc` backs out of the fields
-stage.
+stage (to the review screen once one exists, else out of the
+compose).
+
+Leaving the editor lands on a review screen, Mutt style,
+showing the recipients, subject, seal plan and the first body
+lines; nothing is sent until confirmed there. Its keys:
+
+    y    send (seal per the plan, queue for antiphond)
+    e    edit the body again
+    h    edit the header fields again
+    s    toggle signing for this message
+    x    toggle encryption for this message
+    q    save as a draft file and close
+    ^c   stays on review; nothing is discarded
+
+`q` writes the compose, fields and plan included, to a file
+under `store/drafts/` and names it in the statusline;
+`:resume <path>` reopens it on the fields stage exactly as
+saved.
 
 ## OpenPGP at compose time
 
@@ -213,9 +231,10 @@ address.
 
 Encryption requires a cert for every To and Cc address in the
 trusted keyring (`.asc`/`.pgp` files under the config
-directory's `pgp/`; see [PGP.md](PGP.md)). If a cert is missing, signing fails, or
-the agent refuses, nothing is sent: the message stays in
-`store/drafts/` and the statusline names the problem. Received
+directory's `pgp/`; see [PGP.md](PGP.md)). If a cert is
+missing, signing fails, or the agent refuses, nothing is
+sent: the compose stays on the review screen and the
+statusline names the problem. Received
 `multipart/encrypted` mail is decrypted through gpg-agent when
 opened, and any signature inside is verified against the same
 keyring.

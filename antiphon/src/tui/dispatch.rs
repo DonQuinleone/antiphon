@@ -48,6 +48,49 @@ pub(super) fn pending_unsubscribe_request(
     Some(state_for(app, context, account, identity, fields))
 }
 
+/// :resume reopens a saved draft on the fields stage; the
+/// saved plan wins over any armed toggles, and a From no
+/// longer configured still cycles as a one-off choice.
+pub(super) fn pending_resume_request(
+    app: &mut App,
+    context: &ComposeContext,
+) -> Option<ComposeState> {
+    let path = app.pending_resume.take()?;
+    let draft = match super::drafts::load(&path) {
+        Ok(draft) => draft,
+        Err(error) => {
+            app.notice = Some(format!("resume: {error}"));
+            return None;
+        }
+    };
+    let identity = ComposeIdentity {
+        name: draft.from_name.clone(),
+        address: draft.from.clone(),
+        signature: None,
+        pgp_sign: false,
+        pgp_key: None,
+    };
+    let matched = context
+        .choices()
+        .iter()
+        .find(|(account, choice)| {
+            *account == draft.account
+                && choice.address == identity.address
+        })
+        .map(|(_, choice)| choice.clone());
+    let identity = matched.unwrap_or(identity);
+    let mut state = state_for(
+        app,
+        context,
+        &draft.account,
+        &identity,
+        draft.fields,
+    );
+    state.sign_override = draft.sign;
+    state.encrypt_override = draft.encrypt;
+    Some(state)
+}
+
 /// A compose ready for the fields stage: every configured
 /// identity to cycle through, the resolved default selected,
 /// and any armed :sign/:encrypt overrides consumed.

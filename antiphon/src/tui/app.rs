@@ -24,6 +24,7 @@ pub enum View {
     Pager,
     Compose,
     Editor,
+    Review,
 }
 
 /// Where the next key event goes; resolved before the keymap
@@ -33,6 +34,7 @@ pub enum KeyRoute {
     Prompt,
     Compose,
     Editor,
+    Review,
     Keymap,
 }
 
@@ -69,6 +71,7 @@ pub struct App {
     pub pending_ops: Vec<OpIntent>,
     pub sync_progress: Option<antiphon_sync::SyncProgress>,
     pub pending_template: Option<String>,
+    pub pending_resume: Option<std::path::PathBuf>,
     pub pending_patches: Option<PatchCommand>,
     pub(super) pending_sign: Option<bool>,
     pub(super) pending_encrypt: Option<bool>,
@@ -78,7 +81,7 @@ pub struct App {
     pub composer: Composer,
     pub compose: Option<ComposeState>,
     pub editor: Option<EditorPane>,
-    editor_return: View,
+    pub(super) editor_return: View,
     pub(super) requery: bool,
     pub quit: bool,
 }
@@ -132,6 +135,7 @@ impl App {
             pending_ops: Vec::new(),
             sync_progress: None,
             pending_template: None,
+            pending_resume: None,
             pending_patches: None,
             pending_sign: None,
             pending_encrypt: None,
@@ -167,6 +171,7 @@ impl App {
         match self.view {
             View::Compose => KeyRoute::Compose,
             View::Editor => KeyRoute::Editor,
+            View::Review => KeyRoute::Review,
             _ => KeyRoute::Keymap,
         }
     }
@@ -225,7 +230,7 @@ impl App {
         match self.view {
             View::List => self.apply_in_list(action),
             View::Pager => self.apply_in_pager(action),
-            View::Compose | View::Editor => {}
+            View::Compose | View::Editor | View::Review => {}
         }
     }
 
@@ -301,100 +306,6 @@ fn patch_lines(
     antiphon_render::classify_patch(body)
 }
 
-#[cfg(test)]
-pub(super) fn app_with_messages(count: usize) -> App {
-    let messages = (0..count)
-        .map(|index| MessageSummary {
-            id: format!("m{index}"),
-            thread_id: String::new(),
-            subject: String::new(),
-            from: String::new(),
-            to: String::new(),
-            date_unix: index as i64,
-            tags: Vec::new(),
-            unread: index % 2 == 0,
-            path: std::path::PathBuf::new(),
-        })
-        .collect();
-    App {
-        accounts: Vec::new(),
-        scope: ViewScope::Unified,
-        sidebar_entries: Vec::new(),
-        sidebar_selected: 0,
-        active_search: None,
-        messages,
-        total_messages: count as u32,
-        selected: 0,
-        view: View::List,
-        sync_progress: None,
-        own_addresses: Vec::new(),
-        preview: None,
-        pager_body: String::new(),
-        pager_patch: Vec::new(),
-        pager_signature: Signature::none(),
-        pager_invite: Vec::new(),
-        pager_scroll: 0,
-        pager_raw: Vec::new(),
-        pager_html: false,
-        preview_scroll: 0,
-        keyring: Keyring::default(),
-        reading_pane: ReadingPane::Below,
-        sidebar: true,
-        list_rows: antiphon_config::Ui::default().list_rows,
-        sidebar_width: antiphon_config::Ui::default().sidebar_width,
-        theme: &VESPERS,
-        date_format: String::new(),
-        notice: None,
-        prompt: None,
-        current_query: DEFAULT_QUERY.to_string(),
-        pending_ops: Vec::new(),
-        pending_template: None,
-        pending_patches: None,
-        pending_sign: None,
-        pending_encrypt: None,
-        pending_one_click: None,
-        pending_unsubscribe: None,
-        frame_stats: FrameStats::default(),
-        composer: Composer::Embedded,
-        compose: None,
-        editor: None,
-        editor_return: View::List,
-        requery: false,
-        quit: false,
-    }
-}
-
-#[cfg(test)]
-pub(super) fn app_with_accounts(names: &[&str]) -> App {
-    app_with_folders(
-        &names
-            .iter()
-            .map(|name| (*name, &[][..]))
-            .collect::<Vec<_>>(),
-    )
-}
-
-#[cfg(test)]
-pub(super) fn app_with_folders(accounts: &[(&str, &[&str])]) -> App {
-    let mut app = app_with_messages(1);
-    app.accounts = accounts
-        .iter()
-        .map(|(name, _)| (*name).to_string())
-        .collect();
-    let entries: Vec<AccountEntry> = accounts
-        .iter()
-        .map(|(name, folders)| AccountEntry {
-            name: (*name).to_string(),
-            folders: folders
-                .iter()
-                .map(|folder| (*folder).to_string())
-                .collect(),
-        })
-        .collect();
-    app.sidebar_entries = sidebar::entries(&entries, &[]);
-    app
-}
-
 fn own_addresses(loaded: &Loaded) -> Vec<String> {
     loaded
         .accounts
@@ -417,6 +328,7 @@ impl App {
 
 #[cfg(test)]
 mod tests {
+    use super::super::testkit::{app_with_accounts, app_with_messages};
     use super::*;
 
     #[test]
@@ -428,6 +340,22 @@ mod tests {
         app.view = View::List;
         app.apply(Action::Search);
         assert_eq!(app.key_route(), KeyRoute::Prompt);
+    }
+
+    #[test]
+    fn compose_stages_route_and_abort_back_to_the_list() {
+        let mut app = app_with_messages(1);
+        app.start_compose(super::super::compose::test_state());
+        assert_eq!(app.view, View::Compose);
+        assert_eq!(app.key_route(), KeyRoute::Compose);
+        app.view = View::Review;
+        assert_eq!(app.key_route(), KeyRoute::Review);
+        app.apply(Action::Quit);
+        assert_eq!(app.view, View::Review, "actions swallowed");
+        app.abort_compose("compose aborted");
+        assert_eq!(app.view, View::List);
+        assert!(app.compose.is_none());
+        assert_eq!(app.notice.as_deref(), Some("compose aborted"));
     }
 
     #[test]

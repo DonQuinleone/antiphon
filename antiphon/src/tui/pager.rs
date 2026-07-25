@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn invite_blocks_sit_between_headers_and_body() {
-        use super::super::app::app_with_messages;
+        use super::super::testkit::app_with_messages;
 
         let mut app = app_with_messages(1);
         app.theme = &VESPERS;

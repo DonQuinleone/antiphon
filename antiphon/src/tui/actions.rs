@@ -202,9 +202,9 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::super::app::{
-        DEFAULT_QUERY, app_with_accounts, app_with_folders,
-        app_with_messages,
+    use super::super::app::DEFAULT_QUERY;
+    use super::super::testkit::{
+        app_with_accounts, app_with_folders, app_with_messages,
     };
     use super::*;
 

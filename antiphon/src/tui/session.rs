@@ -5,15 +5,17 @@ use antiphon_config::Composer;
 use antiphon_store::{Outbox, StoreLayout};
 use ratatui::DefaultTerminal;
 
-use super::app::App;
-use super::compose::{self, ComposeState};
+use super::app::{App, View};
+use super::compose;
 use super::crypto;
+use super::drafts;
 use super::draw;
 use super::editor::{EditorPane, EditorSession};
 
 const DRAFTS_DIR: &str = "drafts";
 const FALLBACK_EDITOR: &str = "vi";
-const COMPOSE_ABORTED: &str = "compose aborted";
+const EDITOR_FAILED: &str =
+    "editor exited with an error; body unchanged";
 
 /// Hands the compose body to the editor: a body-only file,
 /// never the headers, which stay structured fields. Embedded
@@ -42,9 +44,7 @@ pub(super) fn open_body_editor(
     let status = run_editor(terminal, &path);
     terminal.clear()?;
     match status {
-        Ok(status) => {
-            finish_body_edit(app, layout, &path, status.success())
-        }
+        Ok(status) => finish_body_edit(app, &path, status.success()),
         Err(error) => app.notice = Some(format!("editor: {error}")),
     }
     Ok(())
@@ -108,53 +108,50 @@ fn write_body(
     Ok(path)
 }
 
-/// Settles a finished body edit: a failed editor aborts the
-/// compose, a clean exit queues the message with the current
-/// fields and seal plan.
+/// Settles a finished body edit onto the review screen: a
+/// clean exit carries the new body along, a failed editor
+/// keeps the previous one; either way nothing is discarded.
 pub(super) fn finish_body_edit(
     app: &mut App,
-    layout: &StoreLayout,
     path: &Path,
     success: bool,
 ) {
-    if !success {
-        let _ = std::fs::remove_file(path);
-        app.abort_compose(COMPOSE_ABORTED);
-        return;
-    }
-    match std::fs::read_to_string(path) {
-        Ok(edited) => {
-            if let Some(state) = app.compose.as_mut() {
-                state.body = edited;
-            }
-        }
-        Err(error) => {
-            app.notice = Some(format!("draft: {error}"));
-            return;
-        }
-    }
-    let Some(state) = app.compose.take() else {
+    let Some(state) = app.compose.as_mut() else {
         return;
     };
-    app.view = super::app::View::List;
-    let notice = queue_message(layout, app, &state, path);
-    app.notice = Some(notice);
-    super::nudge_daemon();
+    if success {
+        match std::fs::read_to_string(path) {
+            Ok(edited) => state.body = edited,
+            Err(error) => {
+                app.notice = Some(format!("draft: {error}"));
+                return;
+            }
+        }
+    } else {
+        app.notice = Some(EDITOR_FAILED.to_string());
+    }
+    let _ = std::fs::remove_file(path);
+    let Some(state) = app.compose.as_mut() else {
+        return;
+    };
+    state.reviewed = true;
+    app.view = View::Review;
 }
 
-/// Seals (signs and/or encrypts) the assembled message per the
-/// compose plan and enqueues it. Any pgp failure aborts the
-/// send: the draft stays on disk and nothing reaches the
-/// outbox, so a message is never sent unprotected by accident.
-fn queue_message(
-    layout: &StoreLayout,
-    app: &App,
-    state: &ComposeState,
-    path: &Path,
-) -> String {
+/// Seals (signs and/or encrypts) the assembled message per
+/// the compose plan and enqueues it. Any failure keeps the
+/// review screen and the whole compose, so a message is never
+/// sent unprotected or lost by accident.
+pub(super) fn send_compose(app: &mut App, layout: &StoreLayout) {
+    let Some(state) = &app.compose else {
+        return;
+    };
     let outgoing = match state.outgoing() {
         Ok(outgoing) => outgoing,
-        Err(error) => return error,
+        Err(error) => {
+            app.notice = Some(error);
+            return;
+        }
     };
     let raw = compose::assemble(&outgoing, unix_now());
     let envelope = compose::envelope(state.account(), &outgoing);
@@ -167,26 +164,48 @@ fn queue_message(
     ) {
         Ok(sealed) => sealed,
         Err(error) => {
-            return format!(
-                "not sent: {error}; draft kept: {}",
-                path.display()
-            );
+            app.notice = Some(format!("not sent: {error}"));
+            return;
         }
     };
     match Outbox::open(layout).enqueue(&envelope, &sealed) {
         Ok(_) => {
-            let _ = std::fs::remove_file(path);
-            format!(
+            app.compose = None;
+            app.view = View::List;
+            app.notice = Some(format!(
                 "queued: {} to {} recipient(s)",
                 outgoing.subject,
                 envelope.recipients.len()
-            )
+            ));
+            super::nudge_daemon();
         }
-        Err(error) => format!("outbox: {error}"),
+        Err(error) => app.notice = Some(format!("outbox: {error}")),
     }
 }
 
-fn unix_now() -> i64 {
+/// The review screen's q: the compose becomes a draft file
+/// that :resume can reopen, fields and plan intact.
+pub(super) fn save_draft_and_close(
+    app: &mut App,
+    layout: &StoreLayout,
+) {
+    let Some(state) = &app.compose else {
+        return;
+    };
+    match drafts::save(layout, state) {
+        Ok(path) => {
+            app.compose = None;
+            app.view = View::List;
+            app.notice =
+                Some(format!("draft saved: {}", path.display()));
+        }
+        Err(error) => {
+            app.notice = Some(format!("draft: {error}"));
+        }
+    }
+}
+
+pub(super) fn unix_now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|elapsed| elapsed.as_secs() as i64)

@@ -2,10 +2,109 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use antiphon_pgp::{Keyring, SignatureStatus};
+use antiphon_config::{Composer, ReadingPane};
+use antiphon_pgp::{Keyring, Signature, SignatureStatus};
+use antiphon_store::MessageSummary;
+use antiphon_ui::VESPERS;
 
+use super::app::{App, DEFAULT_QUERY, View};
+use super::commands::FrameStats;
 use super::crypto::{ComposeCrypto, PgpPlan};
 use super::identity::ComposeIdentity;
+use super::scope::ViewScope;
+use super::sidebar::{self, AccountEntry};
+
+pub(super) fn app_with_messages(count: usize) -> App {
+    let messages = (0..count)
+        .map(|index| MessageSummary {
+            id: format!("m{index}"),
+            thread_id: String::new(),
+            subject: String::new(),
+            from: String::new(),
+            to: String::new(),
+            date_unix: index as i64,
+            tags: Vec::new(),
+            unread: index % 2 == 0,
+            path: std::path::PathBuf::new(),
+        })
+        .collect();
+    App {
+        accounts: Vec::new(),
+        scope: ViewScope::Unified,
+        sidebar_entries: Vec::new(),
+        sidebar_selected: 0,
+        active_search: None,
+        messages,
+        total_messages: count as u32,
+        selected: 0,
+        view: View::List,
+        sync_progress: None,
+        pager_body: String::new(),
+        pager_patch: Vec::new(),
+        pager_signature: Signature::none(),
+        pager_invite: Vec::new(),
+        pager_scroll: 0,
+        pager_raw: Vec::new(),
+        pager_html: false,
+        preview_scroll: 0,
+        preview: None,
+        own_addresses: Vec::new(),
+        keyring: Keyring::default(),
+        reading_pane: ReadingPane::Below,
+        sidebar: true,
+        list_rows: antiphon_config::Ui::default().list_rows,
+        sidebar_width: antiphon_config::Ui::default().sidebar_width,
+        theme: &VESPERS,
+        date_format: String::new(),
+        notice: None,
+        prompt: None,
+        current_query: DEFAULT_QUERY.to_string(),
+        pending_ops: Vec::new(),
+        pending_template: None,
+        pending_resume: None,
+        pending_patches: None,
+        pending_sign: None,
+        pending_encrypt: None,
+        pending_one_click: None,
+        pending_unsubscribe: None,
+        frame_stats: FrameStats::default(),
+        composer: Composer::Embedded,
+        compose: None,
+        editor: None,
+        editor_return: View::List,
+        requery: false,
+        quit: false,
+    }
+}
+
+pub(super) fn app_with_accounts(names: &[&str]) -> App {
+    app_with_folders(
+        &names
+            .iter()
+            .map(|name| (*name, &[][..]))
+            .collect::<Vec<_>>(),
+    )
+}
+
+pub(super) fn app_with_folders(accounts: &[(&str, &[&str])]) -> App {
+    let mut app = app_with_messages(1);
+    app.accounts = accounts
+        .iter()
+        .map(|(name, _)| (*name).to_string())
+        .collect();
+    let entries: Vec<AccountEntry> = accounts
+        .iter()
+        .map(|(name, folders)| AccountEntry {
+            name: (*name).to_string(),
+            folders: folders
+                .iter()
+                .map(|folder| (*folder).to_string())
+                .collect(),
+        })
+        .collect();
+    app.sidebar_entries = sidebar::entries(&entries, &[]);
+    app
+}
 
 pub(super) fn tester_identity() -> ComposeIdentity {
     ComposeIdentity {

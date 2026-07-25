@@ -47,7 +47,7 @@ impl HeaderFields {
         HeaderFields {
             to: fields.to.clone(),
             cc: fields.cc.clone(),
-            bcc: String::new(),
+            bcc: fields.bcc.clone(),
             subject: fields.subject.clone(),
             focus: 0,
             cursor: fields.to.chars().count(),
@@ -249,8 +249,8 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    use super::super::app::app_with_messages;
     use super::super::compose::test_state;
+    use super::super::testkit::app_with_messages;
     use super::*;
 
     fn key(code: KeyCode) -> KeyEvent {
