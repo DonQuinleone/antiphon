@@ -2,6 +2,7 @@ use antiphon_render::{Draft, build_message};
 use antiphon_store::Envelope;
 use ratatui::crossterm::event::KeyEvent;
 
+use super::attach::Attachment;
 use super::crypto::{ComposeCrypto, PgpPlan};
 use super::headers::{HeaderFields, HeadersOutcome};
 use super::identity::ComposeIdentity;
@@ -26,6 +27,8 @@ pub(super) struct ComposeState {
     pub references: Vec<String>,
     pub sign_override: Option<bool>,
     pub encrypt_override: Option<bool>,
+    pub attachments: Vec<Attachment>,
+    pub selected_attachment: usize,
     pub reviewed: bool,
 }
 
@@ -45,8 +48,35 @@ impl ComposeState {
             references: fields.references,
             sign_override: overrides.0,
             encrypt_override: overrides.1,
+            attachments: Vec::new(),
+            selected_attachment: 0,
             reviewed: false,
         }
+    }
+
+    pub fn add_attachment(&mut self, attachment: Attachment) {
+        self.attachments.push(attachment);
+        self.selected_attachment = self.attachments.len() - 1;
+    }
+
+    pub fn remove_selected_attachment(&mut self) {
+        if self.selected_attachment >= self.attachments.len() {
+            return;
+        }
+        self.attachments.remove(self.selected_attachment);
+        self.selected_attachment = self
+            .selected_attachment
+            .min(self.attachments.len().saturating_sub(1));
+    }
+
+    pub fn select_attachment(&mut self, step: i32) {
+        let count = self.attachments.len() as i32;
+        if count == 0 {
+            return;
+        }
+        let next =
+            (self.selected_attachment as i32 + step).rem_euclid(count);
+        self.selected_attachment = next as usize;
     }
 
     pub fn identity(&self) -> &ComposeIdentity {
@@ -156,8 +186,13 @@ pub(super) fn bare_address(value: &str) -> String {
 }
 
 /// The one place an outgoing message is assembled; Bcc
-/// recipients ride the envelope only, never the headers.
-pub(super) fn assemble(outgoing: &Outgoing, date_unix: i64) -> Vec<u8> {
+/// recipients ride the envelope only, never the headers, and
+/// attachments make it multipart/mixed.
+pub(super) fn assemble(
+    outgoing: &Outgoing,
+    attachments: &[Attachment],
+    date_unix: i64,
+) -> Vec<u8> {
     let (_, domain) = outgoing
         .from
         .rsplit_once('@')
@@ -172,6 +207,10 @@ pub(super) fn assemble(outgoing: &Outgoing, date_unix: i64) -> Vec<u8> {
         references: as_strs(&outgoing.references),
         body: &outgoing.body,
         signature: None,
+        attachments: attachments
+            .iter()
+            .map(Attachment::as_part)
+            .collect(),
     };
     build_message(&draft, domain, date_unix)
 }
@@ -297,7 +336,7 @@ mod tests {
         state.fields.subject = "quiet".to_string();
         state.body = "Body here.\n".to_string();
         let outgoing = state.outgoing().unwrap();
-        let raw = assemble(&outgoing, 1_753_380_000);
+        let raw = assemble(&outgoing, &[], 1_753_380_000);
         let text = String::from_utf8(raw).unwrap();
         assert!(!text.contains("hidden@example.com"), "{text}");
         assert!(
@@ -313,11 +352,45 @@ mod tests {
         state.fields.to = "alba@example.com".to_string();
         state.body = "Body here.\n".to_string();
         let outgoing = state.outgoing().unwrap();
-        let raw = assemble(&outgoing, 1_753_380_000);
+        let raw = assemble(&outgoing, &[], 1_753_380_000);
         let text = String::from_utf8(raw).unwrap();
         assert!(text.contains(".antiphon@example.com>"));
         assert!(text.contains("format=flowed"));
         assert!(text.contains("Body here."));
+    }
+
+    #[test]
+    fn attachment_selection_clamps_wraps_and_removes() {
+        use super::super::attach::Attachment;
+
+        fn file(name: &str) -> Attachment {
+            Attachment {
+                path: name.into(),
+                filename: name.to_string(),
+                content_type: "text/plain",
+                bytes: Vec::new(),
+            }
+        }
+
+        let mut state = test_state();
+        state.select_attachment(1);
+        state.remove_selected_attachment();
+        assert!(state.attachments.is_empty(), "empty list is safe");
+
+        state.add_attachment(file("a.txt"));
+        state.add_attachment(file("b.txt"));
+        state.add_attachment(file("c.txt"));
+        assert_eq!(state.selected_attachment, 2, "newest selected");
+        state.select_attachment(1);
+        assert_eq!(state.selected_attachment, 0, "wraps forward");
+        state.select_attachment(-1);
+        assert_eq!(state.selected_attachment, 2, "wraps back");
+        state.remove_selected_attachment();
+        assert_eq!(state.attachments.len(), 2);
+        assert_eq!(state.selected_attachment, 1, "clamped to last");
+        state.select_attachment(-1);
+        state.remove_selected_attachment();
+        assert_eq!(state.attachments[0].filename, "b.txt");
     }
 
     #[test]
@@ -335,7 +408,7 @@ mod tests {
             (None, None),
         );
         let outgoing = state.outgoing().unwrap();
-        let raw = assemble(&outgoing, 1_753_380_000);
+        let raw = assemble(&outgoing, &[], 1_753_380_000);
         let text = String::from_utf8(raw).unwrap();
         assert!(text.contains("In-Reply-To: <id-1@example.com>"));
         assert!(text.contains("References: <id-1@example.com>"));

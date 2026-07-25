@@ -25,6 +25,7 @@ fn prompt_line(theme: &Theme, prompt: &Prompt) -> Line<'static> {
     let sigil = match prompt.kind {
         PromptKind::Search => "/",
         PromptKind::Command => ":",
+        PromptKind::AttachmentPath => "attach: ",
         PromptKind::ConfirmUnsubscribe => {
             return confirm_line(theme, &prompt.buffer);
         }

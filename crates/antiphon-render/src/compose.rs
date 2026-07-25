@@ -1,6 +1,7 @@
 use mail_builder::MessageBuilder;
 use mail_builder::headers::address::Address;
 
+use crate::attach::AttachmentPart;
 use crate::flow;
 
 pub struct Draft<'a> {
@@ -13,6 +14,7 @@ pub struct Draft<'a> {
     pub references: Vec<&'a str>,
     pub body: &'a str,
     pub signature: Option<&'a str>,
+    pub attachments: Vec<AttachmentPart<'a>>,
 }
 
 pub fn build_message(
@@ -36,6 +38,13 @@ pub fn build_message(
     }
     if !draft.references.is_empty() {
         builder = builder.references(draft.references.clone());
+    }
+    for part in &draft.attachments {
+        builder = builder.attachment(
+            part.content_type,
+            part.filename,
+            part.bytes,
+        );
     }
     let raw = builder.write_to_vec().expect("in-memory write");
     mark_flowed(raw)
@@ -104,6 +113,7 @@ mod tests {
             references: vec!["root@example.com"],
             body: "See you Thursday.",
             signature: Some("Q\n"),
+            attachments: Vec::new(),
         }
     }
 

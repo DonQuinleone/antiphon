@@ -1,5 +1,6 @@
 mod actions;
 mod app;
+mod attach;
 mod commands;
 mod compose;
 mod crypto;
@@ -34,7 +35,7 @@ use antiphon_store::{
 };
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{
-    self, Event, KeyCode, KeyEvent, KeyEventKind,
+    self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
 };
 
 use antiphon_ipc::{
@@ -244,6 +245,9 @@ fn review_key(
             return session::open_body_editor(terminal, app, layout);
         }
         ReviewOutcome::EditHeaders => app.view = View::Compose,
+        ReviewOutcome::PromptAttachment => {
+            app.open_prompt(PromptKind::AttachmentPath)
+        }
         ReviewOutcome::Send => session::send_compose(app, layout),
         ReviewOutcome::SaveDraft => {
             session::save_draft_and_close(app, layout)
@@ -433,6 +437,12 @@ fn prompt_key(app: &mut App, layout: &StoreLayout, key: KeyEvent) {
         app.confirm_unsubscribe(confirmed);
         return;
     }
+    let ctrl_c = key.code == KeyCode::Char('c')
+        && key.modifiers.contains(KeyModifiers::CONTROL);
+    if ctrl_c {
+        app.prompt_cancel();
+        return;
+    }
     match key.code {
         KeyCode::Char(ch) => app.prompt_push(ch),
         KeyCode::Backspace => app.prompt_backspace(),
@@ -452,7 +462,30 @@ fn submit_prompt(app: &mut App, layout: &StoreLayout) {
             patches::run_pending(app, layout);
         }
         PromptKind::Search => run_search(app, layout, prompt.buffer),
+        PromptKind::AttachmentPath => {
+            add_attachment(app, &prompt.buffer)
+        }
         PromptKind::ConfirmUnsubscribe => {}
+    }
+}
+
+/// The review screen's a prompt settled: a readable file
+/// joins the attachments, a bad path re-asks with the named
+/// error alongside the answer to fix.
+fn add_attachment(app: &mut App, input: &str) {
+    match attach::load(input) {
+        Ok(attachment) => {
+            if let Some(state) = app.compose.as_mut() {
+                state.add_attachment(attachment);
+            }
+        }
+        Err(error) => {
+            app.notice = Some(error);
+            app.open_prompt(PromptKind::AttachmentPath);
+            for ch in input.chars() {
+                app.prompt_push(ch);
+            }
+        }
     }
 }
 

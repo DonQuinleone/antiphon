@@ -145,6 +145,7 @@ dependencies = [
  "antiphon-vault",
  "chrono",
  "clap",
+ "mail-parser",
  "portable-pty",
  "ratatui",
  "secrecy",

@@ -244,6 +244,100 @@ mod tests {
         assert_good_signature(&signature, "by key");
     }
 
+    /// A message with one binary attachment, assembled by the
+    /// one real assembly path, sent from the test key's
+    /// address.
+    fn assembled_with_attachment() -> (Vec<u8>, Vec<u8>) {
+        use super::super::attach::Attachment;
+        use super::super::compose::{Outgoing, assemble};
+
+        let bytes =
+            vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00];
+        let outgoing = Outgoing {
+            from_name: Some("Antiphon Test".to_string()),
+            from: TEST_ADDRESS.to_string(),
+            to: vec![TEST_ADDRESS.to_string()],
+            subject: "sealed with file".to_string(),
+            body: BODY.to_string(),
+            ..Outgoing::default()
+        };
+        let attachment = Attachment {
+            path: "mark.png".into(),
+            filename: "mark.png".to_string(),
+            content_type: "image/png",
+            bytes: bytes.clone(),
+        };
+        (assemble(&outgoing, &[attachment], 1_753_380_000), bytes)
+    }
+
+    /// The pgp layers add parts of their own (the detached
+    /// signature travels as an attachment too), so the file
+    /// is found by name rather than by position.
+    fn assert_attachment_intact(raw: &[u8], bytes: &[u8]) {
+        use mail_parser::{MessageParser, MimeHeaders};
+
+        let message = MessageParser::default().parse(raw).unwrap();
+        let part = message
+            .attachments()
+            .find(|part| part.attachment_name() == Some("mark.png"))
+            .expect("the attached file inside the sealed message");
+        assert_eq!(part.contents(), bytes);
+    }
+
+    #[test]
+    fn signing_wraps_the_full_multipart_per_rfc_3156() {
+        let Some(home) = EphemeralHome::new() else {
+            return;
+        };
+        let (_dir, keyring) = home.keyring();
+        let (raw, bytes) = assembled_with_attachment();
+        let sealed = seal(
+            &raw,
+            &[],
+            &plan(true, false),
+            &keyring,
+            Some(home.path()),
+        )
+        .unwrap();
+        let text = String::from_utf8_lossy(&sealed);
+        assert!(text.contains("multipart/signed"), "{text}");
+        assert!(text.contains("multipart/mixed"), "{text}");
+        let signature = antiphon_pgp::verify(&sealed, &keyring);
+        assert_good_signature(&signature, "signed multipart");
+        assert_attachment_intact(&sealed, &bytes);
+    }
+
+    #[test]
+    fn encryption_hides_the_attachment_until_decrypted() {
+        use antiphon_pgp::mime;
+        use antiphon_pgp_agent::GpgAgent;
+
+        let Some(home) = EphemeralHome::new() else {
+            return;
+        };
+        let (_dir, keyring) = home.keyring();
+        let (raw, bytes) = assembled_with_attachment();
+        let sealed = seal(
+            &raw,
+            &[TEST_ADDRESS.to_string()],
+            &plan(true, true),
+            &keyring,
+            Some(home.path()),
+        )
+        .unwrap();
+        let text = String::from_utf8_lossy(&sealed);
+        assert!(text.contains("multipart/encrypted"), "{text}");
+        assert!(!text.contains("mark.png"), "name leaked: {text}");
+
+        let payload = mime::encrypted_payload(&sealed).unwrap();
+        let agent = GpgAgent::connect(Some(home.path())).unwrap();
+        let entity = agent.decrypt(&payload).unwrap();
+        let merged = mime::merge_decrypted(&sealed, &entity);
+        assert_attachment_intact(&merged, &bytes);
+        let signature = antiphon_pgp::verify(&merged, &keyring);
+        assert_good_signature(&signature, "decrypted multipart");
+    }
+
     #[test]
     fn an_unknown_signer_aborts_the_send() {
         let Some(home) = EphemeralHome::new() else {

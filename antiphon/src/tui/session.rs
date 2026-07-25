@@ -153,7 +153,8 @@ pub(super) fn send_compose(app: &mut App, layout: &StoreLayout) {
             return;
         }
     };
-    let raw = compose::assemble(&outgoing, unix_now());
+    let raw =
+        compose::assemble(&outgoing, &state.attachments, unix_now());
     let envelope = compose::envelope(state.account(), &outgoing);
     let sealed = match crypto::seal(
         &raw,

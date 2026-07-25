@@ -1,3 +1,4 @@
+mod attach;
 mod compose;
 mod extract;
 mod flowed;
@@ -10,6 +11,7 @@ mod series;
 mod unsubscribe;
 mod urls;
 
+pub use attach::{AttachmentPart, content_type_for};
 pub use compose::{
     Draft, TemplateVars, build_message, expand_template,
 };

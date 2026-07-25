@@ -11,9 +11,12 @@ use super::draw::header_line;
 
 const BODY_PREVIEW_LINES: usize = 8;
 const PLAIN_PLAN: &str = "[plain]";
+const SELECTED_MARK: &str = "\u{25b8} ";
+const UNSELECTED_MARK: &str = "  ";
 const FOOTER: &str = "y send \u{b7} e body \u{b7} h headers \u{b7} \
-                      s sign \u{b7} x encrypt \u{b7} q save draft \
-                      \u{b7} ctrl-c stays";
+                      a attach \u{b7} d remove \u{b7} s sign \u{b7} \
+                      x encrypt \u{b7} q save draft \u{b7} ctrl-c \
+                      stays";
 
 /// What a review key asks of the event loop; toggles mutate
 /// the state and stay put.
@@ -23,6 +26,7 @@ pub(super) enum ReviewOutcome {
     Send,
     EditBody,
     EditHeaders,
+    PromptAttachment,
     SaveDraft,
 }
 
@@ -37,11 +41,25 @@ pub(super) fn feed(
         KeyCode::Char('y') => ReviewOutcome::Send,
         KeyCode::Char('e') => ReviewOutcome::EditBody,
         KeyCode::Char('h') => ReviewOutcome::EditHeaders,
+        KeyCode::Char('a') => ReviewOutcome::PromptAttachment,
+        KeyCode::Char('d') => remove_attachment(state),
         KeyCode::Char('s') => toggle_sign(state),
         KeyCode::Char('x') => toggle_encrypt(state),
         KeyCode::Char('q') => ReviewOutcome::SaveDraft,
+        KeyCode::Char('j') | KeyCode::Down => select(state, 1),
+        KeyCode::Char('k') | KeyCode::Up => select(state, -1),
         _ => ReviewOutcome::Stay,
     }
+}
+
+fn remove_attachment(state: &mut ComposeState) -> ReviewOutcome {
+    state.remove_selected_attachment();
+    ReviewOutcome::Stay
+}
+
+fn select(state: &mut ComposeState, step: i32) -> ReviewOutcome {
+    state.select_attachment(step);
+    ReviewOutcome::Stay
 }
 
 fn toggle_sign(state: &mut ComposeState) -> ReviewOutcome {
@@ -66,8 +84,9 @@ pub(super) fn draw_review(frame: &mut Frame, app: &App, area: Rect) {
         header_line(theme, "Bcc:", state.fields.bcc.clone()),
         header_line(theme, "Subject:", state.fields.subject.clone()),
         header_line(theme, "Plan:", plan_label(state)),
-        Line::default(),
     ];
+    lines.extend(attachment_lines(app, state));
+    lines.push(Line::default());
     lines.extend(body_preview(app, state));
     let footer_row = area.height.saturating_sub(1);
     let body_area = Rect {
@@ -89,6 +108,38 @@ pub(super) fn draw_review(frame: &mut Frame, app: &App, area: Rect) {
 
 fn plan_label(state: &ComposeState) -> String {
     state.plan().label().unwrap_or(PLAIN_PLAN).to_string()
+}
+
+/// The attachments block: a count line, then one row per
+/// file with the selection marker d acts on.
+fn attachment_lines(
+    app: &App,
+    state: &ComposeState,
+) -> Vec<Line<'static>> {
+    let theme = app.theme;
+    let count = state.attachments.len();
+    let heading = match count {
+        0 => "none".to_string(),
+        _ => format!("{count}"),
+    };
+    let mut lines = vec![header_line(theme, "Attachments:", heading)];
+    for (index, attachment) in state.attachments.iter().enumerate() {
+        let selected = index == state.selected_attachment;
+        let marker = if selected {
+            SELECTED_MARK
+        } else {
+            UNSELECTED_MARK
+        };
+        let mut style = Style::new().fg(theme.text_primary);
+        if selected {
+            style = style.fg(theme.accent_strong);
+        }
+        lines.push(Line::from(Span::styled(
+            format!("{marker}{}", attachment.label()),
+            style,
+        )));
+    }
+    lines
 }
 
 fn body_preview(app: &App, state: &ComposeState) -> Vec<Line<'static>> {
@@ -140,6 +191,10 @@ mod tests {
             (Char('y'), Send),
             (Char('e'), EditBody),
             (Char('h'), EditHeaders),
+            (Char('a'), PromptAttachment),
+            (Char('d'), Stay),
+            (Char('j'), Stay),
+            (Char('k'), Stay),
             (Char('q'), SaveDraft),
             (Char('s'), Stay),
             (Char('x'), Stay),
@@ -220,12 +275,58 @@ mod tests {
         assert!(row(1).contains("alba@example.com"), "{:?}", row(1));
         assert!(row(4).contains("Rehearsal"), "{:?}", row(4));
         assert!(row(5).contains("[encrypt]"), "{:?}", row(5));
-        assert!(row(7).contains("body line 1"), "{:?}", row(7));
+        assert!(row(6).contains("Attachments: none"), "{:?}", row(6));
+        assert!(row(8).contains("body line 1"), "{:?}", row(8));
         assert!(
-            row(15).contains("2 more body line(s)"),
+            row(16).contains("2 more body line(s)"),
             "{:?}",
-            row(15)
+            row(16)
         );
         assert!(row(19).contains("y send"), "{:?}", row(19));
+    }
+
+    #[test]
+    fn attachment_rows_render_with_a_selection_marker() {
+        use super::super::attach::Attachment;
+
+        let mut app = app_with_messages(1);
+        let mut state = test_state();
+        for name in ["a.pdf", "b.txt"] {
+            state.add_attachment(Attachment {
+                path: name.into(),
+                filename: name.to_string(),
+                content_type: antiphon_render::content_type_for(name),
+                bytes: vec![0; 3],
+            });
+        }
+        state.select_attachment(-1);
+        app.compose = Some(state);
+
+        let backend = TestBackend::new(60, 16);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| draw_review(frame, &app, frame.area()))
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let row = |y: u16| -> String {
+            (0..buffer.area.width)
+                .map(|x| {
+                    buffer.cell((x, y)).unwrap().symbol().to_string()
+                })
+                .collect()
+        };
+        assert!(row(6).contains("Attachments: 2"), "{:?}", row(6));
+        assert!(
+            row(7).starts_with(
+                "\u{25b8} a.pdf (application/pdf, 3 bytes)"
+            ),
+            "{:?}",
+            row(7)
+        );
+        assert!(
+            row(8).starts_with("  b.txt (text/plain, 3 bytes)"),
+            "{:?}",
+            row(8)
+        );
     }
 }

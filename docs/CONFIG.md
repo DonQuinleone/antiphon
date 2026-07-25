@@ -201,21 +201,33 @@ stage (to the review screen once one exists, else out of the
 compose).
 
 Leaving the editor lands on a review screen, Mutt style,
-showing the recipients, subject, seal plan and the first body
-lines; nothing is sent until confirmed there. Its keys:
+showing the recipients, subject, seal plan, attachments and
+the first body lines; nothing is sent until confirmed there.
+Its keys:
 
     y    send (seal per the plan, queue for antiphond)
     e    edit the body again
     h    edit the header fields again
+    a    add an attachment (path prompt, ~ expands)
+    d    remove the selected attachment
+    j/k  move the attachment selection
     s    toggle signing for this message
     x    toggle encryption for this message
     q    save as a draft file and close
     ^c   stays on review; nothing is discarded
 
-`q` writes the compose, fields and plan included, to a file
-under `store/drafts/` and names it in the statusline;
-`:resume <path>` reopens it on the fields stage exactly as
-saved.
+Attachments are read in full when added, so a bad path fails
+at the prompt (named error, then re-asked) rather than at
+send time. The message ships as multipart/mixed with base64
+parts; the content type is inferred from the file extension,
+falling back to application/octet-stream, and signing or
+encryption wraps the whole multipart per RFC 3156.
+
+`q` writes the compose, fields, plan and attachment paths
+included, to a file under `store/drafts/` and names it in the
+statusline; `:resume <path>` reopens it on the fields stage
+exactly as saved (a vanished attachment file is reported and
+dropped).
 
 ## OpenPGP at compose time
 

@@ -10,7 +10,8 @@ const ON: &str = "on";
 const OFF: &str = "off";
 
 /// A compose saved from the review screen, restored by
-/// :resume with its fields and plan intact.
+/// :resume with its fields, plan and attachment paths
+/// intact.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(super) struct SavedDraft {
     pub from_name: Option<String>,
@@ -19,6 +20,7 @@ pub(super) struct SavedDraft {
     pub fields: DraftFields,
     pub sign: Option<bool>,
     pub encrypt: Option<bool>,
+    pub attachments: Vec<PathBuf>,
 }
 
 pub(super) fn save(
@@ -65,6 +67,12 @@ fn render(state: &ComposeState) -> String {
         toggle(plan.sign),
         toggle(plan.encrypt)
     ));
+    for attachment in &state.attachments {
+        out.push_str(&format!(
+            "Attachment: {}\n",
+            attachment.path.display()
+        ));
+    }
     out.push('\n');
     out.push_str(&state.body);
     out
@@ -121,6 +129,7 @@ fn apply(
         "references" => draft.fields.references = id_list(value),
         "sign" => draft.sign = Some(value == ON),
         "encrypt" => draft.encrypt = Some(value == ON),
+        "attachment" => draft.attachments.push(value.into()),
         other => {
             return Err(format!("unknown draft header: {other}"));
         }
@@ -155,6 +164,9 @@ mod tests {
     use super::super::compose::test_state;
     use super::*;
 
+    use super::super::attach;
+    use super::super::testkit::TempDir;
+
     fn saved_state() -> ComposeState {
         let mut state = test_state();
         state.fields.to = "alba@example.com, bo@example.com".into();
@@ -185,6 +197,24 @@ mod tests {
         assert_eq!(draft.sign, Some(false));
         assert_eq!(draft.encrypt, Some(true));
         assert_eq!(draft.fields.body, "Body line.\n\nSecond.\n");
+    }
+
+    #[test]
+    fn attachments_survive_save_and_restore_by_path() {
+        let dir = TempDir::new();
+        let path = dir.path.join("notes.txt");
+        std::fs::write(&path, b"kept bytes").unwrap();
+        let mut state = saved_state();
+        state.add_attachment(
+            attach::load(path.to_str().unwrap()).unwrap(),
+        );
+        let draft = parse(&render(&state)).unwrap();
+        assert_eq!(draft.attachments, std::slice::from_ref(&path));
+        let restored =
+            attach::load(draft.attachments[0].to_str().unwrap())
+                .unwrap();
+        assert_eq!(restored.bytes, b"kept bytes");
+        assert_eq!(restored.content_type, "text/plain");
     }
 
     #[test]

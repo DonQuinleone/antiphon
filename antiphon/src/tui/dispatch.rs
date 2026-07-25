@@ -88,6 +88,14 @@ pub(super) fn pending_resume_request(
     );
     state.sign_override = draft.sign;
     state.encrypt_override = draft.encrypt;
+    for path in &draft.attachments {
+        match super::attach::load(&path.to_string_lossy()) {
+            Ok(attachment) => state.add_attachment(attachment),
+            Err(error) => {
+                app.notice = Some(format!("resume: {error}"));
+            }
+        }
+    }
     Some(state)
 }
 
