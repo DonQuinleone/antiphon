@@ -14,6 +14,7 @@ mod drawer;
 mod editor;
 mod folder_picker;
 mod headers;
+mod help;
 mod identity;
 mod input;
 mod link_picker;
@@ -31,6 +32,9 @@ mod replies;
 mod review;
 mod scope;
 mod session;
+mod settings;
+mod settings_draw;
+mod settingscmd;
 mod sidebar;
 mod status;
 #[cfg(test)]
@@ -127,6 +131,7 @@ pub fn run(
         total,
         keyring,
         dirs.config.join(CONFIG_FILE_NAME),
+        dirs,
     );
     // Startup opens the default sidebar entry (the first
     // inbox), so the list shows it rather than highlighting
@@ -233,6 +238,7 @@ fn event_loop(
             KeyRoute::Review => {
                 input::review_key(terminal, app, layout, key)?
             }
+            KeyRoute::Settings => input::settings_key(app, key),
             KeyRoute::Prompt => {
                 input::prompt_key(app, layout, key);
                 let mut request =

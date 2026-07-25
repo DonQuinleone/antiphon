@@ -11,10 +11,12 @@ use tui_term::widget::PseudoTerminal;
 
 use super::app::{App, View};
 use super::headers;
+use super::help::draw_help;
 use super::message_list::draw_list;
 use super::pager::draw_pager;
 use super::review;
 use super::scope::ViewScope;
+use super::settings_draw::draw_settings;
 use super::sidebar::SidebarEntry;
 use super::status::draw_status;
 
@@ -22,14 +24,11 @@ const STATUS_HEIGHT: u16 = 1;
 const FIELD_SUMMARY_ROWS: u16 = headers::FIELD_COUNT as u16;
 const READING_PANE_SHARE: u16 = 40;
 const LIST_HEADER_ROWS: u16 = 1;
-const SIDEBAR_WIDTH_MIN: u16 = 10;
-const SIDEBAR_WIDTH_MAX: u16 = 40;
+pub(super) const SIDEBAR_WIDTH_MIN: u16 = 10;
+pub(super) const SIDEBAR_WIDTH_MAX: u16 = 40;
 const ACTIVE_MARK: &str = "\u{25b8} ";
 const INACTIVE_MARK: &str = "  ";
 const SIDEBAR_BORDER_COLS: usize = 1;
-
-const HELP_WIDTH: u16 = 40;
-const HELP_MAX_ROWS: u16 = 24;
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
@@ -56,6 +55,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
     if app.view == View::Review {
         review::draw_review(frame, app, content);
+        draw_status(frame, app, status);
+        return;
+    }
+    if app.view == View::Settings {
+        draw_settings(frame, app, content);
         draw_status(frame, app, status);
         return;
     }
@@ -329,50 +333,6 @@ fn draw_editor_screen(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(
         PseudoTerminal::new(pane.session.screen()),
         area,
-    );
-}
-
-/// The cheatsheet renders the LIVE keymap (defaults merged
-/// with the user's [keys] overrides), never a separate list,
-/// as a centred modal over whatever is behind it.
-fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
-    let theme = app.theme;
-    let width = HELP_WIDTH.min(area.width.saturating_sub(2));
-    let height = HELP_MAX_ROWS.min(area.height.saturating_sub(2));
-    let modal = Rect {
-        x: area.x + (area.width.saturating_sub(width)) / 2,
-        y: area.y + (area.height.saturating_sub(height)) / 2,
-        width,
-        height,
-    };
-    frame.render_widget(ratatui::widgets::Clear, modal);
-    let block = Block::bordered()
-        .title(" keys ")
-        .title_bottom(" j/k scroll \u{b7} any other key closes ")
-        .border_style(Style::new().fg(theme.accent))
-        .style(Style::new().bg(theme.surface));
-    let lines: Vec<Line<'static>> = app
-        .key_bindings
-        .iter()
-        .map(|(key, action)| {
-            Line::from(vec![
-                Span::styled(
-                    format!(" {key:<12}"),
-                    Style::new().fg(theme.accent_strong),
-                ),
-                Span::styled(
-                    action.clone(),
-                    Style::new().fg(theme.text_primary),
-                ),
-            ])
-        })
-        .collect();
-    let ceiling =
-        (lines.len() as u16).saturating_sub(height.saturating_sub(2));
-    let scroll = app.help_scroll.min(ceiling);
-    frame.render_widget(
-        Paragraph::new(lines).block(block).scroll((scroll, 0)),
-        modal,
     );
 }
 

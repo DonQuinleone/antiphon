@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use antiphon_config::{Composer, ReadingPane};
+use antiphon_config::{Composer, Dirs, ReadingPane};
 use antiphon_pgp::{Keyring, Signature, SignatureStatus};
 use antiphon_store::MessageSummary;
 use antiphon_ui::Theme;
@@ -78,6 +78,16 @@ pub(super) fn app_with_messages(count: usize) -> App {
         sidebar_width: antiphon_config::Ui::default().sidebar_width,
         theme: Theme::vespers(),
         config_path: PathBuf::new(),
+        dirs: Dirs {
+            config: PathBuf::new(),
+            state: PathBuf::new(),
+            cache: PathBuf::new(),
+            data: PathBuf::new(),
+        },
+        sync_interval_minutes: antiphon_config::Sync::default()
+            .interval_minutes,
+        sync_idle: false,
+        settings: None,
         date_format: String::new(),
         notice: None,
         prompt: None,

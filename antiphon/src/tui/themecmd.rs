@@ -5,7 +5,7 @@ use antiphon_ui::Theme;
 
 use super::app::App;
 
-const UI_HEADER: &str = "[ui]";
+const UI_TABLE: &str = "ui";
 const THEME_KEY: &str = "theme";
 const TMP_SUFFIX: &str = ".tmp";
 
@@ -37,10 +37,25 @@ fn gallery() -> String {
     Theme::names().collect::<Vec<_>>().join(", ")
 }
 
-/// Rewrites the `theme` key under `[ui]` in the config file at
-/// `path`, leaving every other line untouched; a missing file
-/// or table is created rather than treated as an error.
 fn persist(path: &Path, name: &str) -> io::Result<()> {
+    persist_key(path, UI_TABLE, THEME_KEY, &quoted(name))
+}
+
+fn quoted(value: &str) -> String {
+    format!("\"{value}\"")
+}
+
+/// Rewrites the `key` under `[table]` in the config file at
+/// `path` to `value` (already TOML-formatted: quoted for a
+/// string, bare for a number or bool), leaving every other
+/// line untouched; a missing file or table is created rather
+/// than treated as an error.
+pub(super) fn persist_key(
+    path: &Path,
+    table: &str,
+    key: &str,
+    value: &str,
+) -> io::Result<()> {
     let existing = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
@@ -48,27 +63,34 @@ fn persist(path: &Path, name: &str) -> io::Result<()> {
         }
         Err(error) => return Err(error),
     };
-    let rewritten = with_theme(&existing, name);
+    let rewritten = with_key(&existing, table, key, value);
     write_atomically(path, &rewritten)
 }
 
-fn with_theme(contents: &str, name: &str) -> String {
+pub(super) fn with_key(
+    contents: &str,
+    table: &str,
+    key: &str,
+    value: &str,
+) -> String {
     let mut lines: Vec<String> =
         contents.lines().map(str::to_owned).collect();
-    match ui_table_range(&lines) {
-        Some((header, end)) => match theme_line_in(&lines, header, end)
-        {
-            Some(index) => {
-                lines[index] = replace_value(&lines[index], name)
+    let header = format!("[{table}]");
+    match table_range(&lines, &header) {
+        Some((start, end)) => {
+            match key_line_in(&lines, key, start, end) {
+                Some(index) => {
+                    lines[index] = replace_value(&lines[index], value)
+                }
+                None => lines.insert(start + 1, key_line(key, value)),
             }
-            None => lines.insert(header + 1, theme_line(name)),
-        },
+        }
         None => {
             if lines.last().is_some_and(|line| !line.is_empty()) {
                 lines.push(String::new());
             }
-            lines.push(UI_HEADER.to_string());
-            lines.push(theme_line(name));
+            lines.push(header);
+            lines.push(key_line(key, value));
         }
     }
     let mut rewritten = lines.join("\n");
@@ -76,8 +98,8 @@ fn with_theme(contents: &str, name: &str) -> String {
     rewritten
 }
 
-fn theme_line(name: &str) -> String {
-    format!("{THEME_KEY} = \"{name}\"")
+fn key_line(key: &str, value: &str) -> String {
+    format!("{key} = {value}")
 }
 
 fn is_table_header(line: &str) -> bool {
@@ -85,45 +107,57 @@ fn is_table_header(line: &str) -> bool {
     trimmed.starts_with('[') && trimmed.ends_with(']')
 }
 
-/// The `[ui]` header's line and the exclusive end of its body:
-/// the next table header, or the end of the file.
-fn ui_table_range(lines: &[String]) -> Option<(usize, usize)> {
-    let header =
-        lines.iter().position(|line| line.trim() == UI_HEADER)?;
-    let end = lines[header + 1..]
+/// The `[table]` header's line and the exclusive end of its
+/// body: the next table header, or the end of the file.
+fn table_range(
+    lines: &[String],
+    header: &str,
+) -> Option<(usize, usize)> {
+    let start = lines.iter().position(|line| line.trim() == header)?;
+    let end = lines[start + 1..]
         .iter()
         .position(|line| is_table_header(line))
-        .map(|offset| header + 1 + offset)
+        .map(|offset| start + 1 + offset)
         .unwrap_or(lines.len());
-    Some((header, end))
+    Some((start, end))
 }
 
-fn theme_line_in(
+fn key_line_in(
     lines: &[String],
+    key: &str,
     start: usize,
     end: usize,
 ) -> Option<usize> {
-    (start + 1..end).find(|&index| is_theme_key(&lines[index]))
+    (start + 1..end).find(|&index| is_key_line(&lines[index], key))
 }
 
-fn is_theme_key(line: &str) -> bool {
-    let Some(rest) = line.trim_start().strip_prefix(THEME_KEY) else {
+fn is_key_line(line: &str, key: &str) -> bool {
+    let Some(rest) = line.trim_start().strip_prefix(key) else {
         return false;
     };
     rest.trim_start().starts_with('=')
 }
 
-/// Replaces only the quoted value on a `theme = "..."` line,
-/// so indentation and any trailing comment survive untouched.
-fn replace_value(line: &str, name: &str) -> String {
-    let Some(open) = line.find('"') else {
-        return theme_line(name);
+/// Replaces only the value after `=`, so the key's spelling,
+/// indentation and any trailing comment survive untouched.
+fn replace_value(line: &str, value: &str) -> String {
+    let Some((start, end)) = value_span(line) else {
+        return line.to_string();
     };
-    let Some(close_offset) = line[open + 1..].find('"') else {
-        return theme_line(name);
-    };
-    let close = open + 1 + close_offset;
-    format!("{}\"{name}\"{}", &line[..open], &line[close + 1..])
+    format!("{}{value}{}", &line[..start], &line[end..])
+}
+
+/// The byte range of the raw value between `=` and a trailing
+/// comment (if any) or the end of the line, trimmed of the
+/// whitespace around it.
+fn value_span(line: &str) -> Option<(usize, usize)> {
+    let eq = line.find('=')?;
+    let rest = &line[eq + 1..];
+    let leading = rest.len() - rest.trim_start().len();
+    let start = eq + 1 + leading;
+    let comment = rest.find('#').unwrap_or(rest.len());
+    let end = eq + 1 + rest[..comment].trim_end().len();
+    Some((start, end.max(start)))
 }
 
 fn write_atomically(path: &Path, contents: &str) -> io::Result<()> {
@@ -148,6 +182,10 @@ fn tmp_path(path: &Path) -> PathBuf {
 mod tests {
     use super::super::testkit::TempDir;
     use super::*;
+
+    fn with_theme(contents: &str, name: &str) -> String {
+        with_key(contents, UI_TABLE, THEME_KEY, &quoted(name))
+    }
 
     #[test]
     fn an_existing_key_is_replaced_in_place() {
@@ -210,6 +248,56 @@ mod tests {
         let listed = gallery();
         for name in antiphon_ui::Theme::names() {
             assert!(listed.contains(name), "{name} not listed");
+        }
+    }
+
+    /// Every essentials key that `settingscmd` writes goes
+    /// through the very same generic edit, over the four
+    /// shapes a config file can be in: key present, key
+    /// absent, table absent, file absent.
+    #[test]
+    fn every_essentials_key_supports_all_four_edit_cases() {
+        let cases: &[(&str, &str, &str)] = &[
+            ("ui", "theme", "\"nord\""),
+            ("sync", "interval_minutes", "5"),
+            ("sync", "idle", "true"),
+            ("ui", "reading_pane", "\"right\""),
+            ("ui", "list_rows", "12"),
+            ("ui", "sidebar_width", "20"),
+        ];
+        for (table, key, value) in cases {
+            let want = key_line(key, value);
+
+            let present =
+                format!("[{table}]\n{key} = old\nother = 1\n");
+            let after = with_key(&present, table, key, value);
+            assert!(after.contains(&want), "{table}.{key} present");
+            assert!(
+                after.contains("other = 1"),
+                "{table}.{key} keeps siblings"
+            );
+
+            let absent = format!("[{table}]\nother = 1\n");
+            let after = with_key(&absent, table, key, value);
+            assert!(after.contains(&want), "{table}.{key} key absent");
+
+            let no_table = "[elsewhere]\nx = 1\n";
+            let after = with_key(no_table, table, key, value);
+            assert!(
+                after.contains(&format!("[{table}]")),
+                "{table}.{key} table absent"
+            );
+            assert!(
+                after.contains(&want),
+                "{table}.{key} table absent"
+            );
+
+            let dir = TempDir::new();
+            let path = dir.path.join("config.toml");
+            persist_key(&path, table, key, value)
+                .expect("persist into a missing file");
+            let text = std::fs::read_to_string(&path).unwrap();
+            assert!(text.contains(&want), "{table}.{key} file absent");
         }
     }
 }

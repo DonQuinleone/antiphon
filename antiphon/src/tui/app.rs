@@ -1,4 +1,4 @@
-use antiphon_config::{Composer, Loaded, ReadingPane};
+use antiphon_config::{Composer, Dirs, Loaded, ReadingPane};
 use antiphon_core::Action;
 use antiphon_pgp::{Keyring, Signature};
 use antiphon_render::{
@@ -26,6 +26,7 @@ pub enum View {
     Compose,
     Editor,
     Review,
+    Settings,
 }
 
 /// Where the next key event goes; resolved before the keymap
@@ -36,6 +37,7 @@ pub enum KeyRoute {
     Compose,
     Editor,
     Review,
+    Settings,
     Keymap,
 }
 
@@ -83,6 +85,10 @@ pub struct App {
     pub sidebar_width: u16,
     pub theme: &'static Theme,
     pub(super) config_path: std::path::PathBuf,
+    pub(super) dirs: Dirs,
+    pub sync_interval_minutes: u32,
+    pub sync_idle: bool,
+    pub settings: Option<super::settings::SettingsState>,
     pub date_format: String,
     pub notice: Option<String>,
     pub prompt: Option<Prompt>,
@@ -116,6 +122,7 @@ impl App {
         total_messages: u32,
         keyring: Keyring,
         config_path: std::path::PathBuf,
+        dirs: &Dirs,
     ) -> App {
         let accounts = account_names(loaded);
         let own_addresses = own_addresses(loaded);
@@ -169,6 +176,10 @@ impl App {
             sidebar_width: loaded.config.ui.sidebar_width,
             theme,
             config_path,
+            dirs: dirs.clone(),
+            sync_interval_minutes: loaded.config.sync.interval_minutes,
+            sync_idle: loaded.config.sync.idle,
+            settings: None,
             date_format: loaded.config.ui.date_format.clone(),
             notice: None,
             prompt: None,
@@ -216,6 +227,7 @@ impl App {
             View::Compose => KeyRoute::Compose,
             View::Editor => KeyRoute::Editor,
             View::Review => KeyRoute::Review,
+            View::Settings => KeyRoute::Settings,
             _ => KeyRoute::Keymap,
         }
     }
@@ -272,7 +284,10 @@ impl App {
         match self.view {
             View::List => self.apply_in_list(action),
             View::Pager => self.apply_in_pager(action),
-            View::Compose | View::Editor | View::Review => {}
+            View::Compose
+            | View::Editor
+            | View::Review
+            | View::Settings => {}
         }
     }
 

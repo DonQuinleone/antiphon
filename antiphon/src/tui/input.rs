@@ -11,6 +11,7 @@ use super::app::{App, View};
 use super::commands::PromptKind;
 use super::dispatch::dispatch;
 use super::identity::ComposeContext;
+use super::settings::{self, SettingsOutcome};
 use super::{
     attach, draw, drawer, folder_picker, headers, link_picker,
     mark_all_read, pager, pager_body, patches, review, run_query,
@@ -85,6 +86,18 @@ pub(super) fn review_key(
         }
     }
     Ok(())
+}
+
+/// Keys in the settings view: every toggle and selection
+/// settles in place.
+pub(super) fn settings_key(app: &mut App, key: KeyEvent) {
+    match settings::feed(app, key) {
+        SettingsOutcome::Stay => {}
+        SettingsOutcome::Close => {
+            app.settings = None;
+            app.view = View::List;
+        }
+    }
 }
 
 /// Keys in the fields stage feed the header state machine;

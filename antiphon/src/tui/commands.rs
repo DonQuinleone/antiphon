@@ -167,6 +167,7 @@ impl App {
         }
         match command {
             "q" | "quit" => self.quit = true,
+            "settings" => self.open_settings(),
             "unsubscribe" => self.unsubscribe_command(),
             "accept" => self.rsvp_command(Rsvp::Accept),
             "tentative" => self.rsvp_command(Rsvp::Tentative),
