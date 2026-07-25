@@ -32,9 +32,8 @@ const DEFAULT_BINDINGS: &[(Action, &str)] = &[
     (Action::Reply, "r"),
     (Action::ReplyList, "L"),
     (Action::Compose, "n"),
-    (Action::MarkRead, "m"),
-    (Action::MarkUnread, "M"),
-    (Action::MarkAllRead, ",r"),
+    (Action::ToggleRead, "m"),
+    (Action::MarkAllRead, "M"),
     (Action::ToggleFlagged, "F"),
     (Action::DeleteMessage, "d"),
     (Action::ToggleHtml, "h"),
@@ -389,10 +388,7 @@ mod tests {
             );
         }
 
-        let comma_cases = [
-            (press(KeyCode::Char('s')), Action::Sync),
-            (press(KeyCode::Char('r')), Action::MarkAllRead),
-        ];
+        let comma_cases = [(press(KeyCode::Char('s')), Action::Sync)];
         for (second, action) in comma_cases {
             let mut keymap = Keymap::default();
             assert_eq!(

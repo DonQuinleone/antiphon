@@ -125,8 +125,7 @@ impl App {
             Action::CycleReadingPane => self.cycle_reading_pane(),
             Action::Search => self.open_prompt(PromptKind::Search),
             Action::Command => self.open_prompt(PromptKind::Command),
-            Action::MarkRead => self.set_unread(false),
-            Action::MarkUnread => self.set_unread(true),
+            Action::ToggleRead => self.toggle_read(),
             Action::ToggleFlagged => self.toggle_flagged(),
             Action::DeleteMessage => self.delete_selected(),
             Action::Archive => self.archive_selected(),
@@ -211,6 +210,14 @@ impl App {
             }
         }
         self.requery = true;
+    }
+
+    fn toggle_read(&mut self) {
+        let Some(message) = self.messages.get(self.selected) else {
+            return;
+        };
+        let unread = message.unread;
+        self.set_unread(!unread);
     }
 
     pub(super) fn set_unread(&mut self, unread: bool) {
@@ -509,19 +516,27 @@ mod tests {
     }
 
     #[test]
-    fn marking_read_flips_state_and_queues_one_op() {
+    fn m_toggles_read_state_and_queues_an_op_each_way() {
         let mut app = app_with_messages(2);
         assert!(app.messages[0].unread);
-        app.apply(Action::MarkRead);
-        app.apply(Action::MarkRead);
+        app.apply(Action::ToggleRead);
         assert!(!app.messages[0].unread);
-        assert_eq!(app.pending_ops.len(), 1);
         let OpIntent::Flag { remove, add, .. } = &app.pending_ops[0]
         else {
             panic!("expected a flag op");
         };
         assert_eq!(remove, &vec!["unread".to_string()]);
         assert!(add.is_empty());
+
+        app.apply(Action::ToggleRead);
+        assert!(app.messages[0].unread);
+        assert_eq!(app.pending_ops.len(), 2);
+        let OpIntent::Flag { remove, add, .. } = &app.pending_ops[1]
+        else {
+            panic!("expected a flag op");
+        };
+        assert_eq!(add, &vec!["unread".to_string()]);
+        assert!(remove.is_empty());
     }
 
     #[test]
