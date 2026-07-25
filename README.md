@@ -22,6 +22,23 @@ network. The entire store sits inside an encrypted vault that
 seals when you walk away, and OpenPGP runs through Sequoia
 and your own gpg-agent, keyring and smartcard included.
 
+## A look around
+
+<img src="https://git.sr.ht/~donquinleone/antiphon/blob/master/assets/screenshots/list.png"
+     alt="The message list: sidebar with unread counts, status
+          markers, threading marks and the reading pane"
+     width="820">
+
+<img src="https://git.sr.ht/~donquinleone/antiphon/blob/master/assets/screenshots/pager.png"
+     alt="Reading a message: generated keybar, headers, and
+          the attachment drawer expanded"
+     width="820">
+
+<img src="https://git.sr.ht/~donquinleone/antiphon/blob/master/assets/screenshots/compose.png"
+     alt="Composing: structured header fields with contact
+          completion in a popover"
+     width="820">
+
 ## Highlights
 
 - **Local first.** Maildir plus notmuch full-text search,
