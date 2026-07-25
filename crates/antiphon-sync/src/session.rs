@@ -29,8 +29,8 @@ use crate::error::SyncError;
 /// tokio runtime lives here and never leaks past this module:
 /// every method drives one command to completion via block_on.
 pub(crate) struct ImapSession {
-    runtime: Runtime,
-    client: Client,
+    pub(crate) runtime: Runtime,
+    pub(crate) client: Client,
 }
 
 pub(crate) struct SelectedFolder {

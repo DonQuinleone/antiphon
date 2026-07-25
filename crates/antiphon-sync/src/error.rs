@@ -42,6 +42,9 @@ pub enum SyncError {
         folder: String,
         detail: String,
     },
+    Idle {
+        detail: String,
+    },
     Index {
         source: antiphon_store::SearchError,
     },
@@ -88,6 +91,9 @@ impl fmt::Display for SyncError {
             Self::Folder { folder, detail } => {
                 write!(out, "folder {folder}: {detail}")
             }
+            Self::Idle { detail } => {
+                write!(out, "imap idle: {detail}")
+            }
             Self::Index { source } => {
                 write!(out, "searching the store index: {source}")
             }
@@ -119,6 +125,7 @@ impl std::error::Error for SyncError {
             Self::SmtpMessage { .. }
             | Self::State { .. }
             | Self::Folder { .. }
+            | Self::Idle { .. }
             | Self::Notmuch { .. } => None,
         }
     }

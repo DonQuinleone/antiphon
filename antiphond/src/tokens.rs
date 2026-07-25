@@ -1,5 +1,11 @@
-use antiphon_oauth::{Grant, OauthError, TokenSet, TokenStore};
+use antiphon_oauth::{
+    Grant, OauthError, TokenSet, TokenStore, refresh,
+};
+use antiphon_store::StoreLayout;
 use secrecy::ExposeSecret;
+
+use crate::accounts::OauthAccount;
+use crate::mailflow::now_unix;
 
 /// An access token this close to expiry is refreshed up front
 /// rather than risked against the server's clock.
@@ -7,6 +13,34 @@ pub(crate) const REFRESH_MARGIN_SECS: u64 = 5 * 60;
 
 pub(crate) type Refresh<'a> =
     &'a dyn Fn(&TokenSet, &Grant) -> Result<TokenSet, OauthError>;
+
+/// Resolves a live IMAP access token for an OAuth account,
+/// shared by the sync pass and the IDLE watchers.
+pub(crate) fn imap_access_token(
+    layout: &StoreLayout,
+    spec: &OauthAccount,
+    force_refresh: bool,
+) -> Result<String, String> {
+    let store =
+        TokenStore::open(layout.tokens_dir()).map_err(|error| {
+            format!("{}: token store: {error}", spec.name)
+        })?;
+    if force_refresh {
+        return refreshed_token(
+            &store,
+            &spec.grant_name(),
+            &spec.name,
+            &refresh,
+        );
+    }
+    access_token(
+        &store,
+        &spec.grant_name(),
+        &spec.name,
+        now_unix(),
+        &refresh,
+    )
+}
 
 pub(crate) fn access_token(
     store: &TokenStore,

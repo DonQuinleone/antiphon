@@ -18,6 +18,7 @@ pub struct Config {
 #[serde(deny_unknown_fields, default)]
 pub struct Sync {
     pub interval_minutes: u32,
+    pub idle: bool,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -36,6 +37,7 @@ impl Default for Sync {
     fn default() -> Sync {
         Sync {
             interval_minutes: DEFAULT_SYNC_INTERVAL_MINUTES,
+            idle: false,
         }
     }
 }

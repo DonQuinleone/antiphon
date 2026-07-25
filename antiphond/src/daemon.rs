@@ -13,6 +13,7 @@ use antiphon_store::{OpLog, StoreLayout};
 use crate::accounts::{
     delivery_rules, oauth_accounts, smtp_accounts, sync_accounts,
 };
+use crate::idle;
 use crate::mailflow::Mailflow;
 use crate::vaultctl;
 use crate::worker::{self, Job, JobQueue};
@@ -44,6 +45,36 @@ pub(crate) struct Daemon {
     pub(crate) state: SharedState,
     pub(crate) jobs: JobQueue,
     pub(crate) vault: VaultState,
+    pub(crate) idle_wanted: bool,
+    pub(crate) watchers: Option<idle::IdleWatchers>,
+}
+
+impl Daemon {
+    fn start_watchers(&mut self, loaded: &Loaded) {
+        if !self.idle_wanted || self.watchers.is_some() {
+            return;
+        }
+        let mut specs: Vec<idle::WatchSpec> = sync_accounts(loaded)
+            .into_iter()
+            .map(idle::WatchSpec::Plain)
+            .collect();
+        specs.extend(
+            oauth_accounts(loaded)
+                .into_iter()
+                .map(idle::WatchSpec::Oauth),
+        );
+        if specs.is_empty() {
+            return;
+        }
+        self.watchers =
+            Some(idle::spawn(&self.layout, specs, &self.jobs));
+    }
+
+    fn stop_watchers(&mut self) {
+        if let Some(watchers) = self.watchers.take() {
+            watchers.stop();
+        }
+    }
 }
 
 pub fn run() -> ExitCode {
@@ -115,8 +146,11 @@ pub fn run() -> ExitCode {
         state,
         jobs: jobs.clone(),
         vault,
+        idle_wanted: loaded.config.sync.idle,
+        watchers: None,
     };
     jobs.request(Job::Pass { announce: false });
+    daemon.start_watchers(&loaded);
     let interval = sync_interval(&loaded);
     let idle_lock = idle_lock_interval(&loaded, daemon.vault);
     let shutdown = install_shutdown();
@@ -128,6 +162,7 @@ pub fn run() -> ExitCode {
         idle_lock,
         &shutdown,
     );
+    daemon.stop_watchers();
     // The worker must finish its pass before the seal below
     // unmounts the store it is writing to; closing the queue
     // stops it after the current batch.
@@ -238,6 +273,7 @@ fn serve_with_timer(
 /// Sync pauses while sealed: the store only exists inside the
 /// mounted vault.
 fn idle_seal(daemon: &mut Daemon, loaded: &Loaded) {
+    daemon.stop_watchers();
     match vaultctl::lock(loaded, &daemon.layout) {
         Ok(()) => {
             daemon.vault = VaultState::Sealed;
@@ -254,6 +290,7 @@ fn wake(daemon: &mut Daemon, loaded: &Loaded) {
     match vaultctl::ensure_open(loaded, &daemon.layout) {
         Ok(state) => {
             daemon.vault = state;
+            daemon.start_watchers(loaded);
             println!("client connected: vault unlocked");
         }
         Err(error) => eprintln!("wake unlock: {error}"),

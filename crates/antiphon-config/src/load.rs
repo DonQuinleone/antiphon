@@ -195,6 +195,15 @@ mod tests {
             ["from", "to", "date", "subject"]
         );
         assert!(config.notifications.enabled);
+        assert!(!config.sync.idle);
+    }
+
+    #[test]
+    fn idle_parses_from_the_sync_table() {
+        let config: Config =
+            parse("[sync]\nidle = true\n", Path::new("config.toml"))
+                .unwrap();
+        assert!(config.sync.idle);
     }
 
     #[test]

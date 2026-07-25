@@ -3,6 +3,7 @@ mod drafts;
 mod engine;
 mod error;
 mod folders;
+mod idle;
 mod maildir;
 mod progress;
 mod reconcile;
@@ -18,6 +19,7 @@ pub use auth::Auth;
 pub use drafts::{DraftPush, push_drafts};
 pub use engine::{SyncAccount, sync};
 pub use error::SyncError;
+pub use idle::{IdleSession, IdleWait};
 pub use progress::{
     SyncProgress, SyncState, read_progress, write_progress,
 };

@@ -180,6 +180,8 @@ mod tests {
             state,
             jobs,
             vault: VaultState::Absent,
+            idle_wanted: false,
+            watchers: None,
         };
         Fixture {
             _dir: dir,
