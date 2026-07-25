@@ -132,25 +132,31 @@ impl ComposeState {
     }
 
     pub fn outgoing(&self) -> Result<Outgoing, String> {
-        let identity = self.identity();
-        if !identity.address.contains('@') {
+        let outgoing = self.draft_outgoing();
+        if !outgoing.from.contains('@') {
             return Err("From needs a full address".to_string());
         }
-        let to = address_list(&self.fields.to);
-        if to.is_empty() {
+        if outgoing.to.is_empty() {
             return Err("no recipients in To".to_string());
         }
-        Ok(Outgoing {
+        Ok(outgoing)
+    }
+
+    /// The compose exactly as it stands, unvalidated: a draft
+    /// may lack recipients and still deserves saving.
+    pub fn draft_outgoing(&self) -> Outgoing {
+        let identity = self.identity();
+        Outgoing {
             from_name: identity.name.clone(),
             from: identity.address.clone(),
-            to,
+            to: address_list(&self.fields.to),
             cc: address_list(&self.fields.cc),
             bcc: address_list(&self.fields.bcc),
             subject: self.fields.subject.trim().to_string(),
             in_reply_to: self.in_reply_to.clone(),
             references: self.references.clone(),
             body: self.body.clone(),
-        })
+        }
     }
 }
 

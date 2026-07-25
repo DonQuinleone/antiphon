@@ -1,6 +1,7 @@
+use std::io;
 use std::path::{Path, PathBuf};
 
-use antiphon_store::StoreLayout;
+use antiphon_store::{DraftEnvelope, DraftSpool, StoreLayout};
 
 use super::compose::{ComposeState, bare_address};
 use super::prefill::DraftFields;
@@ -26,7 +27,7 @@ pub(super) struct SavedDraft {
 pub(super) fn save(
     layout: &StoreLayout,
     state: &ComposeState,
-) -> std::io::Result<PathBuf> {
+) -> io::Result<PathBuf> {
     let dir = layout.root().join(DRAFTS_DIR);
     std::fs::create_dir_all(&dir)?;
     let name = format!(
@@ -36,7 +37,33 @@ pub(super) fn save(
     );
     let path = dir.join(name);
     std::fs::write(&path, render(state))?;
+    spool(layout, state)?;
     Ok(path)
+}
+
+/// The unsealed RFC 5322 message, attachments included, goes
+/// to the daemon's draft spool for filing in the account's
+/// server drafts folder; the private file written above stays
+/// what :resume reads back. A From without a full address
+/// cannot become a message yet, so only the private file is
+/// kept.
+fn spool(layout: &StoreLayout, state: &ComposeState) -> io::Result<()> {
+    let outgoing = state.draft_outgoing();
+    if !outgoing.from.contains('@') {
+        return Ok(());
+    }
+    let raw = super::compose::assemble(
+        &outgoing,
+        &state.attachments,
+        super::session::unix_now(),
+    );
+    let envelope = DraftEnvelope {
+        account: state.account().to_string(),
+    };
+    DraftSpool::open(layout)
+        .enqueue(&envelope, &raw)
+        .map_err(io::Error::other)?;
+    Ok(())
 }
 
 fn render(state: &ComposeState) -> String {
@@ -235,6 +262,58 @@ mod tests {
         assert_eq!(
             parse("To: a@b.c\n\nhi").unwrap_err(),
             "draft has no From address"
+        );
+    }
+
+    #[test]
+    fn saving_spools_the_message_and_keeps_resume_state() {
+        use mail_parser::{MessageParser, MimeHeaders};
+
+        let dir = TempDir::new();
+        let layout = StoreLayout::new(dir.path.join("store"));
+        let attachment_path = dir.path.join("notes.txt");
+        std::fs::write(&attachment_path, b"kept bytes").unwrap();
+        let mut state = saved_state();
+        state.add_attachment(
+            attach::load(attachment_path.to_str().unwrap()).unwrap(),
+        );
+
+        let path = save(&layout, &state).unwrap();
+        let resumed = load(&path).unwrap();
+        assert_eq!(resumed.fields.subject, "Rehearsal");
+        assert_eq!(
+            resumed.attachments,
+            std::slice::from_ref(&attachment_path)
+        );
+
+        let spooled = DraftSpool::open(&layout).pending().unwrap();
+        assert_eq!(spooled.len(), 1);
+        assert_eq!(spooled[0].account, "personal");
+        let raw = std::fs::read(&spooled[0].message_path).unwrap();
+        let message = MessageParser::default().parse(&raw).unwrap();
+        assert_eq!(message.subject(), Some("Rehearsal"));
+        let part = message
+            .attachments()
+            .find(|part| part.attachment_name() == Some("notes.txt"))
+            .expect("the attachment inside the spooled draft");
+        assert_eq!(part.contents(), b"kept bytes");
+        let text = String::from_utf8_lossy(&raw);
+        assert!(
+            !text.contains("hidden@example.com"),
+            "bcc leaked into the spooled draft: {text}"
+        );
+    }
+
+    #[test]
+    fn an_unaddressed_from_saves_locally_without_spooling() {
+        let dir = TempDir::new();
+        let layout = StoreLayout::new(dir.path.join("store"));
+        let mut state = saved_state();
+        state.choices[0].identity.address = "not-an-address".into();
+        let path = save(&layout, &state).unwrap();
+        assert!(path.is_file());
+        assert!(
+            DraftSpool::open(&layout).pending().unwrap().is_empty()
         );
     }
 

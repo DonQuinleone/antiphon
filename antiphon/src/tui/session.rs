@@ -205,7 +205,9 @@ pub(super) fn send_compose(app: &mut App, layout: &StoreLayout) {
 }
 
 /// The review screen's q: the compose becomes a draft file
-/// that :resume can reopen, fields and plan intact.
+/// that :resume can reopen, fields and plan intact, and a
+/// spooled message the daemon files in the account's server
+/// drafts folder; the nudge makes that filing prompt.
 pub(super) fn save_draft_and_close(
     app: &mut App,
     layout: &StoreLayout,
@@ -219,6 +221,7 @@ pub(super) fn save_draft_and_close(
             app.view = View::List;
             app.notice =
                 Some(format!("draft saved: {}", path.display()));
+            super::nudge_daemon();
         }
         Err(error) => {
             app.notice = Some(format!("draft: {error}"));
