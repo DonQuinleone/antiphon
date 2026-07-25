@@ -82,6 +82,13 @@ Gallery themes: `vespers` (default), `kanagawa-wave`,
 `one-dark`, `everforest-dark`, `ayu-dark`, `github-dark`,
 `monokai`. Truecolor terminal required.
 
+`:theme <name>` switches the running client to a theme at
+once and saves it to `theme` under `[ui]` in `config.toml`,
+editing that one line (or adding it) without touching
+anything else in the file; a bare `:theme` lists the names,
+and an unknown name leaves the theme untouched and lists
+them too.
+
 Themes are plain files, one per theme, and yours load from
 `$XDG_CONFIG_HOME/antiphon/themes/*.toml`: nineteen `#rrggbb`
 colour roles plus a `name`, in exactly the format the shipped

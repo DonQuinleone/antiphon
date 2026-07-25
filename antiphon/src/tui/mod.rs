@@ -21,6 +21,7 @@ mod lists;
 mod mark_all_read;
 mod message_list;
 mod pager;
+mod pager_actions;
 mod pager_body;
 mod patches;
 mod prefill;
@@ -33,6 +34,7 @@ mod sidebar;
 mod status;
 #[cfg(test)]
 mod testkit;
+mod themecmd;
 
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
@@ -72,6 +74,7 @@ const LIST_WINDOW: usize = 500;
 const DAEMON_ASSIGNS_ID: u64 = 0;
 const UNREAD_QUERY: &str = "tag:unread";
 const PGP_KEYRING_DIR: &str = "pgp";
+const CONFIG_FILE_NAME: &str = "config.toml";
 
 const THEMES_DIR: &str = "themes";
 
@@ -116,7 +119,14 @@ pub fn run(
     let context = ComposeContext::from_loaded(loaded, dirs);
     let keyring = Keyring::from_dir(dirs.config.join(PGP_KEYRING_DIR));
     let folders = sidebar::discover(layout, &accounts);
-    let mut app = App::new(loaded, &folders, messages, total, keyring);
+    let mut app = App::new(
+        loaded,
+        &folders,
+        messages,
+        total,
+        keyring,
+        dirs.config.join(CONFIG_FILE_NAME),
+    );
     // Startup opens the default sidebar entry (the first
     // inbox), so the list shows it rather than highlighting
     // it over an unrelated query.

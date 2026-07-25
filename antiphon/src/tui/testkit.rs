@@ -77,6 +77,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         list_rows: antiphon_config::Ui::default().list_rows,
         sidebar_width: antiphon_config::Ui::default().sidebar_width,
         theme: Theme::vespers(),
+        config_path: PathBuf::new(),
         date_format: String::new(),
         notice: None,
         prompt: None,

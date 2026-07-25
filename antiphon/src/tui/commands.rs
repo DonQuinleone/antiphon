@@ -188,6 +188,10 @@ impl App {
     }
 
     fn arg_command(&mut self, command: &str) -> bool {
+        if let Some(argument) = argument_of(command, "theme") {
+            self.theme_command(argument);
+            return true;
+        }
         for (name, usage, arm) in ARG_COMMANDS {
             let Some(argument) = argument_of(command, name) else {
                 continue;
