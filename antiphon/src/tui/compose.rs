@@ -1,10 +1,10 @@
 use antiphon_render::{Draft, build_message};
 use antiphon_store::Envelope;
 use antiphon_store::contacts::Contact;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::KeyEvent;
 
 use super::attach::Attachment;
-use super::complete::{self, Completion};
+use super::complete::Completion;
 use super::crypto::{ComposeCrypto, PgpPlan};
 use super::headers::{HeaderFields, HeadersOutcome};
 use super::identity::ComposeIdentity;
@@ -126,47 +126,6 @@ impl ComposeState {
             _ => self.completion = None,
         }
         outcome
-    }
-
-    /// Keys the completion popup owns while visible; anything
-    /// else falls through to the field machine.
-    pub fn completion_key(&mut self, key: KeyEvent) -> bool {
-        let Some(completion) = self.completion.as_mut() else {
-            return false;
-        };
-        let control = key.modifiers.contains(KeyModifiers::CONTROL);
-        match key.code {
-            KeyCode::Down => completion.step(1),
-            KeyCode::Up => completion.step(-1),
-            KeyCode::Char('n') if control => completion.step(1),
-            KeyCode::Char('p') if control => completion.step(-1),
-            KeyCode::Esc => self.completion = None,
-            KeyCode::Tab => {
-                let choice = completion.chosen().map(str::to_owned);
-                if let Some(choice) = choice {
-                    let text =
-                        complete::accept(self.fields.field(), &choice);
-                    self.fields.replace_field(text);
-                }
-                self.completion = None;
-            }
-            _ => return false,
-        }
-        true
-    }
-
-    fn refresh_completion(&mut self) {
-        if !self.fields.recipient_focused() {
-            self.completion = None;
-            return;
-        }
-        let items =
-            complete::suggest(&self.contacts, self.fields.field());
-        if items.is_empty() {
-            self.completion = None;
-            return;
-        }
-        self.completion = Some(Completion { items, selected: 0 });
     }
 
     fn cycle_from(&mut self, step: i32) {
@@ -321,6 +280,8 @@ pub(super) fn test_state() -> ComposeState {
 
 #[cfg(test)]
 mod tests {
+    use ratatui::crossterm::event::{KeyCode, KeyModifiers};
+
     use super::*;
 
     #[test]

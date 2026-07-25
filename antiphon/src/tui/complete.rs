@@ -1,4 +1,7 @@
 use antiphon_store::contacts::Contact;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+use super::compose::ComposeState;
 
 pub(super) const MAX_SUGGESTIONS: usize = 5;
 const MIN_FRAGMENT_CHARS: usize = 2;
@@ -67,6 +70,47 @@ fn entry(contact: &Contact) -> String {
         return contact.address.clone();
     }
     format!("{} <{}>", contact.name, contact.address)
+}
+
+impl ComposeState {
+    /// Keys the completion popup owns while visible; anything
+    /// else falls through to the field machine.
+    pub fn completion_key(&mut self, key: KeyEvent) -> bool {
+        let Some(completion) = self.completion.as_mut() else {
+            return false;
+        };
+        let control = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Down => completion.step(1),
+            KeyCode::Up => completion.step(-1),
+            KeyCode::Char('n') if control => completion.step(1),
+            KeyCode::Char('p') if control => completion.step(-1),
+            KeyCode::Esc => self.completion = None,
+            KeyCode::Tab => {
+                let choice = completion.chosen().map(str::to_owned);
+                if let Some(choice) = choice {
+                    let text = accept(self.fields.field(), &choice);
+                    self.fields.replace_field(text);
+                }
+                self.completion = None;
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    pub(super) fn refresh_completion(&mut self) {
+        if !self.fields.recipient_focused() {
+            self.completion = None;
+            return;
+        }
+        let items = suggest(&self.contacts, self.fields.field());
+        if items.is_empty() {
+            self.completion = None;
+            return;
+        }
+        self.completion = Some(Completion { items, selected: 0 });
+    }
 }
 
 #[cfg(test)]
