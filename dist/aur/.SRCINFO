@@ -11,6 +11,6 @@ pkgbase = antiphon
 	depends = notmuch
 	optdepends = gnupg: OpenPGP signing and decryption via gpg-agent
 	source = antiphon-1.0.0.tar.gz::https://git.sr.ht/~donquinleone/antiphon/archive/v1.0.0.tar.gz
-	sha256sums = 0000000000000000000000000000000000000000000000000000000000000
+	sha256sums = 0000000000000000000000000000000000000000000000000000000000000000
 
 pkgname = antiphon

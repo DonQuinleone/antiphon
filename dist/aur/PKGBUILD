@@ -12,7 +12,7 @@ makedepends=(cargo scdoc)
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
 # placeholder; pin with updpkgsums once the v$pkgver tag exists,
 # see README.md next to this file
-sha256sums=('0000000000000000000000000000000000000000000000000000000000000')
+sha256sums=('0000000000000000000000000000000000000000000000000000000000000000')
 
 prepare() {
     cd "$pkgname-$pkgver"
