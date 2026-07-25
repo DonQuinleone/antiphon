@@ -41,7 +41,7 @@ pub fn invite_lines(raw: &[u8]) -> Vec<String> {
     lines
 }
 
-fn calendar_text(raw: &[u8]) -> Option<String> {
+pub(crate) fn calendar_text(raw: &[u8]) -> Option<String> {
     let message = MessageParser::default().parse(raw)?;
     message.parts.iter().find_map(|part| {
         if !is_calendar(part) {

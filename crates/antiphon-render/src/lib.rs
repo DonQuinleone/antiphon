@@ -4,6 +4,7 @@ mod extract;
 mod flowed;
 mod html;
 mod invite;
+mod itip;
 mod links;
 mod list;
 mod patch;
@@ -22,6 +23,7 @@ pub use extract::{
 };
 pub use flowed::flow;
 pub use invite::invite_lines;
+pub use itip::{ItipReply, Rsvp, itip_reply};
 pub use links::{BodyLine, Link, LinkSpan, RenderedBody};
 pub use list::{
     ListHeaders, ListPost, ListReply, list_headers, reply_to_list,
