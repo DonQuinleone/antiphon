@@ -4,9 +4,17 @@ use mail_parser::{
 };
 
 use crate::flowed::unflow;
+use crate::html::html_body;
+use crate::links::{RenderedBody, plain_body};
 
 const HTML_ONLY_NOTICE: &str = "[HTML-only message: no plain-text \
      part; HTML rendering is not yet supported]";
+
+enum RawBody {
+    Plain(String),
+    Html(String),
+    Empty,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BodyText {
@@ -22,8 +30,30 @@ pub enum BodyKind {
 }
 
 pub fn body_text(raw: &[u8]) -> BodyText {
+    match raw_body(raw) {
+        RawBody::Plain(text) => BodyText {
+            text,
+            kind: BodyKind::Plain,
+        },
+        RawBody::Html(_) => BodyText {
+            text: HTML_ONLY_NOTICE.to_owned(),
+            kind: BodyKind::HtmlOnly,
+        },
+        RawBody::Empty => empty(),
+    }
+}
+
+pub fn rendered_body(raw: &[u8]) -> RenderedBody {
+    match raw_body(raw) {
+        RawBody::Plain(text) => plain_body(&text),
+        RawBody::Html(html) => html_body(&html),
+        RawBody::Empty => RenderedBody::default(),
+    }
+}
+
+fn raw_body(raw: &[u8]) -> RawBody {
     let Some(message) = MessageParser::default().parse(raw) else {
-        return empty();
+        return RawBody::Empty;
     };
     let plain = message
         .text_bodies()
@@ -31,21 +61,18 @@ pub fn body_text(raw: &[u8]) -> BodyText {
         .map(plain_text)
         .filter(|text| !text.trim().is_empty());
     if let Some(text) = plain {
-        return BodyText {
-            text,
-            kind: BodyKind::Plain,
-        };
+        return RawBody::Plain(text);
     }
-    let has_html = message
+    let html = message
         .html_bodies()
-        .any(|part| matches!(part.body, PartType::Html(_)));
-    if has_html {
-        return BodyText {
-            text: HTML_ONLY_NOTICE.to_owned(),
-            kind: BodyKind::HtmlOnly,
-        };
+        .find(|part| matches!(part.body, PartType::Html(_)))
+        .map(|part| {
+            part.text_contents().unwrap_or_default().to_owned()
+        });
+    match html {
+        Some(html) => RawBody::Html(html),
+        None => RawBody::Empty,
     }
-    empty()
 }
 
 fn plain_text(part: &MessagePart) -> String {

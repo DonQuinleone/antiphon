@@ -148,6 +148,7 @@ dependencies = [
  "portable-pty",
  "ratatui",
  "secrecy",
+ "tempfile",
  "tui-term",
  "vt100",
 ]
