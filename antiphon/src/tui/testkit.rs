@@ -49,6 +49,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         preview_scroll: 0,
         preview_html: false,
         help: false,
+        help_scroll: 0,
         key_bindings: Vec::new(),
         preview: None,
         own_addresses: Vec::new(),

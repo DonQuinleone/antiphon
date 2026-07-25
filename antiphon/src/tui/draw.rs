@@ -28,19 +28,28 @@ const ACTIVE_MARK: &str = "\u{25b8} ";
 const INACTIVE_MARK: &str = "  ";
 const SIDEBAR_BORDER_COLS: usize = 1;
 
+const HELP_WIDTH: u16 = 40;
+const HELP_MAX_ROWS: u16 = 24;
+
 pub fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
     frame.render_widget(
         Block::new().style(Style::new().bg(app.theme.background)),
         area,
     );
-    if app.help {
-        draw_help(frame, app, area);
-        return;
-    }
     let (content, status) = split_status(area);
     if app.view == View::Compose {
-        headers::draw_headers(frame, app, content);
+        if app.editor.is_some() {
+            let [fields, pane] = Layout::vertical([
+                Constraint::Length(FIELD_SUMMARY_ROWS + 2),
+                Constraint::Min(0),
+            ])
+            .areas(content);
+            headers::draw_headers(frame, app, fields);
+            draw_editor_screen(frame, app, pane);
+        } else {
+            headers::draw_headers(frame, app, content);
+        }
         draw_status(frame, app, status);
         return;
     }
@@ -71,6 +80,9 @@ pub fn draw(frame: &mut Frame, app: &App) {
         draw_reading_pane(frame, app, pane);
     }
     draw_status(frame, app, status);
+    if app.help {
+        draw_help(frame, app, area);
+    }
 }
 
 fn split_status(area: Rect) -> (Rect, Rect) {
@@ -285,9 +297,6 @@ pub(super) fn editor_rows(height: u16) -> u16 {
 /// it, aerc style: the fields stay ours, the pty gets only
 /// the body.
 fn draw_editor(frame: &mut Frame, app: &App, area: Rect) {
-    let Some(pane) = &app.editor else {
-        return;
-    };
     let [summary, editor] = Layout::vertical([
         Constraint::Length(FIELD_SUMMARY_ROWS),
         Constraint::Min(0),
@@ -297,9 +306,60 @@ fn draw_editor(frame: &mut Frame, app: &App, area: Rect) {
         let lines = headers::field_lines(app.theme, state, false);
         frame.render_widget(Paragraph::new(lines), summary);
     }
+    draw_editor_screen(frame, app, editor);
+}
+
+fn draw_editor_screen(frame: &mut Frame, app: &App, area: Rect) {
+    let Some(pane) = &app.editor else {
+        return;
+    };
     frame.render_widget(
         PseudoTerminal::new(pane.session.screen()),
-        editor,
+        area,
+    );
+}
+
+/// The cheatsheet renders the LIVE keymap (defaults merged
+/// with the user's [keys] overrides), never a separate list,
+/// as a centred modal over whatever is behind it.
+fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
+    let theme = app.theme;
+    let width = HELP_WIDTH.min(area.width.saturating_sub(2));
+    let height = HELP_MAX_ROWS.min(area.height.saturating_sub(2));
+    let modal = Rect {
+        x: area.x + (area.width.saturating_sub(width)) / 2,
+        y: area.y + (area.height.saturating_sub(height)) / 2,
+        width,
+        height,
+    };
+    frame.render_widget(ratatui::widgets::Clear, modal);
+    let block = Block::bordered()
+        .title(" keys ")
+        .title_bottom(" j/k scroll \u{b7} any other key closes ")
+        .border_style(Style::new().fg(theme.accent))
+        .style(Style::new().bg(theme.surface));
+    let lines: Vec<Line<'static>> = app
+        .key_bindings
+        .iter()
+        .map(|(key, action)| {
+            Line::from(vec![
+                Span::styled(
+                    format!(" {key:<12}"),
+                    Style::new().fg(theme.accent_strong),
+                ),
+                Span::styled(
+                    action.clone(),
+                    Style::new().fg(theme.text_primary),
+                ),
+            ])
+        })
+        .collect();
+    let ceiling =
+        (lines.len() as u16).saturating_sub(height.saturating_sub(2));
+    let scroll = app.help_scroll.min(ceiling);
+    frame.render_widget(
+        Paragraph::new(lines).block(block).scroll((scroll, 0)),
+        modal,
     );
 }
 
@@ -414,28 +474,4 @@ mod tests {
             );
         }
     }
-}
-
-/// The cheatsheet renders the LIVE keymap (defaults merged
-/// with the user's [keys] overrides), never a separate list.
-fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
-    let theme = app.theme;
-    let mut lines = vec![Line::from(Span::styled(
-        "keys \u{b7} any key closes",
-        Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
-    ))];
-    lines.push(Line::default());
-    for (key, action) in &app.key_bindings {
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!("  {key:<12}"),
-                Style::new().fg(theme.accent_strong),
-            ),
-            Span::styled(
-                action.clone(),
-                Style::new().fg(theme.text_primary),
-            ),
-        ]));
-    }
-    frame.render_widget(Paragraph::new(lines), area);
 }

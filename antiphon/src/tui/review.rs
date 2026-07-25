@@ -1,7 +1,8 @@
+use antiphon_ui::Theme;
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
@@ -13,10 +14,11 @@ const BODY_PREVIEW_LINES: usize = 8;
 const PLAIN_PLAN: &str = "[plain]";
 const SELECTED_MARK: &str = "\u{25b8} ";
 const UNSELECTED_MARK: &str = "  ";
-const FOOTER: &str = "y send \u{b7} e body \u{b7} h headers \u{b7} \
-                      a attach \u{b7} d remove \u{b7} s sign \u{b7} \
-                      x encrypt \u{b7} q save draft \u{b7} ctrl-c \
-                      stays";
+const KEYBAR: &str = "y:Send  q:Draft  e:Edit  h:Headers  \
+                      a:Attach  d:Remove  s:Sign  x:Encrypt  \
+                      ?:Help";
+const LABEL_WIDTH: usize = 9;
+const BYTES_PER_K: u32 = 1024;
 
 /// What a review key asks of the event loop; toggles mutate
 /// the state and stay put.
@@ -77,33 +79,75 @@ pub(super) fn draw_review(frame: &mut Frame, app: &App, area: Rect) {
         return;
     };
     let theme = app.theme;
-    let mut lines = vec![
-        header_line(theme, "From:", state.sender_line()),
-        header_line(theme, "To:", state.fields.to.clone()),
-        header_line(theme, "Cc:", state.fields.cc.clone()),
-        header_line(theme, "Bcc:", state.fields.bcc.clone()),
-        header_line(theme, "Subject:", state.fields.subject.clone()),
-        header_line(theme, "Plan:", plan_label(state)),
+    let bar = Style::new()
+        .fg(theme.text_primary)
+        .bg(theme.surface)
+        .add_modifier(Modifier::BOLD);
+    let mut lines = vec![Line::from(Span::styled(
+        format!("{KEYBAR:<width$}", width = area.width as usize),
+        bar,
+    ))];
+    let labelled = [
+        ("From:", state.sender_line()),
+        ("To:", state.fields.to.clone()),
+        ("Cc:", state.fields.cc.clone()),
+        ("Bcc:", state.fields.bcc.clone()),
+        ("Subject:", state.fields.subject.clone()),
+        ("Fcc:", "sent".to_string()),
+        ("Security:", plan_label(state)),
     ];
+    for (label, value) in labelled {
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("{label:>LABEL_WIDTH$} "),
+                Style::new().fg(theme.accent),
+            ),
+            Span::styled(value, Style::new().fg(theme.text_primary)),
+        ]));
+    }
+    lines.push(section(theme, area.width, "-- Attachments"));
     lines.extend(attachment_lines(app, state));
-    lines.push(Line::default());
+    lines.push(section(theme, area.width, "-- Preview"));
     lines.extend(body_preview(app, state));
-    let footer_row = area.height.saturating_sub(1);
-    let body_area = Rect {
-        height: footer_row,
-        ..area
-    };
-    frame.render_widget(Paragraph::new(lines), body_area);
-    let footer = Line::from(Span::styled(
-        FOOTER,
-        Style::new().fg(theme.text_muted),
+    frame.render_widget(Paragraph::new(lines), area);
+    let status = Line::from(Span::styled(
+        format!(
+            "-- Antiphon: Compose  [Approx. msg size: {}  \
+             Atts: {}]",
+            approx_size(state),
+            state.attachments.len(),
+        ),
+        bar,
     ));
     let footer_area = Rect {
-        y: area.y + footer_row,
+        y: area.y + area.height.saturating_sub(1),
         height: area.height.min(1),
         ..area
     };
-    frame.render_widget(Paragraph::new(footer), footer_area);
+    frame.render_widget(Paragraph::new(status), footer_area);
+}
+
+fn section(theme: &Theme, width: u16, title: &str) -> Line<'static> {
+    Line::from(Span::styled(
+        format!("{title:<width$}", width = width as usize),
+        Style::new()
+            .fg(theme.text_primary)
+            .bg(theme.surface)
+            .add_modifier(Modifier::BOLD),
+    ))
+}
+
+fn approx_size(state: &ComposeState) -> String {
+    let attachments: usize = state
+        .attachments
+        .iter()
+        .map(|attachment| attachment.bytes.len())
+        .sum();
+    let total = state.body.len() + attachments;
+    if total < BYTES_PER_K as usize {
+        return format!("{total}B");
+    }
+    format!("{:.1}K", total as f64 / f64::from(BYTES_PER_K))
 }
 
 fn plan_label(state: &ComposeState) -> String {
@@ -267,22 +311,25 @@ mod tests {
                 })
                 .collect()
         };
+        assert!(row(0).starts_with("y:Send"), "{:?}", row(0));
         assert!(
-            row(0).starts_with("From: Tester <tester@example.com>"),
+            row(1).contains("From: Tester <tester@example.com>"),
             "{:?}",
-            row(0)
+            row(1)
         );
-        assert!(row(1).contains("alba@example.com"), "{:?}", row(1));
-        assert!(row(4).contains("Rehearsal"), "{:?}", row(4));
-        assert!(row(5).contains("[encrypt]"), "{:?}", row(5));
-        assert!(row(6).contains("Attachments: none"), "{:?}", row(6));
-        assert!(row(8).contains("body line 1"), "{:?}", row(8));
+        assert!(row(2).contains("alba@example.com"), "{:?}", row(2));
+        assert!(row(5).contains("Rehearsal"), "{:?}", row(5));
+        assert!(row(6).contains("Fcc: sent"), "{:?}", row(6));
+        assert!(row(7).contains("[encrypt]"), "{:?}", row(7));
+        assert!(row(8).starts_with("-- Attachments"), "{:?}", row(8));
+        assert!(row(9).contains("Attachments: none"), "{:?}", row(9));
+        assert!(row(10).starts_with("-- Preview"), "{:?}", row(10));
+        assert!(row(11).contains("body line 1"), "{:?}", row(11));
         assert!(
-            row(16).contains("2 more body line(s)"),
+            row(19).starts_with("-- Antiphon: Compose"),
             "{:?}",
-            row(16)
+            row(19)
         );
-        assert!(row(19).contains("y send"), "{:?}", row(19));
     }
 
     #[test]
@@ -315,18 +362,18 @@ mod tests {
                 })
                 .collect()
         };
-        assert!(row(6).contains("Attachments: 2"), "{:?}", row(6));
+        assert!(row(9).contains("Attachments: 2"), "{:?}", row(9));
         assert!(
-            row(7).starts_with(
+            row(10).starts_with(
                 "\u{25b8} a.pdf (application/pdf, 3 bytes)"
             ),
             "{:?}",
-            row(7)
+            row(10)
         );
         assert!(
-            row(8).starts_with("  b.txt (text/plain, 3 bytes)"),
+            row(11).starts_with("  b.txt (text/plain, 3 bytes)"),
             "{:?}",
-            row(8)
+            row(11)
         );
     }
 }

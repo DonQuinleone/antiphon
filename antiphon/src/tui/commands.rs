@@ -95,6 +95,7 @@ pub enum PromptKind {
     Command,
     ConfirmUnsubscribe,
     AttachmentPath,
+    ConfirmDraft,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

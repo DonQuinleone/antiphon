@@ -232,10 +232,19 @@ fn editor_key(app: &mut App, key: KeyEvent) {
 /// came from: the review screen once one exists, else out of
 /// the compose entirely.
 fn cancel_headers(app: &mut App) {
-    let reviewed =
-        app.compose.as_ref().is_some_and(|state| state.reviewed);
-    if reviewed {
+    let Some(state) = &app.compose else {
+        return;
+    };
+    if state.reviewed {
         app.view = View::Review;
+        return;
+    }
+    let has_content = !state.body.trim().is_empty()
+        || !state.attachments.is_empty()
+        || !state.fields.subject.trim().is_empty()
+        || !state.fields.to.trim().is_empty();
+    if has_content {
+        app.open_prompt(PromptKind::ConfirmDraft);
         return;
     }
     app.abort_compose("compose aborted");
@@ -305,7 +314,18 @@ fn keymap_key(
     key: KeyEvent,
 ) {
     if app.help {
-        app.help = false;
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                app.help_scroll = app.help_scroll.saturating_add(1)
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                app.help_scroll = app.help_scroll.saturating_sub(1)
+            }
+            _ => {
+                app.help = false;
+                app.help_scroll = 0;
+            }
+        }
         return;
     }
     // Backspace scrolls the pager up out of the box (the
@@ -451,6 +471,24 @@ fn wire_op(intent: OpIntent) -> Operation {
 }
 
 fn prompt_key(app: &mut App, layout: &StoreLayout, key: KeyEvent) {
+    if app
+        .prompt
+        .as_ref()
+        .is_some_and(|prompt| prompt.kind == PromptKind::ConfirmDraft)
+    {
+        match key.code {
+            KeyCode::Char('y' | 'Y') => {
+                app.prompt = None;
+                session::save_draft_and_close(app, layout);
+            }
+            KeyCode::Char('n' | 'N') => {
+                app.prompt = None;
+                app.abort_compose("compose discarded");
+            }
+            _ => {}
+        }
+        return;
+    }
     if app.confirming_unsubscribe() {
         let confirmed = matches!(key.code, KeyCode::Char('y' | 'Y'));
         app.confirm_unsubscribe(confirmed);
@@ -484,7 +522,7 @@ fn submit_prompt(app: &mut App, layout: &StoreLayout) {
         PromptKind::AttachmentPath => {
             add_attachment(app, &prompt.buffer)
         }
-        PromptKind::ConfirmUnsubscribe => {}
+        PromptKind::ConfirmUnsubscribe | PromptKind::ConfirmDraft => {}
     }
 }
 

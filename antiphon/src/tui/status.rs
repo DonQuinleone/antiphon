@@ -29,6 +29,12 @@ fn prompt_line(theme: &Theme, prompt: &Prompt) -> Line<'static> {
         PromptKind::ConfirmUnsubscribe => {
             return confirm_line(theme, &prompt.buffer);
         }
+        PromptKind::ConfirmDraft => {
+            return Line::from(Span::styled(
+                "save as draft? y/n",
+                Style::new().fg(theme.accent_strong),
+            ));
+        }
     };
     Line::from(vec![
         Span::styled(
@@ -90,7 +96,11 @@ fn compose_status(
     state: &super::compose::ComposeState,
 ) -> Line<'static> {
     let mut spans = vec![Span::styled(
-        format!("compose \u{b7} {}", state.account()),
+        format!(
+            "compose \u{b7} {} \u{b7} ctrl-h headers \u{b7} \
+             :q in the editor reviews",
+            state.account()
+        ),
         Style::new().fg(theme.text_muted),
     )];
     if let Some(label) = state.plan().label() {
