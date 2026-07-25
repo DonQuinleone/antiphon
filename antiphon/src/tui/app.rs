@@ -5,6 +5,7 @@ use antiphon_render::{
     MailtoUnsubscribe, MessageAttachment, MessageHeader, RenderedBody,
 };
 use antiphon_store::MessageSummary;
+use antiphon_store::contacts::Contact;
 use antiphon_ui::{Theme, VESPERS};
 
 use super::actions::{OpIntent, account_names};
@@ -74,6 +75,7 @@ pub struct App {
     pub key_bindings: Vec<(String, String)>,
     pub keyring: Keyring,
     pub own_addresses: Vec<String>,
+    pub contacts: Vec<Contact>,
     pub preview: Option<super::preview::Preview>,
     pub reading_pane: ReadingPane,
     pub sidebar: bool,
@@ -151,6 +153,7 @@ impl App {
             key_bindings: Vec::new(),
             keyring,
             own_addresses,
+            contacts: Vec::new(),
             preview: None,
             reading_pane: loaded.config.ui.reading_pane,
             sidebar: true,
@@ -205,7 +208,8 @@ impl App {
         }
     }
 
-    pub fn start_compose(&mut self, state: ComposeState) {
+    pub fn start_compose(&mut self, mut state: ComposeState) {
+        state.contacts = self.contacts.clone();
         self.compose = Some(state);
         self.view = View::Compose;
     }

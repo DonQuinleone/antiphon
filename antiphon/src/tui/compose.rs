@@ -1,8 +1,10 @@
 use antiphon_render::{Draft, build_message};
 use antiphon_store::Envelope;
-use ratatui::crossterm::event::KeyEvent;
+use antiphon_store::contacts::Contact;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::attach::Attachment;
+use super::complete::{self, Completion};
 use super::crypto::{ComposeCrypto, PgpPlan};
 use super::headers::{HeaderFields, HeadersOutcome};
 use super::identity::ComposeIdentity;
@@ -30,6 +32,8 @@ pub(super) struct ComposeState {
     pub attachments: Vec<Attachment>,
     pub selected_attachment: usize,
     pub reviewed: bool,
+    pub contacts: Vec<Contact>,
+    pub completion: Option<Completion>,
 }
 
 impl ComposeState {
@@ -51,6 +55,8 @@ impl ComposeState {
             attachments: Vec::new(),
             selected_attachment: 0,
             reviewed: false,
+            contacts: Vec::new(),
+            completion: None,
         }
     }
 
@@ -108,13 +114,59 @@ impl ComposeState {
     }
 
     pub fn feed(&mut self, key: KeyEvent) -> HeadersOutcome {
-        match self.fields.feed(key) {
+        let outcome = match self.fields.feed(key) {
             HeadersOutcome::CycleFrom(step) => {
                 self.cycle_from(step);
                 HeadersOutcome::Edited
             }
             other => other,
+        };
+        match outcome {
+            HeadersOutcome::Edited => self.refresh_completion(),
+            _ => self.completion = None,
         }
+        outcome
+    }
+
+    /// Keys the completion popup owns while visible; anything
+    /// else falls through to the field machine.
+    pub fn completion_key(&mut self, key: KeyEvent) -> bool {
+        let Some(completion) = self.completion.as_mut() else {
+            return false;
+        };
+        let control = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Down => completion.step(1),
+            KeyCode::Up => completion.step(-1),
+            KeyCode::Char('n') if control => completion.step(1),
+            KeyCode::Char('p') if control => completion.step(-1),
+            KeyCode::Esc => self.completion = None,
+            KeyCode::Tab => {
+                let choice = completion.chosen().map(str::to_owned);
+                if let Some(choice) = choice {
+                    let text =
+                        complete::accept(self.fields.field(), &choice);
+                    self.fields.replace_field(text);
+                }
+                self.completion = None;
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    fn refresh_completion(&mut self) {
+        if !self.fields.recipient_focused() {
+            self.completion = None;
+            return;
+        }
+        let items =
+            complete::suggest(&self.contacts, self.fields.field());
+        if items.is_empty() {
+            self.completion = None;
+            return;
+        }
+        self.completion = Some(Completion { items, selected: 0 });
     }
 
     fn cycle_from(&mut self, step: i32) {
@@ -397,6 +449,40 @@ mod tests {
         state.select_attachment(-1);
         state.remove_selected_attachment();
         assert_eq!(state.attachments[0].filename, "b.txt");
+    }
+
+    #[test]
+    fn typing_a_recipient_offers_and_accepts_completion() {
+        fn key(code: KeyCode) -> KeyEvent {
+            KeyEvent::new(code, KeyModifiers::NONE)
+        }
+
+        let mut state = test_state();
+        state.contacts = vec![Contact {
+            address: "alba@example.com".to_string(),
+            name: "Alba Voss".to_string(),
+            score: 7,
+        }];
+        assert!(!state.completion_key(key(KeyCode::Tab)));
+        for ch in "al".chars() {
+            state.feed(key(KeyCode::Char(ch)));
+        }
+        assert!(state.completion.is_some());
+        assert!(state.completion_key(key(KeyCode::Tab)));
+        assert_eq!(state.fields.to, "Alba Voss <alba@example.com>");
+        assert!(state.completion.is_none());
+
+        for ch in ", al".chars() {
+            state.feed(key(KeyCode::Char(ch)));
+        }
+        assert!(state.completion_key(key(KeyCode::Esc)));
+        assert!(state.completion.is_none(), "esc dismisses only");
+        state.feed(key(KeyCode::Char('b')));
+        assert!(state.completion.is_some(), "typing re-offers");
+        assert!(state.completion_key(key(KeyCode::Esc)));
+        state.feed(key(KeyCode::Tab));
+        assert_eq!(state.fields.focus, 1, "tab moves focus again");
+        assert!(state.completion.is_none());
     }
 
     #[test]

@@ -2,6 +2,7 @@ mod actions;
 mod app;
 mod attach;
 mod commands;
+mod complete;
 mod compose;
 mod crypto;
 mod decrypt;
@@ -115,6 +116,8 @@ pub fn run(
         .iter()
         .map(|(action, text)| (text.clone(), action.to_string()))
         .collect();
+    app.contacts = antiphon_store::contacts::load(layout);
+    refresh_contacts(layout);
     app.apply(antiphon_core::Action::SidebarOpen);
     if app.take_requery() {
         let query = app.current_query.clone();
@@ -139,6 +142,18 @@ pub fn run(
             ExitCode::FAILURE
         }
     }
+}
+
+/// Re-harvests the contact ranking off the startup path; the
+/// session uses the previous harvest, the next one gets this.
+fn refresh_contacts(layout: &StoreLayout) {
+    let layout = layout.clone();
+    std::thread::spawn(move || {
+        let Ok(index) = SearchIndex::open(&layout) else {
+            return;
+        };
+        let _ = antiphon_store::contacts::harvest(&layout, &index);
+    });
 }
 
 fn query_window(
@@ -309,6 +324,9 @@ fn compose_key(
     let Some(state) = app.compose.as_mut() else {
         return Ok(());
     };
+    if state.completion_key(key) {
+        return Ok(());
+    }
     match state.feed(key) {
         HeadersOutcome::Edited | HeadersOutcome::CycleFrom(_) => Ok(()),
         HeadersOutcome::OpenEditor => {

@@ -15,9 +15,12 @@ const FROM_FIELD: usize = LAST_FIELD;
 const LABELS: [&str; FIELD_COUNT] =
     ["To:", "Cc:", "Bcc:", "Subject:", "From:"];
 const LABEL_COLS: usize = 9;
+const RECIPIENT_FIELDS: usize = 3;
 const CURSOR: char = '\u{258c}';
 const HINT: &str = "tab/shift-tab move \u{b7} enter on From (or \
                     ctrl-e) opens the editor \u{b7} esc backs out";
+const COMPLETION_HINT: &str = "tab completes \u{b7} up/down \
+                               select \u{b7} esc dismisses";
 
 /// The structured header fields above the body editor: To,
 /// Cc, Bcc and Subject take free text; From cycles through
@@ -137,6 +140,17 @@ impl HeaderFields {
         field.remove(at);
     }
 
+    pub fn recipient_focused(&self) -> bool {
+        self.focus < RECIPIENT_FIELDS
+    }
+
+    /// Swaps the focused field's text wholesale, cursor at the
+    /// end; completion acceptance is the caller.
+    pub fn replace_field(&mut self, text: String) {
+        self.cursor = text.chars().count();
+        *self.field_mut() = text;
+    }
+
     pub fn field(&self) -> &str {
         match self.focus {
             0 => &self.to,
@@ -180,11 +194,42 @@ pub(super) fn draw_headers(frame: &mut Frame, app: &App, area: Rect) {
     };
     let mut lines = field_lines(app.theme, state, true);
     lines.push(Line::default());
-    lines.push(Line::from(Span::styled(
-        HINT,
-        Style::new().fg(app.theme.text_muted),
-    )));
+    match &state.completion {
+        Some(completion) => {
+            lines.extend(completion_lines(app.theme, completion))
+        }
+        None => lines.push(Line::from(Span::styled(
+            HINT,
+            Style::new().fg(app.theme.text_muted),
+        ))),
+    }
     frame.render_widget(Paragraph::new(lines), area);
+}
+
+fn completion_lines(
+    theme: &antiphon_ui::Theme,
+    completion: &super::complete::Completion,
+) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line> = completion
+        .items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            let style = if index == completion.selected {
+                Style::new()
+                    .fg(theme.accent_strong)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::new().fg(theme.text_primary)
+            };
+            Line::from(Span::styled(format!("  {item}"), style))
+        })
+        .collect();
+    lines.push(Line::from(Span::styled(
+        COMPLETION_HINT,
+        Style::new().fg(theme.text_muted),
+    )));
+    lines
 }
 
 /// The five header rows, shared by the fields stage (with
