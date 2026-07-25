@@ -21,6 +21,7 @@ mod pager_body;
 mod patches;
 mod prefill;
 mod preview;
+mod reader;
 mod review;
 mod scope;
 mod session;
