@@ -1,43 +1,36 @@
-image: debian/stable
-arch: arm64
+image: alpine/latest
+arch: aarch64
 packages:
-  - curl
-  - build-essential
-  - libnotmuch-dev
-  - pkg-config
-  - scdoc
+  - cargo
+  - rust
+  - notmuch-dev
+  - hut
 oauth: git.sr.ht/OBJECTS:RW
-environment:
-  repo: ~donquinleone/antiphon
 sources:
   - https://git.sr.ht/~donquinleone/antiphon
-secrets: []
+environment:
+  target: aarch64-linux-musl
 tasks:
-  - gate: |
+  - tag-only: |
       cd antiphon
-      tag=$(git describe --exact-match 2>/dev/null || true)
-      if [ -z "$tag" ]; then
-          echo "not a tag build; nothing to release"
-          exit 0
-      fi
-      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-          | sh -s -- -y --profile minimal
+      git describe --exact-match --tags HEAD >/dev/null 2>&1 \
+        || complete-build
+  - build: |
+      cd antiphon
+      cargo build --release --locked -p antiphon -p antiphond
   - package: |
       cd antiphon
-      tag=$(git describe --exact-match 2>/dev/null || true)
-      [ -n "$tag" ] || exit 0
-      . "$HOME/.cargo/env"
-      cargo build --release --locked --workspace
-      name="antiphon-$tag-aarch64-linux-gnu"
+      tag="$(git describe --exact-match --tags HEAD)"
+      name="antiphon-$tag-$target"
       mkdir "$name"
       cp target/release/antiphon target/release/antiphond "$name/"
-      cp -R dist LICENSE README.md "$name/"
-      tar czf "$name.tar.gz" "$name"
+      cp -R dist/systemd dist/dinit dist/runit dist/autostart \
+        COPYING README.md "$name/"
+      tar -czf "$name.tar.gz" "$name"
       sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
-  - upload: |
+  - publish: |
       cd antiphon
-      tag=$(git describe --exact-match 2>/dev/null || true)
-      [ -n "$tag" ] || exit 0
-      name="antiphon-$tag-aarch64-linux-gnu"
-      hut git artifact upload --repo "https://git.sr.ht/$repo" \
-          --rev "$tag" "$name.tar.gz" "$name.tar.gz.sha256"
+      tag="$(git describe --exact-match --tags HEAD)"
+      name="antiphon-$tag-$target"
+      hut git artifact upload "$name.tar.gz" --rev "$tag"
+      hut git artifact upload "$name.tar.gz.sha256" --rev "$tag"
