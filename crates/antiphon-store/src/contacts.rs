@@ -50,7 +50,7 @@ fn rank(messages: &[MessageSummary]) -> Vec<Contact> {
             (&message.to, SENT_RECIPIENT_WEIGHT),
             (&message.from, SENDER_WEIGHT),
         ] {
-            for (address, name) in addresses(field) {
+            for (address, name) in address_entries(field) {
                 let points =
                     weight + if recent { RECENT_BONUS } else { 0 };
                 let entry = scores
@@ -80,7 +80,8 @@ fn rank(messages: &[MessageSummary]) -> Vec<Contact> {
 /// Splits an address header into (address, display name)
 /// pairs; tolerant of bare addresses and comma-joined lists,
 /// with commas inside quoted names or angle brackets kept.
-fn addresses(field: &str) -> Vec<(String, String)> {
+/// Public because reply-all needs the same tolerant split.
+pub fn address_entries(field: &str) -> Vec<(String, String)> {
     split_entries(field)
         .into_iter()
         .filter_map(|entry| {
@@ -206,7 +207,7 @@ mod tests {
             ("undisclosed-recipients:;", vec![]),
         ];
         for (field, expected) in cases {
-            let got: Vec<(String, String)> = addresses(field);
+            let got: Vec<(String, String)> = address_entries(field);
             let want: Vec<(String, String)> = expected
                 .iter()
                 .map(|(a, n)| ((*a).to_owned(), (*n).to_owned()))

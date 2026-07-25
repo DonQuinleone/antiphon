@@ -13,6 +13,7 @@ use super::draw;
 use super::editor::{EditorPane, EditorSession};
 
 const DRAFTS_DIR: &str = "drafts";
+const PASSED_TAG: &str = "passed";
 const FALLBACK_EDITOR: &str = "vi";
 const EDITOR_FAILED: &str =
     "editor exited with an error; body unchanged";
@@ -189,8 +190,17 @@ pub(super) fn send_compose(app: &mut App, layout: &StoreLayout) {
             return;
         }
     };
+    let forwarded = state.forwarded_of.clone();
     match Outbox::open(layout).enqueue(&envelope, &sealed) {
         Ok(_) => {
+            if let Some((account, message_id)) = forwarded {
+                app.pending_ops.push(super::actions::OpIntent::Flag {
+                    account,
+                    message_id,
+                    add: vec![PASSED_TAG.to_string()],
+                    remove: Vec::new(),
+                });
+            }
             app.discard_editor();
             app.compose = None;
             app.view = View::List;

@@ -1,19 +1,16 @@
 use antiphon_core::Action;
-use antiphon_store::MessageSummary;
 
-use super::actions::account_of;
 use super::app::{App, View};
-use super::compose::{ComposeState, IdentityChoice, bare_address};
+use super::compose::{ComposeState, IdentityChoice};
 use super::decrypt;
 use super::identity::{ComposeContext, ComposeIdentity};
-use super::lists;
-use super::message_list;
-use super::prefill::{self, DraftFields, ReplySource};
+use super::prefill::{self, DraftFields};
+use super::replies::{self, reply_basis};
 
 const CONVENTION_NEW: &str = "new";
-const CONVENTION_REPLY: &str = "reply";
+pub(super) const CONVENTION_REPLY: &str = "reply";
 
-fn now_attribution() -> String {
+pub(super) fn now_attribution() -> String {
     chrono::Local::now()
         .format(prefill::ATTRIBUTION_DATE_FORMAT)
         .to_string()
@@ -153,7 +150,7 @@ pub(super) fn pending_resume_request(
 /// A compose ready for the fields stage: every configured
 /// identity to cycle through, the resolved default selected,
 /// and any armed :sign/:encrypt overrides consumed.
-fn state_for(
+pub(super) fn state_for(
     app: &mut App,
     context: &ComposeContext,
     account: &str,
@@ -196,13 +193,9 @@ pub(super) fn dispatch(
         app.notice = None;
         return fresh_request(app, context);
     }
-    if action == Action::Reply {
+    if let Some(request) = replies::request(action) {
         app.notice = None;
-        return reply_request(app, context);
-    }
-    if action == Action::ReplyList {
-        app.notice = None;
-        return list_reply_request(app, context);
+        return request(app, context);
     }
     if action == Action::Help {
         app.help = true;
@@ -242,7 +235,7 @@ pub(super) fn dispatch(
     None
 }
 
-fn body_text(raw: &[u8]) -> String {
+pub(super) fn body_text(raw: &[u8]) -> String {
     antiphon_render::body_text(raw).text
 }
 
@@ -263,122 +256,6 @@ fn fresh_request(
     Some(state_for(app, context, account, identity, fields))
 }
 
-/// Everything both reply flavours need before recipients are
-/// decided: the message, its raw bytes, the delivered
-/// addresses, and the identity the reply sends from.
-struct ReplyBasis {
-    message: MessageSummary,
-    raw: Vec<u8>,
-    delivered: Vec<String>,
-    account: String,
-    identity: ComposeIdentity,
-}
-
-fn reply_basis(
-    app: &mut App,
-    context: &ComposeContext,
-) -> Option<ReplyBasis> {
-    let Some(message) = app.selected_message().cloned() else {
-        app.notice = Some("no message selected".into());
-        return None;
-    };
-    let raw = match std::fs::read(&message.path) {
-        Ok(raw) => raw,
-        Err(error) => {
-            app.notice = Some(format!(
-                "cannot read {}: {error}",
-                message.path.display()
-            ));
-            return None;
-        }
-    };
-    let delivered = antiphon_render::delivered_addresses(&raw);
-    let Some((account, identity)) = context
-        .reply_identity_for(&account_of(&message.path), &delivered)
-    else {
-        app.notice = Some("no compose identity configured".into());
-        return None;
-    };
-    Some(ReplyBasis {
-        message,
-        raw,
-        delivered,
-        account,
-        identity,
-    })
-}
-
-fn reply_request(
-    app: &mut App,
-    context: &ComposeContext,
-) -> Option<ComposeState> {
-    let basis = reply_basis(app, context)?;
-    let to = bare_address(&basis.message.from);
-    finish_reply(app, context, basis, &to, "", None)
-}
-
-fn list_reply_request(
-    app: &mut App,
-    context: &ComposeContext,
-) -> Option<ComposeState> {
-    let basis = reply_basis(app, context)?;
-    let headers = antiphon_render::list_headers(&basis.raw);
-    let plan = lists::list_recipients(
-        &headers,
-        &basis.message.from,
-        &basis.delivered,
-        &basis.identity.address,
-    );
-    let plan = match plan {
-        Ok(plan) => plan,
-        Err(notice) => {
-            app.notice = Some(notice);
-            return None;
-        }
-    };
-    let to = plan.to.join(", ");
-    let cc = plan.cc.join(", ");
-    finish_reply(app, context, basis, &to, &cc, plan.warning)
-}
-
-fn finish_reply(
-    app: &mut App,
-    context: &ComposeContext,
-    basis: ReplyBasis,
-    to: &str,
-    cc: &str,
-    warning: Option<String>,
-) -> Option<ComposeState> {
-    let source = ReplySource {
-        from: &basis.message.from,
-        subject: &basis.message.subject,
-        message_id: &basis.message.id,
-        date: &message_list::format_date(
-            basis.message.date_unix,
-            prefill::ATTRIBUTION_DATE_FORMAT,
-        ),
-        body: &body_text(&basis.raw),
-    };
-    let fields = prefill::reply_fields(
-        &basis.identity,
-        &source,
-        to,
-        cc,
-        context.template(CONVENTION_REPLY).as_deref(),
-    );
-    app.notice = warning;
-    Some(state_for(
-        app,
-        context,
-        &basis.account,
-        &basis.identity,
-        fields,
-    ))
-}
-
-/// Re-renders the open message with the other body part; the
-/// raw bytes stay in hand so no file or agent round-trip
-/// repeats beyond the render itself.
 fn toggle_html(app: &mut App) {
     if !antiphon_render::has_html_part(&app.pager_raw) {
         app.notice = Some("this message has no html part".to_string());

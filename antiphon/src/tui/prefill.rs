@@ -3,6 +3,7 @@ use super::message_list::sender_name;
 
 pub const ATTRIBUTION_DATE_FORMAT: &str = "%a, %d %b %Y at %H:%M";
 const REPLY_PREFIX: &str = "re:";
+const FORWARD_PREFIX: &str = "fwd:";
 
 pub struct ReplySource<'a> {
     pub from: &'a str,
@@ -120,6 +121,35 @@ fn reply_subject(subject: &str) -> String {
         return trimmed.to_string();
     }
     format!("Re: {trimmed}")
+}
+
+/// A forward starts with no recipients, the subject under
+/// Fwd:, and the original inline between rule lines; nothing
+/// is quoted because nothing is being answered.
+pub fn forward_fields(source: &ReplySource<'_>) -> DraftFields {
+    let subject = source.subject.trim();
+    let subject = if subject.to_lowercase().starts_with(FORWARD_PREFIX)
+    {
+        subject.to_string()
+    } else {
+        format!("Fwd: {subject}")
+    };
+    let body = format!(
+        "----- Forwarded message from {} -----\n\
+         Date: {}\n\
+         Subject: {}\n\n\
+         {}\n\
+         ----- End forwarded message -----\n",
+        source.from,
+        source.date,
+        source.subject,
+        source.body.trim_end(),
+    );
+    DraftFields {
+        subject,
+        body,
+        ..DraftFields::default()
+    }
 }
 
 fn quoted_body(source: &ReplySource<'_>) -> String {

@@ -27,10 +27,12 @@ const DEFAULT_BINDINGS: &[(Action, &str)] = &[
     (Action::SidebarPrevious, "ctrl-p"),
     (Action::SidebarOpen, "ctrl-o"),
     (Action::ToggleSidebar, "B"),
-    (Action::CycleReadingPane, "R"),
-    (Action::Sync, ",s"),
+    (Action::CycleReadingPane, "p"),
+    (Action::Sync, "s"),
     (Action::Reply, "r"),
+    (Action::ReplyAll, "R"),
     (Action::ReplyList, "L"),
+    (Action::Forward, "f"),
     (Action::Compose, "n"),
     (Action::ToggleRead, "m"),
     (Action::MarkAllRead, "M"),
@@ -326,7 +328,10 @@ mod tests {
             (press(KeyCode::Char('/')), Action::Search),
             (press(KeyCode::Char(':')), Action::Command),
             (shifted('B'), Action::ToggleSidebar),
-            (shifted('R'), Action::CycleReadingPane),
+            (press(KeyCode::Char('p')), Action::CycleReadingPane),
+            (shifted('R'), Action::ReplyAll),
+            (press(KeyCode::Char('f')), Action::Forward),
+            (press(KeyCode::Char('s')), Action::Sync),
             (press(KeyCode::Char('r')), Action::Reply),
             (shifted('L'), Action::ReplyList),
             (press(KeyCode::Char('n')), Action::Compose),
@@ -379,20 +384,6 @@ mod tests {
             let mut keymap = Keymap::default();
             assert_eq!(
                 keymap.feed(press(KeyCode::Char('g'))),
-                Resolution::Pending,
-            );
-            assert_eq!(
-                keymap.feed(second),
-                Resolution::Match(action),
-                "event {second:?}",
-            );
-        }
-
-        let comma_cases = [(press(KeyCode::Char('s')), Action::Sync)];
-        for (second, action) in comma_cases {
-            let mut keymap = Keymap::default();
-            assert_eq!(
-                keymap.feed(press(KeyCode::Char(','))),
                 Resolution::Pending,
             );
             assert_eq!(

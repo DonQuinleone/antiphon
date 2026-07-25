@@ -34,6 +34,7 @@ pub(super) struct ComposeState {
     pub reviewed: bool,
     pub contacts: Vec<Contact>,
     pub completion: Option<Completion>,
+    pub forwarded_of: Option<(String, String)>,
 }
 
 impl ComposeState {
@@ -57,6 +58,7 @@ impl ComposeState {
             reviewed: false,
             contacts: Vec::new(),
             completion: None,
+            forwarded_of: None,
         }
     }
 
