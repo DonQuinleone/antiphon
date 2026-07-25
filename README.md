@@ -24,20 +24,14 @@ and your own gpg-agent, keyring and smartcard included.
 
 ## A look around
 
-<img src="https://git.sr.ht/~donquinleone/antiphon/blob/master/assets/screenshots/list.png"
-     alt="The message list: sidebar with unread counts, status
-          markers, threading marks and the reading pane"
+<img src="https://git.sr.ht/~donquinleone/antiphon/blob/master/assets/screenshots/themes.gif"
+     alt="The message list cycling through all seventeen
+          shipped themes: two accounts in the sidebar, unread
+          counts, status markers and the reading pane"
      width="820">
 
-<img src="https://git.sr.ht/~donquinleone/antiphon/blob/master/assets/screenshots/pager.png"
-     alt="Reading a message: generated keybar, headers, and
-          the attachment drawer expanded"
-     width="820">
-
-<img src="https://git.sr.ht/~donquinleone/antiphon/blob/master/assets/screenshots/compose.png"
-     alt="Composing: structured header fields with contact
-          completion in a popover"
-     width="820">
+Seventeen themes ship, and yours is one TOML file away; the
+website shows [the rest of the interface](https://antiphon.net).
 
 ## Why Antiphon
 
