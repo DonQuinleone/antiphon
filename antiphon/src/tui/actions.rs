@@ -23,6 +23,11 @@ pub enum OpIntent {
         account: String,
         message_id: String,
     },
+    Move {
+        account: String,
+        message_id: String,
+        to_folder: String,
+    },
 }
 
 pub fn account_of(path: &std::path::Path) -> String {
@@ -47,6 +52,7 @@ pub fn account_names(loaded: &Loaded) -> Vec<String> {
 }
 
 const THREAD_LABEL: &str = "thread";
+const DEFAULT_ARCHIVE_FOLDER: &str = "Archive";
 
 impl App {
     pub(super) fn apply_in_list(&mut self, action: Action) {
@@ -96,6 +102,7 @@ impl App {
             Action::MarkUnread => self.set_unread(true),
             Action::ToggleFlagged => self.toggle_flagged(),
             Action::DeleteMessage => self.delete_selected(),
+            Action::Archive => self.archive_selected(),
             Action::ThreadView => self.open_thread(),
             Action::Back => self.close_thread(),
             Action::Quit => self.quit = true,
@@ -232,6 +239,33 @@ impl App {
         self.selected = self.selected.min(self.last_index());
     }
 
+    /// a sends the message to the account's archive folder
+    /// ("Archive" unless the account names another): a durable
+    /// move op the daemon replays against the server.
+    pub(super) fn archive_selected(&mut self) {
+        if self.selected >= self.messages.len() {
+            return;
+        }
+        let message = self.messages.remove(self.selected);
+        self.total_messages = self.total_messages.saturating_sub(1);
+        let account = account_of(&message.path);
+        let to_folder = self.archive_folder_of(&account);
+        self.pending_ops.push(OpIntent::Move {
+            account,
+            message_id: message.id,
+            to_folder,
+        });
+        self.selected = self.selected.min(self.last_index());
+    }
+
+    fn archive_folder_of(&self, account: &str) -> String {
+        self.archive_folders
+            .iter()
+            .find(|(name, _)| name == account)
+            .map(|(_, folder)| folder.clone())
+            .unwrap_or_else(|| DEFAULT_ARCHIVE_FOLDER.to_string())
+    }
+
     fn select_forward(&mut self, rows: usize) {
         self.selected = (self.selected + rows).min(self.last_index());
     }
@@ -255,6 +289,38 @@ impl App {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn archiving_moves_to_the_account_folder_and_drops_the_row() {
+        let mut app = app_with_messages(2);
+        app.messages[1].path =
+            std::path::PathBuf::from("store/maildir/work/cur/two.eml");
+        app.archive_folders =
+            vec![("work".to_string(), "Archief".to_string())];
+        app.selected = 1;
+        app.apply_in_list(Action::Archive);
+        assert_eq!(app.messages.len(), 1);
+        assert_eq!(app.total_messages, 1);
+        let Some(OpIntent::Move {
+            account, to_folder, ..
+        }) = app.pending_ops.last()
+        else {
+            panic!("expected a move op");
+        };
+        assert_eq!(account, "work");
+        assert_eq!(to_folder, "Archief");
+
+        app.apply_in_list(Action::Archive);
+        let Some(OpIntent::Move { to_folder, .. }) =
+            app.pending_ops.last()
+        else {
+            panic!("expected a move op");
+        };
+        assert_eq!(to_folder, "Archive", "default folder");
+        assert!(app.messages.is_empty());
+        app.apply_in_list(Action::Archive);
+        assert_eq!(app.pending_ops.len(), 2, "empty list is safe");
+    }
 
     #[test]
     fn t_pivots_to_the_thread_and_back_restores() {

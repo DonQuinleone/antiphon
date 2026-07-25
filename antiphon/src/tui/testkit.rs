@@ -62,6 +62,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         key_bindings: Vec::new(),
         preview: None,
         own_addresses: Vec::new(),
+        archive_folders: Vec::new(),
         contacts: Vec::new(),
         pending_rsvp: None,
         keyring: Keyring::default(),

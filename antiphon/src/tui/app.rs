@@ -75,6 +75,7 @@ pub struct App {
     pub key_bindings: Vec<(String, String)>,
     pub keyring: Keyring,
     pub own_addresses: Vec<String>,
+    pub archive_folders: Vec<(String, String)>,
     pub contacts: Vec<Contact>,
     pub preview: Option<super::preview::Preview>,
     pub reading_pane: ReadingPane,
@@ -156,6 +157,7 @@ impl App {
             key_bindings: Vec::new(),
             keyring,
             own_addresses,
+            archive_folders: archive_folders(loaded),
             contacts: Vec::new(),
             preview: None,
             reading_pane: loaded.config.ui.reading_pane,
@@ -322,6 +324,10 @@ impl App {
             }
             Action::OpenLink => self.open_link_picker(),
             Action::Attachments => self.toggle_drawer(),
+            Action::Archive => {
+                self.view = View::List;
+                self.archive_selected();
+            }
             Action::Back | Action::Quit => self.view = View::List,
             _ => self.not_built_notice(),
         }
@@ -353,6 +359,17 @@ impl App {
     fn pager_line_count(&self) -> i32 {
         self.pager_body.lines().count() as i32
     }
+}
+
+fn archive_folders(loaded: &Loaded) -> Vec<(String, String)> {
+    loaded
+        .accounts
+        .iter()
+        .filter_map(|entry| {
+            let folder = entry.account.account.archive.clone()?;
+            Some((entry.account.account.name.clone(), folder))
+        })
+        .collect()
 }
 
 fn own_addresses(loaded: &Loaded) -> Vec<String> {

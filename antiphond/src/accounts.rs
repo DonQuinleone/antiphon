@@ -204,6 +204,7 @@ mod tests {
                 account: Account {
                     name: "work".to_string(),
                     maildir: None,
+                    archive: None,
                 },
                 imap: Imap {
                     host: "imap.example.com".to_string(),

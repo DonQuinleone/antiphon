@@ -42,8 +42,9 @@ const DEFAULT_BINDINGS: &[(Action, &str)] = &[
     (Action::Help, "?"),
     (Action::ToggleHeaders, "t"),
     (Action::OpenLink, "o"),
-    (Action::Attachments, "a"),
+    (Action::Attachments, "v"),
     (Action::ThreadView, "T"),
+    (Action::Archive, "a"),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -330,8 +331,9 @@ mod tests {
             (press(KeyCode::Char('n')), Action::Compose),
             (press(KeyCode::Char('t')), Action::ToggleHeaders),
             (press(KeyCode::Char('o')), Action::OpenLink),
-            (press(KeyCode::Char('a')), Action::Attachments),
+            (press(KeyCode::Char('v')), Action::Attachments),
             (shifted('T'), Action::ThreadView),
+            (press(KeyCode::Char('a')), Action::Archive),
             (
                 KeyEvent::new(
                     KeyCode::Char('n'),

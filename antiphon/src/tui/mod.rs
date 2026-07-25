@@ -365,6 +365,11 @@ fn wire_op(intent: OpIntent) -> Operation {
             account,
             message_id,
         } => (account, message_id, OpKind::Delete),
+        OpIntent::Move {
+            account,
+            message_id,
+            to_folder,
+        } => (account, message_id, OpKind::Move { to_folder }),
     };
     Operation {
         op_id: OpId(DAEMON_ASSIGNS_ID),

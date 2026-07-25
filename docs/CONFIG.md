@@ -118,7 +118,10 @@ of the message), `open-link` (`o`: a numbered picker over
 the links of the open message; type the number and press
 enter, or move with `j`/`k`, and the url goes to the system
 opener, `open` on macOS and `xdg-open` elsewhere; `esc`
-closes), `attachments` (`a`: expand the attachment drawer),
+closes), `attachments` (`v`: expand the attachment drawer),
+`archive` (`a`: move the message to the account's archive
+folder, from the list or the pager; the row leaves at once
+and the daemon replays the move against the server),
 `pane-down`/`pane-up` (`J`/`K`: scroll the reading pane),
 `thread-view` (`T`: pivot the flat list onto the selected
 message's whole thread; `back` (`esc`) restores the listing
@@ -135,7 +138,7 @@ itself never fetches anything.
 
 A message with attachments shows a one-line drawer at the
 pager's bottom, e.g. `2 attachments: report.pdf, photo.jpg`,
-truncated to the width. `a` expands it into a list: `j`/`k`
+truncated to the width. `v` expands it into a list: `j`/`k`
 select, `s` saves the decoded bytes to a prompted path
 (prefilled with the sent filename, `~` expands), `v` writes
 a temporary copy and hands it to the system opener, and
@@ -195,6 +198,8 @@ nothing is ever fetched automatically.
 name = "personal"
 maildir = "personal"       # reserved; the store folder is
                            # the account name for now
+archive = "Archive"        # where `a` files mail; this is
+                           # also the default
 
 [imap]
 host = "imap.example.com"

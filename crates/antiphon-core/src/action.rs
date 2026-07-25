@@ -36,6 +36,7 @@ pub enum Action {
     OpenLink,
     Attachments,
     ThreadView,
+    Archive,
 }
 
 const NAMES: &[(Action, &str)] = &[
@@ -73,6 +74,7 @@ const NAMES: &[(Action, &str)] = &[
     (Action::OpenLink, "open-link"),
     (Action::Attachments, "attachments"),
     (Action::ThreadView, "thread-view"),
+    (Action::Archive, "archive"),
 ];
 
 impl Action {
