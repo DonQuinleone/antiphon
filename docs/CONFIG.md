@@ -56,7 +56,7 @@ idle_lock_minutes = 0      # seal after N client-less
 unlock = ["touchid", "yubikey", "passphrase"]
 
 [sync]
-interval_minutes = 5       # periodic daemon sync; 0 disables
+interval_minutes = 2       # periodic daemon sync; 0 disables
 idle = false               # IMAP IDLE push on each INBOX
 
 [daemon]
@@ -246,11 +246,13 @@ and Subject are structured fields edited in place, and From
 cycles through every configured identity with `left`/`right`
 or `space` rather than taking free text; replies preselect the
 identity the resolution engine picked. `tab`/`shift-tab` move
-between fields, `enter` advances and, on From (or `ctrl-e`
-from anywhere), opens `$EDITOR` on the body alone; headers
-never pass through the editor. `esc` backs out of the fields
-stage (to the review screen once one exists, else out of the
-compose).
+between fields, `enter` advances and, on From, opens `$EDITOR`
+on the body alone; headers never pass through the editor.
+`ctrl-e` (or `ctrl-h`) toggles between the fields and the
+running editor, both ways, so one chord covers the round
+trip. `esc` backs out of the fields stage (to the review
+screen once one exists, else out of the compose). The stage's
+keys are always spelt out in the status line.
 
 Leaving the editor lands on a review screen, Mutt style,
 showing the recipients, subject, seal plan, attachments and
@@ -258,14 +260,14 @@ the first body lines; nothing is sent until confirmed there.
 Its keys:
 
     y    send (seal per the plan, queue for antiphond)
-    e    edit the body again
-    h    edit the header fields again
+    e    edit the body again (ctrl-e works too)
+    h    edit the header fields again (ctrl-h works too)
     a    add an attachment (path prompt, ~ expands)
     d    remove the selected attachment
     j/k  move the attachment selection
     s    toggle signing for this message
     x    toggle encryption for this message
-    q    save as a draft file and close
+    q    close, asking first whether to save a draft
     ^c   stays on review; nothing is discarded
 
 Attachments are read in full when added, so a bad path fails

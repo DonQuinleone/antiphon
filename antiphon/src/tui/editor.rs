@@ -102,6 +102,12 @@ impl EditorSession {
         let _ = self.writer.flush();
     }
 
+    /// Ends the child outright; used when the compose that
+    /// owned this editor is discarded rather than finished.
+    pub fn kill(&mut self) {
+        let _ = self.child.kill();
+    }
+
     pub fn exit_success(&mut self) -> Option<bool> {
         let status = self.child.try_wait().ok().flatten()?;
         Some(status.success())

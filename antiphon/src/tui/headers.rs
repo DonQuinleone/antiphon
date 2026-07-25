@@ -14,13 +14,10 @@ const LAST_FIELD: usize = FIELD_COUNT - 1;
 const FROM_FIELD: usize = LAST_FIELD;
 const LABELS: [&str; FIELD_COUNT] =
     ["To:", "Cc:", "Bcc:", "Subject:", "From:"];
-const LABEL_COLS: usize = 9;
+const LABEL_COLS: usize = 10;
 const RECIPIENT_FIELDS: usize = 3;
 const CURSOR: char = '\u{258c}';
-const HINT: &str = "tab/shift-tab move \u{b7} enter on From (or \
-                    ctrl-e) opens the editor \u{b7} esc backs out";
-const COMPLETION_HINT: &str = "tab completes \u{b7} up/down \
-                               select \u{b7} esc dismisses";
+const POPOVER_MAX_WIDTH: u16 = 46;
 
 /// The structured header fields above the body editor: To,
 /// Cc, Bcc and Subject take free text; From cycles through
@@ -72,7 +69,7 @@ impl HeaderFields {
 
     fn control_key(&mut self, code: KeyCode) -> HeadersOutcome {
         match code {
-            KeyCode::Char('e') => HeadersOutcome::OpenEditor,
+            KeyCode::Char('e' | 'h') => HeadersOutcome::OpenEditor,
             _ => HeadersOutcome::Edited,
         }
     }
@@ -192,25 +189,39 @@ pub(super) fn draw_headers(frame: &mut Frame, app: &App, area: Rect) {
     let Some(state) = &app.compose else {
         return;
     };
-    let mut lines = field_lines(app.theme, state, true);
-    lines.push(Line::default());
-    match &state.completion {
-        Some(completion) => {
-            lines.extend(completion_lines(app.theme, completion))
-        }
-        None => lines.push(Line::from(Span::styled(
-            HINT,
-            Style::new().fg(app.theme.text_muted),
-        ))),
-    }
+    let lines = field_lines(app.theme, state, true);
     frame.render_widget(Paragraph::new(lines), area);
 }
 
-fn completion_lines(
-    theme: &antiphon_ui::Theme,
-    completion: &super::complete::Completion,
-) -> Vec<Line<'static>> {
-    let mut lines: Vec<Line> = completion
+/// The contact suggestions as a popover under the focused
+/// field, overlaying whatever sits beneath so the layout
+/// never reflows; drawn last in the compose view.
+pub(super) fn draw_completion(
+    frame: &mut Frame,
+    app: &App,
+    area: Rect,
+) {
+    let Some(state) = &app.compose else {
+        return;
+    };
+    let Some(completion) = &state.completion else {
+        return;
+    };
+    let anchor_row = state.fields.focus as u16 + 1;
+    if anchor_row >= area.height {
+        return;
+    }
+    let popover = Rect {
+        x: area.x + LABEL_COLS as u16,
+        y: area.y + anchor_row,
+        width: POPOVER_MAX_WIDTH
+            .min(area.width.saturating_sub(LABEL_COLS as u16)),
+        height: (completion.items.len() as u16)
+            .min(area.height - anchor_row),
+    };
+    frame.render_widget(ratatui::widgets::Clear, popover);
+    let theme = app.theme;
+    let lines: Vec<Line<'static>> = completion
         .items
         .iter()
         .enumerate()
@@ -222,14 +233,13 @@ fn completion_lines(
             } else {
                 Style::new().fg(theme.text_primary)
             };
-            Line::from(Span::styled(format!("  {item}"), style))
+            Line::from(Span::styled(format!(" {item}"), style))
         })
         .collect();
-    lines.push(Line::from(Span::styled(
-        COMPLETION_HINT,
-        Style::new().fg(theme.text_muted),
-    )));
-    lines
+    frame.render_widget(
+        Paragraph::new(lines).style(Style::new().bg(theme.surface)),
+        popover,
+    );
 }
 
 /// The five header rows, shared by the fields stage (with
@@ -421,7 +431,7 @@ mod tests {
                 .collect()
         };
         assert!(
-            row(0).starts_with("To:      alba@example.com\u{258c}"),
+            row(0).starts_with("To:       alba@example.com\u{258c}"),
             "{:?}",
             row(0)
         );
@@ -429,10 +439,10 @@ mod tests {
         assert!(row(2).starts_with("Bcc:"), "{:?}", row(2));
         assert!(row(3).starts_with("Subject:"), "{:?}", row(3));
         assert!(
-            row(4).starts_with("From:    Tester <tester@example.com>"),
+            row(4).starts_with("From:     Tester <tester@example.com>"),
             "{:?}",
             row(4)
         );
-        assert!(row(6).contains("tab/shift-tab"), "{:?}", row(6));
+        assert_eq!(row(5).trim(), "", "no hint row below the fields");
     }
 }

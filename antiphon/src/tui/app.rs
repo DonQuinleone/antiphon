@@ -221,9 +221,21 @@ impl App {
     }
 
     pub fn abort_compose(&mut self, notice: &str) {
+        self.discard_editor();
         self.compose = None;
         self.view = View::List;
         self.notice = Some(notice.to_string());
+    }
+
+    /// Kills any editor still attached to the compose being
+    /// torn down; a surviving pane would silently re-attach
+    /// to the next compose.
+    pub fn discard_editor(&mut self) {
+        let Some(mut pane) = self.editor.take() else {
+            return;
+        };
+        pane.session.kill();
+        let _ = std::fs::remove_file(&pane.path);
     }
 
     pub fn open_editor(&mut self, pane: EditorPane) {

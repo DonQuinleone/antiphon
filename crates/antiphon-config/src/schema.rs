@@ -42,7 +42,7 @@ impl Default for Sync {
     }
 }
 
-const DEFAULT_SYNC_INTERVAL_MINUTES: u32 = 5;
+const DEFAULT_SYNC_INTERVAL_MINUTES: u32 = 2;
 
 #[derive(Debug, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields, default)]

@@ -69,7 +69,7 @@ fn confirm_line(theme: &Theme, list: &str) -> Line<'static> {
 fn status_line(app: &App) -> Line<'static> {
     let theme = app.theme;
     if let Some(state) = &app.compose {
-        return compose_status(theme, state);
+        return compose_status(app, theme, state);
     }
     let text = match &app.notice {
         Some(notice) => notice.clone(),
@@ -92,16 +92,17 @@ fn status_line(app: &App) -> Line<'static> {
     ])
 }
 
+/// The compose keys live here rather than in body rows, so
+/// every stage keeps the same shape and the hint follows the
+/// stage: fields, editor, review, or an open completion.
 fn compose_status(
+    app: &App,
     theme: &Theme,
     state: &super::compose::ComposeState,
 ) -> Line<'static> {
+    let hint = compose_hint(app, state);
     let mut spans = vec![Span::styled(
-        format!(
-            "compose \u{b7} {} \u{b7} ctrl-h headers \u{b7} \
-             :q in the editor reviews",
-            state.account()
-        ),
+        format!("{} \u{b7} {hint}", state.account()),
         Style::new().fg(theme.text_muted),
     )];
     if let Some(label) = state.plan().label() {
@@ -111,6 +112,29 @@ fn compose_status(
         ));
     }
     Line::from(spans)
+}
+
+fn compose_hint(
+    app: &App,
+    state: &super::compose::ComposeState,
+) -> String {
+    use super::app::View;
+
+    if state.completion.is_some() && app.view == View::Compose {
+        return "tab completes \u{b7} ctrl-n/p select \u{b7} \
+                esc dismisses"
+            .to_string();
+    }
+    match app.view {
+        View::Editor => ":q reviews \u{b7} ctrl-e headers".to_string(),
+        View::Review => "y send \u{b7} q draft \u{b7} e body \
+                         \u{b7} h headers \u{b7} a attach \u{b7} \
+                         s/x seal \u{b7} ? keys"
+            .to_string(),
+        _ => "tab/shift-tab fields \u{b7} ctrl-e editor \u{b7} \
+              esc backs out"
+            .to_string(),
+    }
 }
 
 fn context_prefix(app: &App) -> String {

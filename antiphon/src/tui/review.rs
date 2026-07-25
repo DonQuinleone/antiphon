@@ -8,16 +8,12 @@ use ratatui::widgets::Paragraph;
 
 use super::app::App;
 use super::compose::ComposeState;
-use super::draw::header_line;
 
 const BODY_PREVIEW_LINES: usize = 8;
 const PLAIN_PLAN: &str = "[plain]";
 const SELECTED_MARK: &str = "\u{25b8} ";
 const UNSELECTED_MARK: &str = "  ";
-const KEYBAR: &str = "y:Send  q:Draft  e:Edit  h:Headers  \
-                      a:Attach  d:Remove  s:Sign  x:Encrypt  \
-                      ?:Help";
-const LABEL_WIDTH: usize = 9;
+const LABEL_WIDTH: usize = 10;
 const BYTES_PER_K: u32 = 1024;
 
 /// What a review key asks of the event loop; toggles mutate
@@ -37,7 +33,11 @@ pub(super) fn feed(
     key: KeyEvent,
 ) -> ReviewOutcome {
     if key.modifiers.contains(KeyModifiers::CONTROL) {
-        return ReviewOutcome::Stay;
+        return match key.code {
+            KeyCode::Char('e') => ReviewOutcome::EditBody,
+            KeyCode::Char('h') => ReviewOutcome::EditHeaders,
+            _ => ReviewOutcome::Stay,
+        };
     }
     match key.code {
         KeyCode::Char('y') => ReviewOutcome::Send,
@@ -74,65 +74,56 @@ fn toggle_encrypt(state: &mut ComposeState) -> ReviewOutcome {
     ReviewOutcome::Stay
 }
 
+/// The review screen wears the same clothes as the fields
+/// stage: accent labels in the shared column, muted section
+/// headings, and the keys down in the status line with every
+/// other view's.
 pub(super) fn draw_review(frame: &mut Frame, app: &App, area: Rect) {
     let Some(state) = &app.compose else {
         return;
     };
     let theme = app.theme;
-    let bar = Style::new()
-        .fg(theme.text_primary)
-        .bg(theme.surface)
-        .add_modifier(Modifier::BOLD);
-    let mut lines = vec![Line::from(Span::styled(
-        format!("{KEYBAR:<width$}", width = area.width as usize),
-        bar,
-    ))];
+    let mut lines = Vec::new();
     let labelled = [
-        ("From:", state.sender_line()),
         ("To:", state.fields.to.clone()),
         ("Cc:", state.fields.cc.clone()),
         ("Bcc:", state.fields.bcc.clone()),
         ("Subject:", state.fields.subject.clone()),
+        ("From:", state.sender_line()),
         ("Fcc:", "sent".to_string()),
         ("Security:", plan_label(state)),
+        (
+            "Size:",
+            format!(
+                "{} \u{b7} {} attachment(s)",
+                approx_size(state),
+                state.attachments.len()
+            ),
+        ),
     ];
     for (label, value) in labelled {
         lines.push(Line::from(vec![
             Span::styled(
-                format!("{label:>LABEL_WIDTH$} "),
+                format!("{label:<LABEL_WIDTH$}"),
                 Style::new().fg(theme.accent),
             ),
             Span::styled(value, Style::new().fg(theme.text_primary)),
         ]));
     }
-    lines.push(section(theme, area.width, "-- Attachments"));
+    lines.push(Line::default());
+    lines.push(section(theme, "ATTACHMENTS"));
     lines.extend(attachment_lines(app, state));
-    lines.push(section(theme, area.width, "-- Preview"));
+    lines.push(Line::default());
+    lines.push(section(theme, "PREVIEW"));
     lines.extend(body_preview(app, state));
     frame.render_widget(Paragraph::new(lines), area);
-    let status = Line::from(Span::styled(
-        format!(
-            "-- Antiphon: Compose  [Approx. msg size: {}  \
-             Atts: {}]",
-            approx_size(state),
-            state.attachments.len(),
-        ),
-        bar,
-    ));
-    let footer_area = Rect {
-        y: area.y + area.height.saturating_sub(1),
-        height: area.height.min(1),
-        ..area
-    };
-    frame.render_widget(Paragraph::new(status), footer_area);
 }
 
-fn section(theme: &Theme, width: u16, title: &str) -> Line<'static> {
+fn section(theme: &Theme, title: &str) -> Line<'static> {
     Line::from(Span::styled(
-        format!("{title:<width$}", width = width as usize),
+        title.to_string(),
         Style::new()
-            .fg(theme.text_primary)
-            .bg(theme.surface)
+            .fg(theme.text_muted)
             .add_modifier(Modifier::BOLD),
     ))
 }
@@ -154,19 +145,20 @@ fn plan_label(state: &ComposeState) -> String {
     state.plan().label().unwrap_or(PLAIN_PLAN).to_string()
 }
 
-/// The attachments block: a count line, then one row per
-/// file with the selection marker d acts on.
+/// One row per file with the selection marker d acts on;
+/// an empty list says so quietly.
 fn attachment_lines(
     app: &App,
     state: &ComposeState,
 ) -> Vec<Line<'static>> {
     let theme = app.theme;
-    let count = state.attachments.len();
-    let heading = match count {
-        0 => "none".to_string(),
-        _ => format!("{count}"),
-    };
-    let mut lines = vec![header_line(theme, "Attachments:", heading)];
+    if state.attachments.is_empty() {
+        return vec![Line::from(Span::styled(
+            "none \u{b7} a attaches".to_string(),
+            Style::new().fg(theme.text_muted),
+        ))];
+    }
+    let mut lines = Vec::new();
     for (index, attachment) in state.attachments.iter().enumerate() {
         let selected = index == state.selected_attachment;
         let marker = if selected {
@@ -311,25 +303,21 @@ mod tests {
                 })
                 .collect()
         };
-        assert!(row(0).starts_with("y:Send"), "{:?}", row(0));
+        assert!(row(0).starts_with("To:"), "{:?}", row(0));
+        assert!(row(0).contains("alba@example.com"), "{:?}", row(0));
+        assert!(row(3).contains("Rehearsal"), "{:?}", row(3));
         assert!(
-            row(1).contains("From: Tester <tester@example.com>"),
+            row(4).contains("Tester <tester@example.com>"),
             "{:?}",
-            row(1)
+            row(4)
         );
-        assert!(row(2).contains("alba@example.com"), "{:?}", row(2));
-        assert!(row(5).contains("Rehearsal"), "{:?}", row(5));
-        assert!(row(6).contains("Fcc: sent"), "{:?}", row(6));
-        assert!(row(7).contains("[encrypt]"), "{:?}", row(7));
-        assert!(row(8).starts_with("-- Attachments"), "{:?}", row(8));
-        assert!(row(9).contains("Attachments: none"), "{:?}", row(9));
-        assert!(row(10).starts_with("-- Preview"), "{:?}", row(10));
-        assert!(row(11).contains("body line 1"), "{:?}", row(11));
-        assert!(
-            row(19).starts_with("-- Antiphon: Compose"),
-            "{:?}",
-            row(19)
-        );
+        assert!(row(5).contains("sent"), "{:?}", row(5));
+        assert!(row(6).contains("[encrypt]"), "{:?}", row(6));
+        assert!(row(7).starts_with("Size:"), "{:?}", row(7));
+        assert!(row(9).starts_with("ATTACHMENTS"), "{:?}", row(9));
+        assert!(row(10).contains("none"), "{:?}", row(10));
+        assert!(row(12).starts_with("PREVIEW"), "{:?}", row(12));
+        assert!(row(13).contains("body line 1"), "{:?}", row(13));
     }
 
     #[test]
@@ -362,7 +350,7 @@ mod tests {
                 })
                 .collect()
         };
-        assert!(row(9).contains("Attachments: 2"), "{:?}", row(9));
+        assert!(row(7).contains("2 attachment(s)"), "{:?}", row(7));
         assert!(
             row(10).starts_with(
                 "\u{25b8} a.pdf (application/pdf, 3 bytes)"

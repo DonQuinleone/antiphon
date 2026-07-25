@@ -19,13 +19,13 @@ use super::{
 const MOUSE_WHEEL_ROWS: usize = 3;
 
 pub(super) fn editor_key(app: &mut App, key: KeyEvent) {
-    // ctrl-h lifts focus back to the header fields while the
-    // editor keeps running underneath; ctrl-e returns.
-    if key.code == KeyCode::Char('h')
-        && key
-            .modifiers
-            .contains(ratatui::crossterm::event::KeyModifiers::CONTROL)
-    {
+    // ctrl-e (and ctrl-h) lift focus back to the header
+    // fields while the editor keeps running underneath; the
+    // same keys return, so one chord toggles.
+    let control = key
+        .modifiers
+        .contains(ratatui::crossterm::event::KeyModifiers::CONTROL);
+    if control && matches!(key.code, KeyCode::Char('e' | 'h')) {
         app.view = View::Compose;
         return;
     }
@@ -80,7 +80,7 @@ pub(super) fn review_key(
         }
         ReviewOutcome::Send => session::send_compose(app, layout),
         ReviewOutcome::SaveDraft => {
-            session::save_draft_and_close(app, layout)
+            app.open_prompt(PromptKind::ConfirmDraft)
         }
     }
     Ok(())
@@ -253,6 +253,7 @@ pub(super) fn prompt_key(
                 app.prompt = None;
                 app.abort_compose("compose discarded");
             }
+            KeyCode::Esc => app.prompt = None,
             _ => {}
         }
         return;

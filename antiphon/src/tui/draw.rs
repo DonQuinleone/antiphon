@@ -41,7 +41,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     if app.view == View::Compose {
         if app.editor.is_some() {
             let [fields, pane] = Layout::vertical([
-                Constraint::Length(FIELD_SUMMARY_ROWS + 2),
+                Constraint::Length(FIELD_SUMMARY_ROWS),
                 Constraint::Min(0),
             ])
             .areas(content);
@@ -50,6 +50,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         } else {
             headers::draw_headers(frame, app, content);
         }
+        headers::draw_completion(frame, app, content);
         draw_status(frame, app, status);
         return;
     }
@@ -274,20 +275,6 @@ fn preview_lines(app: &App) -> Vec<Line<'static>> {
             ))
         })
         .collect()
-}
-
-pub(super) fn header_line(
-    theme: &Theme,
-    label: &'static str,
-    value: String,
-) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(
-            format!("{label} "),
-            Style::new().fg(theme.accent),
-        ),
-        Span::styled(value, Style::new().fg(theme.text_primary)),
-    ])
 }
 
 /// Rows left for the editor pane once the statusline and the

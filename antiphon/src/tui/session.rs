@@ -191,11 +191,15 @@ pub(super) fn send_compose(app: &mut App, layout: &StoreLayout) {
     };
     match Outbox::open(layout).enqueue(&envelope, &sealed) {
         Ok(_) => {
+            app.discard_editor();
             app.compose = None;
             app.view = View::List;
+            let subject = match outgoing.subject.is_empty() {
+                true => String::new(),
+                false => format!("{} ", outgoing.subject),
+            };
             app.notice = Some(format!(
-                "queued: {} to {} recipient(s)",
-                outgoing.subject,
+                "sending: {subject}to {} recipient(s)",
                 envelope.recipients.len()
             ));
             super::nudge_daemon();
@@ -217,6 +221,7 @@ pub(super) fn save_draft_and_close(
     };
     match drafts::save(layout, state) {
         Ok(path) => {
+            app.discard_editor();
             app.compose = None;
             app.view = View::List;
             app.notice =
