@@ -1,0 +1,12 @@
+image: nixos/latest
+environment:
+  NIX_CONFIG: "experimental-features = nix-command flakes"
+sources:
+  - https://git.sr.ht/~donquinleone/antiphon
+tasks:
+  - build: |
+      cd antiphon
+      nix build .#antiphon --print-build-logs
+  - smoke: |
+      cd antiphon
+      ./result/bin/antiphon --version

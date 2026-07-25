@@ -125,33 +125,11 @@ mystery.
 ## Installation
 
 Antiphon is pre-1.0 and moving quickly. Expect rough edges,
-and expect them to be fixed fast. The AUR package and the
-Homebrew tap below go live with v1.0.0; until then, build from
-source with cargo (see Getting started).
+and expect them to be fixed fast. The AUR release package,
+the Homebrew tap and the installer's release path go live
+with v1.0.0.
 
-### Arch Linux
-
-```bash
-yay -S antiphon
-# or
-paru -S antiphon
-```
-
-Building the PKGBUILD by hand works the same way it does for
-any AUR package:
-
-```bash
-git clone https://aur.archlinux.org/antiphon.git
-cd antiphon
-makepkg -si
-```
-
-Either route pulls in `notmuch`, and installs the man pages and
-the systemd user unit alongside the binaries; `gnupg` is an
-optional dependency, needed only if you sign or decrypt with
-OpenPGP.
-
-### Linux and macOS, one command
+### One command (Linux and macOS)
 
 ```bash
 curl -fsSL https://antiphon.net/install.sh | sh
@@ -159,12 +137,57 @@ curl -fsSL https://antiphon.net/install.sh | sh
 
 This resolves the latest release, verifies its checksum, and
 installs both binaries to `${XDG_BIN_HOME:-~/.local/bin}` on
-Linux, or adds the Homebrew tap on macOS; it names any missing
-runtime dependency rather than guessing at a package manager.
-Live from v1.0.0; today, `dist/install.sh` in this repository
-does the same job once you have built the binaries yourself.
+Linux, or adds the Homebrew tap on macOS; it names any
+missing runtime dependency rather than guessing at a package
+manager.
 
-### Homebrew (macOS)
+### Arch Linux
+
+```bash
+yay -S antiphon        # released version, from v1.0.0
+yay -S antiphon-git    # tracks master today
+```
+
+Building the PKGBUILD by hand works the same way it does for
+any AUR package:
+
+```bash
+git clone https://aur.archlinux.org/antiphon-git.git
+cd antiphon-git
+makepkg -si
+```
+
+Either route pulls in `notmuch`, and installs the man pages
+and the systemd user unit alongside the binaries; `gnupg` is
+an optional dependency, needed only if you sign or decrypt
+with OpenPGP.
+
+### Nix
+
+```bash
+nix profile install \
+    git+https://git.sr.ht/~donquinleone/antiphon
+# or try it without installing:
+nix run git+https://git.sr.ht/~donquinleone/antiphon
+```
+
+The flake ships the package (binaries, man pages, the systemd
+user unit) and a dev shell (`nix develop`).
+
+### Other Linux distributions
+
+Grab the release tarball for your architecture from the
+[refs page](https://git.sr.ht/~donquinleone/antiphon/refs)
+(x86_64-linux-gnu and aarch64-linux-musl, each with a sha256
+sidecar), verify, and drop both binaries on your PATH; or
+build from source below. You need `notmuch` at runtime:
+
+```bash
+sudo apt install notmuch gnupg        # Debian, Ubuntu
+sudo dnf install notmuch gnupg2       # Fedora
+```
+
+### macOS (Homebrew)
 
 ```bash
 brew tap donquinleone/antiphon \
@@ -172,8 +195,8 @@ brew tap donquinleone/antiphon \
 brew install antiphon
 ```
 
-Resolves `notmuch` and Rust automatically; `gnupg` is a caveat,
-not a hard dependency, for the same reason as above.
+Resolves `notmuch` and Rust automatically; `gnupg` is a
+caveat, not a hard dependency, for the same reason as above.
 
 ### Building from source
 
@@ -187,10 +210,10 @@ cargo install --path antiphond --locked
 You need Rust (stable), `notmuch` and, for OpenPGP, `gnupg`:
 
 ```bash
-brew install notmuch gnupg            # macOS
+sudo pacman -S notmuch gnupg          # Arch
 sudo apt install notmuch gnupg        # Debian, Ubuntu
 sudo dnf install notmuch gnupg2       # Fedora
-sudo pacman -S notmuch gnupg          # Arch
+brew install notmuch gnupg            # macOS
 ```
 
 ## Getting started

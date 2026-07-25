@@ -11,6 +11,7 @@ class Antiphon < Formula
   depends_on "notmuch"
 
   def install
+    ENV["ANTIPHON_VERSION"] = "v#{version}"
     system "cargo", "build", "--release", "--workspace", "--locked"
     bin.install "target/release/antiphon"
     bin.install "target/release/antiphond"

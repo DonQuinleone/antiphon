@@ -25,6 +25,7 @@ build() {
     cd "$pkgname-$pkgver"
     export RUSTUP_TOOLCHAIN=stable
     export CARGO_TARGET_DIR=target
+    export ANTIPHON_VERSION="v$pkgver"
     cargo build --frozen --release --workspace
     scdoc <doc/antiphon.1.scd >antiphon.1
     scdoc <doc/antiphond.1.scd >antiphond.1

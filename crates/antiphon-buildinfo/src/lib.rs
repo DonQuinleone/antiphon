@@ -3,9 +3,18 @@ use std::process::Command;
 pub fn emit_version() {
     println!("cargo:rustc-env=ANTIPHON_VERSION={}", version());
     println!("cargo:rerun-if-changed=../.git/HEAD");
+    println!("cargo:rerun-if-env-changed=ANTIPHON_VERSION");
 }
 
+/// Tag archives carry no .git, so packagers (AUR, Nix, brew)
+/// pass the version through the environment; a git checkout
+/// derives it from the tag as always.
 fn version() -> String {
+    if let Ok(given) = std::env::var("ANTIPHON_VERSION")
+        && !given.is_empty()
+    {
+        return given;
+    }
     let output = Command::new("git")
         .args(["describe", "--tags", "--always", "--dirty"])
         .output();
