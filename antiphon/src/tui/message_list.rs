@@ -18,8 +18,8 @@ const FROM_WIDTH: u16 = 24;
 const COLUMN_GAP: u16 = 1;
 const ELLIPSIS: char = '\u{2026}';
 const DATE_HEADING: &str = "DATE";
-const FROM_HEADING: &str = "FROM";
 const SUBJECT_HEADING: &str = "SUBJECT";
+const FROM_TO_HEADING: &str = "FROM/TO";
 const OWN_MAIL_PREFIX: &str = "\u{2192} ";
 const FLAGGED_TAG: &str = "flagged";
 
@@ -71,7 +71,7 @@ pub(super) fn draw_list(frame: &mut Frame, app: &App, area: Rect) {
         format!("{:1$}{SUBJECT_HEADING}", "", MARK_COLS as usize);
     let header = Row::new(vec![
         DATE_HEADING.to_string(),
-        FROM_HEADING.to_string(),
+        FROM_TO_HEADING.to_string(),
         subject_heading,
     ])
     .style(
@@ -292,7 +292,7 @@ mod tests {
         let buffer = render(&app, 80, 6);
         let header = row_chars(&buffer, 0);
         assert_eq!(column_of(&header, DATE_HEADING), Some(0));
-        assert_eq!(column_of(&header, FROM_HEADING), Some(from_x));
+        assert_eq!(column_of(&header, FROM_TO_HEADING), Some(from_x));
         assert_eq!(
             column_of(&header, SUBJECT_HEADING),
             Some(subject_x + MARK_COLS as usize)

@@ -12,6 +12,7 @@ mod lists;
 mod message_list;
 mod pager;
 mod patches;
+mod preview;
 mod scope;
 mod session;
 mod sidebar;
@@ -135,6 +136,7 @@ fn event_loop(
     let mut last_unread: Option<u32> = None;
     while !app.quit {
         tick_editor(terminal, app, layout)?;
+        preview::refresh(app);
         let drawing = Instant::now();
         terminal.draw(|frame| draw::draw(frame, app))?;
         app.frame_stats.record(drawing.elapsed());

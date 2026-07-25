@@ -117,10 +117,14 @@ fn folder_entry(account: &str, folder: &str) -> SidebarEntry {
     }
 }
 
-/// Startup lands on the `all` built-in, the first saved entry,
-/// so a user at inbox zero still sees their mail.
+/// Startup lands in the first account's inbox, falling back
+/// to the first saved search, then the top of the list.
 pub fn default_selection(entries: &[SidebarEntry]) -> usize {
-    entries.iter().position(SidebarEntry::is_saved).unwrap_or(0)
+    entries
+        .iter()
+        .position(SidebarEntry::is_folder)
+        .or_else(|| entries.iter().position(SidebarEntry::is_saved))
+        .unwrap_or(0)
 }
 
 pub fn next_index(selected: usize, count: usize) -> usize {
@@ -243,13 +247,18 @@ mod tests {
     }
 
     #[test]
-    fn the_default_selection_is_the_all_search() {
+    fn the_default_selection_is_the_first_inbox() {
         let items = entries(
             &accounts(&[("work", &["archive"])]),
             &saved(&[("boss", "from:boss")]),
         );
         let index = default_selection(&items);
-        assert_eq!(items[index].label(), ALL_LABEL);
+        assert_eq!(items[index].label(), INBOX_LABEL);
+        assert!(items[index].is_folder());
+
+        let searches_only = entries(&[], &saved(&[]));
+        let fallback = default_selection(&searches_only);
+        assert_eq!(searches_only[fallback].label(), ALL_LABEL);
         assert_eq!(default_selection(&[]), 0);
     }
 

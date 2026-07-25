@@ -203,7 +203,7 @@ fn draw_reading_pane(frame: &mut Frame, app: &App, area: Rect) {
         frame.render_widget(empty, area);
         return;
     };
-    let lines = vec![
+    let mut lines = vec![
         header_line(theme, "From:", message.from.clone()),
         header_line(
             theme,
@@ -213,12 +213,26 @@ fn draw_reading_pane(frame: &mut Frame, app: &App, area: Rect) {
         header_line(theme, "Subject:", message.subject.clone()),
         header_line(theme, "Tags:", message.tags.join(", ")),
         Line::default(),
-        Line::from(Span::styled(
-            "open the message for the full body",
-            Style::new().fg(theme.text_muted),
-        )),
     ];
+    lines.extend(preview_lines(app));
     frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+fn preview_lines(app: &App) -> Vec<Line<'static>> {
+    let theme = app.theme;
+    let Some(preview) = &app.preview else {
+        return Vec::new();
+    };
+    preview
+        .lines
+        .iter()
+        .map(|line| {
+            Line::from(Span::styled(
+                line.clone(),
+                Style::new().fg(theme.text_primary),
+            ))
+        })
+        .collect()
 }
 
 pub(super) fn header_line(
