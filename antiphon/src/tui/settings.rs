@@ -1,4 +1,5 @@
 use antiphon_config::{Dirs, NamedAccount};
+use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use super::app::{App, View};
@@ -36,11 +37,14 @@ pub(super) struct SettingsState {
 }
 
 /// What a settings key asks of the event loop; everything an
-/// in-memory toggle can settle happens inside `feed` itself.
+/// in-memory toggle can settle happens inside `feed` itself,
+/// only the account wizard's terminal suspension bubbles up.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum SettingsOutcome {
     Stay,
     Close,
+    AddAccount,
+    EditAccount(String),
 }
 
 impl App {
@@ -108,10 +112,11 @@ fn feed_accounts(app: &mut App, key: KeyEvent) -> SettingsOutcome {
             move_account_selection(app, -1);
             SettingsOutcome::Stay
         }
-        KeyCode::Char('a' | 'e') => {
-            app.not_built_notice();
-            SettingsOutcome::Stay
-        }
+        KeyCode::Char('a') => SettingsOutcome::AddAccount,
+        KeyCode::Char('e') => match selected_account_name(app) {
+            Some(name) => SettingsOutcome::EditAccount(name),
+            None => SettingsOutcome::Stay,
+        },
         KeyCode::Char('d') => {
             arm_delete(app);
             SettingsOutcome::Stay
@@ -258,6 +263,33 @@ fn summary_of(entry: &NamedAccount) -> AccountSummary {
     }
 }
 
+/// The one place the terminal leaves ratatui's hands for
+/// settings: restore, run the setup wizard's Q&A in-process
+/// (no subprocess involved, unlike the body editor), then take
+/// the screen back, exactly the way `session::run_editor` does
+/// for the composer.
+pub(super) fn run_account_wizard(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    edit_name: Option<String>,
+) -> std::io::Result<()> {
+    ratatui::restore();
+    let result = match &edit_name {
+        Some(name) => {
+            crate::account_wizard::run_edit_account(&app.dirs, name)
+        }
+        None => crate::account_wizard::run_add_account(&app.dirs),
+    };
+    *terminal = ratatui::init();
+    terminal.clear()?;
+    app.notice = Some(match result {
+        Ok(()) => "account saved".to_string(),
+        Err(error) => format!("account: {error}"),
+    });
+    app.refresh_settings_accounts();
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::testkit::app_with_messages;
@@ -328,12 +360,16 @@ mod tests {
     }
 
     #[test]
-    fn a_and_e_are_not_built_yet() {
+    fn a_and_e_ask_for_the_wizard() {
         let mut app = app_with_settings(&["work"]);
-        feed(&mut app, key(KeyCode::Char('a')));
-        assert_eq!(app.notice.as_deref(), Some("not built yet"));
-        feed(&mut app, key(KeyCode::Char('e')));
-        assert_eq!(app.notice.as_deref(), Some("not built yet"));
+        assert_eq!(
+            feed(&mut app, key(KeyCode::Char('a'))),
+            SettingsOutcome::AddAccount
+        );
+        assert_eq!(
+            feed(&mut app, key(KeyCode::Char('e'))),
+            SettingsOutcome::EditAccount("work".to_string())
+        );
     }
 
     #[test]

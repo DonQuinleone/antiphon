@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use antiphon_config::{Dirs, load};
 use antiphon_store::StoreLayout;
 
+use crate::account_wizard::{self, prompt_account};
 use crate::autostart;
 use crate::vaultcmd;
 
@@ -36,25 +37,11 @@ pub fn run() -> ExitCode {
 
 fn wizard(dirs: &Dirs) -> Result<(), String> {
     println!("Antiphon setup. Enter accepts the [default].\n");
-    let address = required("e-mail address", validate_address)?;
-    let domain = address.split('@').next_back().unwrap_or_default();
-    let name = prompt("account name", "personal")?;
-    let imap_host = prompt("imap host", &format!("imap.{domain}"))?;
-    let imap_user = prompt("imap user", &address)?;
-    let smtp_host = prompt("smtp host", &format!("smtp.{domain}"))?;
-    let password_cmd = mail_secret(&name, &address)?;
+    let answers = prompt_account(None)?;
     let passphrase_cmd = vault_secret()?;
 
     write_config(dirs, &passphrase_cmd)?;
-    write_account(
-        dirs,
-        &name,
-        &address,
-        &imap_host,
-        &imap_user,
-        &smtp_host,
-        &password_cmd,
-    )?;
+    account_wizard::write_account(dirs, &answers)?;
     let loaded = load(dirs).map_err(|error| error.to_string())?;
     println!("\nconfiguration written and valid");
 
@@ -73,7 +60,10 @@ fn wizard(dirs: &Dirs) -> Result<(), String> {
     Ok(())
 }
 
-fn prompt(label: &str, default: &str) -> Result<String, String> {
+pub(crate) fn prompt(
+    label: &str,
+    default: &str,
+) -> Result<String, String> {
     print!("{label} [{default}]: ");
     std::io::stdout().flush().ok();
     let mut line = String::new();
@@ -88,7 +78,7 @@ fn prompt(label: &str, default: &str) -> Result<String, String> {
     Ok(answer.to_string())
 }
 
-fn required(
+pub(crate) fn required(
     label: &str,
     validate: fn(&str) -> Result<(), String>,
 ) -> Result<String, String> {
@@ -105,7 +95,7 @@ fn required(
     }
 }
 
-fn validate_address(address: &str) -> Result<(), String> {
+pub(crate) fn validate_address(address: &str) -> Result<(), String> {
     if address.contains('@') && !address.contains(char::is_whitespace) {
         return Ok(());
     }
@@ -113,7 +103,10 @@ fn validate_address(address: &str) -> Result<(), String> {
 }
 
 #[cfg(target_os = "macos")]
-fn mail_secret(name: &str, address: &str) -> Result<String, String> {
+pub(crate) fn mail_secret(
+    name: &str,
+    address: &str,
+) -> Result<String, String> {
     let service = format!("antiphon-mail-{name}");
     println!(
         "storing the mail password in your Keychain as \
@@ -159,7 +152,10 @@ fn whoami() -> String {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn mail_secret(_name: &str, _address: &str) -> Result<String, String> {
+pub(crate) fn mail_secret(
+    _name: &str,
+    _address: &str,
+) -> Result<String, String> {
     required(
         "command that prints the mail password \
          (e.g. pass show mail/personal)",
@@ -193,35 +189,6 @@ fn write_config(
          passphrase_cmd = \"{passphrase_cmd}\"\n"
     );
     write_new(&dirs.config.join("config.toml"), &text)
-}
-
-#[allow(clippy::too_many_arguments)]
-fn write_account(
-    dirs: &Dirs,
-    name: &str,
-    address: &str,
-    imap_host: &str,
-    imap_user: &str,
-    smtp_host: &str,
-    password_cmd: &str,
-) -> Result<(), String> {
-    let accounts = dirs.config.join("accounts");
-    std::fs::create_dir_all(&accounts)
-        .map_err(|error| error.to_string())?;
-    let text = format!(
-        "[account]\n\
-         name = \"{name}\"\n\n\
-         [imap]\n\
-         host = \"{imap_host}\"\n\
-         user = \"{imap_user}\"\n\
-         password_cmd = \"{password_cmd}\"\n\n\
-         [smtp]\n\
-         host = \"{smtp_host}\"\n\n\
-         [[identity]]\n\
-         address = \"{address}\"\n\
-         match = [\"{address}\"]\n"
-    );
-    write_new(&accounts.join(format!("{name}.toml")), &text)
 }
 
 fn write_new(path: &std::path::Path, text: &str) -> Result<(), String> {

@@ -1,3 +1,4 @@
+mod account_wizard;
 mod autostart;
 mod doctor;
 mod oauthcmd;

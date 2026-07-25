@@ -238,7 +238,9 @@ fn event_loop(
             KeyRoute::Review => {
                 input::review_key(terminal, app, layout, key)?
             }
-            KeyRoute::Settings => input::settings_key(app, key),
+            KeyRoute::Settings => {
+                input::settings_key(terminal, app, key)?
+            }
             KeyRoute::Prompt => {
                 input::prompt_key(app, layout, key);
                 let mut request =
