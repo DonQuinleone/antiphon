@@ -118,11 +118,6 @@ mystery.
 
 ## Installation
 
-Antiphon is pre-1.0 and moving quickly. Expect rough edges,
-and expect them to be fixed fast. The AUR release package,
-the Homebrew tap and the installer's release path go live
-with v1.0.0.
-
 ### One command (Linux and macOS)
 
 ```bash
@@ -138,8 +133,8 @@ manager.
 ### Arch Linux
 
 ```bash
-yay -S antiphon        # released version, from v1.0.0
-yay -S antiphon-git    # tracks master today
+yay -S antiphon        # the released version
+yay -S antiphon-git    # or track master
 ```
 
 Building the PKGBUILD by hand works the same way it does for
@@ -230,13 +225,12 @@ produces it. Press `?` at any time for the key cheatsheet.
 
 ## Documentation
 
-Full documentation moves to
-[docs.antiphon.net](https://docs.antiphon.net) with v1.0.0;
-until then, it lives here in the repository:
+Everything lives at [docs.antiphon.net](https://docs.antiphon.net),
+from a four-page getting-started walk to the developer guide:
 
 | Guide | Covers |
 | ----- | ------ |
-| [User guide](https://docs.antiphon.net/guide/getting-started/) | getting started through security |
+| [Getting started](https://docs.antiphon.net/tutorial/install/) | install to a second account, step by step |
 | [Configuration](https://docs.antiphon.net/customise/configuration/) | every key, strictly parsed |
 | [Appearance](https://docs.antiphon.net/customise/appearance/) | seventeen themes and your own |
 | [Sync and the daemon](https://docs.antiphon.net/guide/sync/) | supervisors on every platform |
