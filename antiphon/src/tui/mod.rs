@@ -1,6 +1,7 @@
 mod actions;
 mod app;
 mod attach;
+mod cells;
 mod commands;
 mod complete;
 mod compose;
