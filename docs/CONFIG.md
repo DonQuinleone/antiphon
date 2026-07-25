@@ -110,7 +110,7 @@ of the message), `open-link` (`o`: a numbered picker over
 the links of the open message; type the number and press
 enter, or move with `j`/`k`, and the url goes to the system
 opener, `open` on macOS and `xdg-open` elsewhere; `esc`
-closes), `attachments` (`A`: expand the attachment drawer),
+closes), `attachments` (`a`: expand the attachment drawer),
 `pane-down`/`pane-up` (`J`/`K`: scroll the reading pane),
 `help` (`?`: the keybinding cheatsheet, generated live from
 these bindings with your overrides applied).
@@ -123,7 +123,7 @@ itself never fetches anything.
 
 A message with attachments shows a one-line drawer at the
 pager's bottom, e.g. `2 attachments: report.pdf, photo.jpg`,
-truncated to the width. `A` expands it into a list: `j`/`k`
+truncated to the width. `a` expands it into a list: `j`/`k`
 select, `s` saves the decoded bytes to a prompted path
 (prefilled with the sent filename, `~` expands), `v` writes
 a temporary copy and hands it to the system opener, and
