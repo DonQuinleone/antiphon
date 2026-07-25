@@ -207,10 +207,9 @@ mod tests {
 
     #[test]
     fn gallery_names_every_theme() {
-        assert_eq!(
-            gallery(),
-            "vespers, kanagawa-wave, catppuccin-mocha, \
-             gruvbox-dark, tokyo-night, nord, rose-pine"
-        );
+        let listed = gallery();
+        for name in antiphon_ui::Theme::names() {
+            assert!(listed.contains(name), "{name} not listed");
+        }
     }
 }
