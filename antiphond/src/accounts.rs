@@ -14,6 +14,7 @@ pub struct OauthAccount {
     pub imap_host: String,
     pub imap_port: u16,
     pub smtp: Option<SmtpEndpoint>,
+    pub graph_send: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -101,6 +102,10 @@ pub fn oauth_accounts(loaded: &Loaded) -> Vec<OauthAccount> {
                         .clone()
                         .unwrap_or_else(|| user.clone()),
                 }),
+                graph_send: account
+                    .graph
+                    .as_ref()
+                    .is_some_and(|graph| graph.send),
             })
         })
         .collect()

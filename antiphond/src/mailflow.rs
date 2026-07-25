@@ -178,13 +178,6 @@ impl Mailflow {
         queued: antiphon_store::QueuedMessage,
     ) {
         let account = queued.envelope.account.clone();
-        let Some(smtp) = self.smtp_for(&account) else {
-            eprintln!(
-                "outbox {}: no smtp account for {account}",
-                queued.id
-            );
-            return;
-        };
         let raw = match std::fs::read(&queued.message_path) {
             Ok(raw) => raw,
             Err(error) => {
@@ -192,7 +185,7 @@ impl Mailflow {
                 return;
             }
         };
-        if let Err(error) = send(&smtp, &raw) {
+        if let Err(error) = self.ship(&account, &raw, queued.id) {
             eprintln!("send {}: {error}", queued.id);
             return;
         }
@@ -204,6 +197,49 @@ impl Mailflow {
             return;
         }
         println!("sent outbox message {}", queued.id);
+    }
+
+    /// One message leaves the machine here: through Graph
+    /// when the account opted in, else through SMTP.
+    fn ship(
+        &self,
+        account: &str,
+        raw: &[u8],
+        queued_id: u64,
+    ) -> Result<(), String> {
+        if let Some(spec) = self.graph_spec(account) {
+            let token = self.graph_token(spec)?;
+            return crate::graph::send_raw(&token, raw);
+        }
+        let Some(smtp) = self.smtp_for(account) else {
+            return Err(format!(
+                "outbox {queued_id}: no smtp account for {account}"
+            ));
+        };
+        send(&smtp, raw).map_err(|error| error.to_string())
+    }
+
+    fn graph_spec(&self, account: &str) -> Option<&OauthAccount> {
+        self.oauth
+            .iter()
+            .find(|spec| spec.name == account && spec.graph_send)
+    }
+
+    fn graph_token(
+        &self,
+        spec: &OauthAccount,
+    ) -> Result<String, String> {
+        let store = TokenStore::open(self.layout.tokens_dir())
+            .map_err(|error| {
+                format!("{}: token store: {error}", spec.name)
+            })?;
+        tokens::access_token(
+            &store,
+            &antiphon_oauth::graph_grant(&spec.name),
+            &spec.name,
+            now_unix(),
+            &refresh,
+        )
     }
 
     fn smtp_for(&self, account: &str) -> Option<SmtpAccount> {
