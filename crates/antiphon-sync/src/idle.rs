@@ -51,6 +51,10 @@ impl IdleSession {
         &mut self,
         window: Duration,
     ) -> Result<IdleWait, SyncError> {
+        // enqueue_idle and the timeout constructor both
+        // register with the runtime's timers before anything
+        // is awaited, so the whole method runs entered.
+        let _reactor = self.session.runtime.enter();
         let tag = match self.tag.take() {
             Some(tag) => tag,
             None => self.session.client.enqueue_idle(),
@@ -77,6 +81,7 @@ impl IdleSession {
         let Some(tag) = self.tag.take() else {
             return Ok(());
         };
+        let _reactor = self.session.runtime.enter();
         let done = self.session.runtime.block_on(timeout(
             DONE_TIMEOUT,
             self.session.client.idle_done(tag),
