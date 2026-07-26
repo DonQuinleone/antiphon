@@ -6,8 +6,8 @@ use antiphon_oauth::{TokenStore, refresh};
 use antiphon_store::{Op, Outbox, StoreLayout};
 use antiphon_sync::{
     DeliveryRule, RuleOutcome, SmtpAccount, SyncAccount, SyncError,
-    SyncProgress, SyncReport, apply_rules, replay, send, sync,
-    write_progress,
+    SyncProgress, SyncReport, append_sent, apply_rules, replay, send,
+    sync, write_progress,
 };
 
 use crate::accounts::OauthAccount;
@@ -192,6 +192,7 @@ impl Mailflow {
         if let Err(error) = self.file_sent(&account, &raw) {
             eprintln!("sent copy {}: {error}", queued.id);
         }
+        self.file_sent_on_server(&account, &raw);
         if let Err(error) = outbox.remove(queued.id) {
             eprintln!("outbox {}: {error}", queued.id);
             return;
@@ -217,6 +218,48 @@ impl Mailflow {
             ));
         };
         send(&smtp, raw).map_err(|error| error.to_string())
+    }
+
+    /// Best-effort mirror of the local sent twin into the
+    /// server's own sent folder; Graph accounts skip it since
+    /// Graph files Sent Items itself.
+    fn file_sent_on_server(&self, account: &str, raw: &[u8]) {
+        if self.graph_spec(account).is_some() {
+            return;
+        }
+        let Some(sync_account) = self.imap_account(account) else {
+            return;
+        };
+        match append_sent(&sync_account, raw) {
+            Ok(folder) => {
+                println!("sent copy filed on the server ({folder})")
+            }
+            Err(error) => {
+                eprintln!("server sent copy {account}: {error}")
+            }
+        }
+    }
+
+    fn imap_account(&self, account: &str) -> Option<SyncAccount> {
+        if let Some(found) = self
+            .accounts
+            .iter()
+            .find(|candidate| candidate.name == account)
+        {
+            return Some(found.clone());
+        }
+        let spec = self
+            .oauth
+            .iter()
+            .find(|candidate| candidate.name == account)?;
+        let token = match self.oauth_token(spec, false) {
+            Ok(token) => token,
+            Err(message) => {
+                eprintln!("{message}");
+                return None;
+            }
+        };
+        Some(spec.sync_account(token))
     }
 
     fn graph_spec(&self, account: &str) -> Option<&OauthAccount> {

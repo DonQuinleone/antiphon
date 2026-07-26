@@ -10,6 +10,7 @@ mod reconcile;
 mod replay;
 mod report;
 mod rules;
+mod sent;
 mod session;
 mod smtp;
 mod state;
@@ -26,6 +27,7 @@ pub use progress::{
 pub use replay::{ReplayReport, replay};
 pub use report::{FolderReport, SyncReport};
 pub use rules::{DeliveryRule, RuleOutcome, apply_rules};
+pub use sent::append_sent;
 pub use smtp::{SmtpAccount, send};
 
 pub fn test_retag(
