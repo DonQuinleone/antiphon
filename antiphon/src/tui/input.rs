@@ -203,6 +203,10 @@ pub(super) fn keymap_key(
         mark_all_read::mark_all_read(app, layout);
         return;
     }
+    if action == antiphon_core::Action::Sync {
+        app.notice = Some(request_sync());
+        return;
+    }
     if action == antiphon_core::Action::Settings {
         app.open_settings();
         return;
@@ -374,6 +378,25 @@ fn add_attachment(app: &mut App, input: &str) {
                 app.prompt_push(ch);
             }
         }
+    }
+}
+
+/// s asks the daemon for a pass right now; the reply is
+/// bounded so a busy daemon reads as busy, never as a hang.
+fn request_sync() -> String {
+    use antiphon_ipc::{IpcClient, Request, Response, socket_path};
+
+    let path = socket_path(|var| std::env::var_os(var));
+    let Ok(mut client) = IpcClient::connect(&path) else {
+        return "sync: antiphond is not running".to_string();
+    };
+    let _ = client.set_read_timeout(super::IPC_WAIT);
+    match client.request(&Request::SyncNow) {
+        Ok(Response::Ack) => "sync requested".to_string(),
+        Ok(Response::Error(error)) => format!("sync: {error}"),
+        Ok(_) => "sync: unexpected daemon reply".to_string(),
+        Err(_) => "sync: the daemon is busy; it will pass by itself"
+            .to_string(),
     }
 }
 

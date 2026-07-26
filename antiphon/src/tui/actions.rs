@@ -574,7 +574,7 @@ mod tests {
     #[test]
     fn unhandled_actions_leave_a_notice_and_quit_quits() {
         let mut app = app_with_messages(1);
-        app.apply(Action::Sync);
+        app.apply(Action::OpenLink);
         assert!(app.notice.is_some());
         app.apply(Action::Quit);
         assert!(app.quit);
