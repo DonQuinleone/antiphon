@@ -78,6 +78,9 @@ const EDITOR_POLL: Duration = Duration::from_millis(20);
 /// never hang on it. Queued work is durable either way.
 const IPC_WAIT: Duration = Duration::from_secs(2);
 const REFRESH_EVERY: Duration = Duration::from_secs(2);
+/// A notice that nothing replaces fades on its own, so
+/// "sending: ..." cannot outlive the send it described.
+const NOTICE_TTL: Duration = Duration::from_secs(8);
 const LIST_WINDOW: usize = 500;
 const DAEMON_ASSIGNS_ID: u64 = 0;
 const UNREAD_QUERY: &str = "tag:unread";
@@ -204,7 +207,9 @@ fn event_loop(
 ) -> std::io::Result<()> {
     let mut last_refresh = Instant::now();
     let mut last_unread: Option<u32> = None;
+    let mut notice_seen: Option<(String, Instant)> = None;
     while !app.quit {
+        expire_notice(app, &mut notice_seen);
         tick_editor(terminal, app)?;
         preview::refresh(app);
         let drawing = Instant::now();
@@ -282,6 +287,22 @@ pub(super) fn grab_mouse() {
 
 pub(super) fn release_mouse() {
     let _ = execute!(std::io::stdout(), DisableMouseCapture);
+}
+
+fn expire_notice(app: &mut App, seen: &mut Option<(String, Instant)>) {
+    let Some(current) = app.notice.clone() else {
+        *seen = None;
+        return;
+    };
+    match seen {
+        Some((text, since)) if *text == current => {
+            if since.elapsed() >= NOTICE_TTL {
+                app.notice = None;
+                *seen = None;
+            }
+        }
+        _ => *seen = Some((current, Instant::now())),
+    }
 }
 
 fn poll_interval(app: &App) -> Duration {

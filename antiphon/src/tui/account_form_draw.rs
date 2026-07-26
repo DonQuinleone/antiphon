@@ -8,8 +8,8 @@ use super::account_form::{FIELD_COUNT, PASSWORD_HINT};
 use super::app::App;
 use super::headers::with_cursor;
 
-const MODAL_WIDTH: u16 = 60;
-const LABEL_COLS: usize = 30;
+const MODAL_WIDTH: u16 = 86;
+const LABEL_COLS: usize = 24;
 const BORDER_ROWS: u16 = 2;
 const HINT: &str = " tab move \u{b7} enter/^s save \u{b7} esc cancel ";
 const BULLET: char = '\u{2022}';
@@ -27,8 +27,14 @@ pub(super) fn draw_form(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         " add account "
     };
-    let extra_rows = 1 + form.error.is_some() as u16;
     let width = MODAL_WIDTH.min(area.width.saturating_sub(2));
+    let inner_width = width.saturating_sub(2) as usize;
+    let error_lines = form
+        .error
+        .as_deref()
+        .map(|error| wrapped(error, inner_width))
+        .unwrap_or_default();
+    let extra_rows = 1 + error_lines.len() as u16;
     let height = (FIELD_COUNT as u16 + BORDER_ROWS + extra_rows)
         .min(area.height.saturating_sub(2));
     let modal = Rect {
@@ -49,12 +55,14 @@ pub(super) fn draw_form(frame: &mut Frame, app: &App, area: Rect) {
     let mut lines: Vec<Line<'static>> = (0..FIELD_COUNT)
         .map(|index| field_line(app, form, index))
         .collect();
-    if let Some(error) = &form.error {
+    if !error_lines.is_empty() {
         lines.push(Line::default());
-        lines.push(Line::from(Span::styled(
-            error.clone(),
-            Style::new().fg(theme.accent_strong),
-        )));
+        for row in error_lines {
+            lines.push(Line::from(Span::styled(
+                row,
+                Style::new().fg(theme.accent_strong),
+            )));
+        }
     }
     frame.render_widget(Paragraph::new(lines), inner);
 }
@@ -93,6 +101,29 @@ fn field_line(
         ));
     }
     Line::from(spans)
+}
+
+/// Greedy word wrap; the modal is narrow and errors are one
+/// sentence, so nothing cleverer earns its keep.
+fn wrapped(text: &str, width: usize) -> Vec<String> {
+    let mut rows: Vec<String> = Vec::new();
+    let mut row = String::new();
+    for word in text.split_whitespace() {
+        let need = row.chars().count()
+            + usize::from(!row.is_empty())
+            + word.chars().count();
+        if need > width && !row.is_empty() {
+            rows.push(std::mem::take(&mut row));
+        }
+        if !row.is_empty() {
+            row.push(' ');
+        }
+        row.push_str(word);
+    }
+    if !row.is_empty() {
+        rows.push(row);
+    }
+    rows
 }
 
 fn shown_value(

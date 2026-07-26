@@ -60,8 +60,8 @@ const FIELDS: [FieldSpec; FIELD_COUNT] = [
     field!("password command", password_cmd),
 ];
 
-pub(super) const PASSWORD_HINT: &str = "leave empty on macOS to \
-     use the Keychain field below";
+pub(super) const PASSWORD_HINT: &str =
+    "empty = use the Keychain field below";
 
 /// The in-TUI replacement for the setup wizard's terminal Q&A:
 /// one field per row, `editing` naming the account file an
@@ -312,13 +312,16 @@ fn resolve_password_cmd(
         return Ok(typed.to_string());
     }
     if !cfg!(target_os = "macos") {
-        return Err("a password command is required".to_string());
+        return Err(
+            "give a password command, e.g. pass show mail/name"
+                .to_string(),
+        );
     }
     let secret = form.keychain_secret.trim();
     if secret.is_empty() {
-        return Err(format!(
-            "a password command is required ({PASSWORD_HINT})"
-        ));
+        return Err("type the password into the Keychain field, \
+                    or give a password command above"
+            .to_string());
     }
     account_wizard::store_supplied_secret(
         form.name.trim(),

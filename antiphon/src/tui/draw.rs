@@ -60,6 +60,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
     if app.view == View::Settings {
         draw_settings(frame, app, content);
+        super::settings_draw::draw_alias_modal(frame, app, content);
         draw_status(frame, app, status);
         super::account_form_draw::draw_form(frame, app, area);
         return;

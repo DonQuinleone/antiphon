@@ -28,6 +28,8 @@ pub(super) struct FolderRow {
 pub(super) struct AliasEdit {
     pub(super) text: String,
     pub(super) cursor: usize,
+    pub(super) account: String,
+    pub(super) folder: String,
 }
 
 /// Every discovered folder of every account, alias joined in;
@@ -127,6 +129,8 @@ fn begin_edit(app: &mut App) {
     app.folder_alias_edit = Some(AliasEdit {
         cursor: row.alias.chars().count(),
         text: row.alias,
+        account: row.account,
+        folder: row.folder,
     });
 }
 

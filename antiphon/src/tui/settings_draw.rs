@@ -185,7 +185,7 @@ fn folder_line(
     if selected {
         style = style.bg(theme.selection_bg).fg(theme.selection_fg);
     }
-    let alias = alias_text(app, row, selected);
+    let alias = alias_text(row);
     Line::from(Span::styled(
         format!(
             "{marker}{:<NAME_WIDTH$}{:<ADDRESS_WIDTH$}{alias}",
@@ -195,16 +195,57 @@ fn folder_line(
     ))
 }
 
-/// The selected row shows the in-progress edit, cursor and
-/// all, rather than the alias last saved.
-fn alias_text(app: &App, row: &FolderRow, selected: bool) -> String {
-    if !selected {
-        return row.alias.clone();
-    }
-    match &app.folder_alias_edit {
-        Some(edit) => with_cursor(&edit.text, edit.cursor),
-        None => row.alias.clone(),
-    }
+fn alias_text(row: &FolderRow) -> String {
+    row.alias.clone()
+}
+
+const ALIAS_MODAL_WIDTH: u16 = 56;
+const ALIAS_HINT: &str =
+    " enter saves \u{b7} empty removes \u{b7} esc cancels ";
+
+/// The alias edits in a small modal of its own, named after
+/// the folder, so the mode is unmistakable and the keys sit
+/// right under the text being typed.
+pub(super) fn draw_alias_modal(
+    frame: &mut Frame,
+    app: &App,
+    area: Rect,
+) {
+    let Some(edit) = &app.folder_alias_edit else {
+        return;
+    };
+    let theme = app.theme;
+    let width = ALIAS_MODAL_WIDTH.min(area.width.saturating_sub(2));
+    let height = 3u16.min(area.height);
+    let modal = Rect {
+        x: area.x + (area.width.saturating_sub(width)) / 2,
+        y: area.y + (area.height.saturating_sub(height)) / 2,
+        width,
+        height,
+    };
+    frame.render_widget(ratatui::widgets::Clear, modal);
+    let title = format!(
+        " alias for {}/{} ",
+        edit.account,
+        match edit.folder.is_empty() {
+            true => "inbox",
+            false => edit.folder.as_str(),
+        }
+    );
+    let block = ratatui::widgets::Block::bordered()
+        .title(title)
+        .title_bottom(ALIAS_HINT)
+        .border_style(Style::new().fg(theme.accent))
+        .style(Style::new().bg(theme.surface));
+    let inner = block.inner(modal);
+    frame.render_widget(block, modal);
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            with_cursor(&edit.text, edit.cursor),
+            Style::new().fg(theme.text_primary),
+        ))),
+        inner,
+    );
 }
 
 fn mark(selected: bool) -> &'static str {
@@ -330,16 +371,30 @@ mod tests {
         });
         app.folder_alias_edit =
             Some(super::super::folders::AliasEdit {
+                account: "personal".to_string(),
+                folder: "lists/rust".to_string(),
                 text: "renamed".to_string(),
                 cursor: 7,
             });
-        let buffer = rendered(&app);
+        let backend = TestBackend::new(70, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                draw_settings(frame, &app, frame.area());
+                draw_alias_modal(frame, &app, frame.area());
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
         let text: String =
             (0..buffer.area.height).map(|y| row(&buffer, y)).collect();
         assert!(text.contains("Folders"));
-        assert!(text.contains("work"));
-        assert!(text.contains("lists/aerc"));
-        assert!(text.contains("renamed"));
-        assert!(!text.contains("aerc-list"));
+        assert!(
+            text.contains("alias for personal/lists/rust"),
+            "the modal names the folder being aliased"
+        );
+        assert!(
+            text.contains("renamed"),
+            "the edit lives in the modal"
+        );
     }
 }
