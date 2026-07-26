@@ -104,6 +104,7 @@ pub enum PromptKind {
     AttachmentPath,
     SaveAttachment,
     ConfirmDraft,
+    ConfirmDelete,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

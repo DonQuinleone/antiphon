@@ -70,6 +70,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         preview: None,
         own_addresses: Vec::new(),
         archive_folders: Vec::new(),
+        trash_folders: Vec::new(),
         folder_aliases: Vec::new(),
         contacts: Vec::new(),
         pending_rsvp: None,

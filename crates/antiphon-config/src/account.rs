@@ -22,6 +22,7 @@ pub struct Account {
     pub name: String,
     pub maildir: Option<String>,
     pub archive: Option<String>,
+    pub trash: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]

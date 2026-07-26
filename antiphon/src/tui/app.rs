@@ -78,6 +78,7 @@ pub struct App {
     pub keyring: Keyring,
     pub own_addresses: Vec<String>,
     pub archive_folders: Vec<(String, String)>,
+    pub trash_folders: Vec<(String, String)>,
     pub folder_aliases: Vec<(String, String, String)>,
     pub contacts: Vec<Contact>,
     pub preview: Option<super::preview::Preview>,
@@ -171,6 +172,7 @@ impl App {
             keyring,
             own_addresses,
             archive_folders: archive_folders(loaded),
+            trash_folders: trash_folders(loaded),
             folder_aliases: folder_aliases(loaded),
             contacts: Vec::new(),
             preview: None,
@@ -324,11 +326,22 @@ impl App {
 }
 
 fn archive_folders(loaded: &Loaded) -> Vec<(String, String)> {
+    named_folders(loaded, |account| account.archive.clone())
+}
+
+fn trash_folders(loaded: &Loaded) -> Vec<(String, String)> {
+    named_folders(loaded, |account| account.trash.clone())
+}
+
+fn named_folders(
+    loaded: &Loaded,
+    pick: fn(&antiphon_config::Account) -> Option<String>,
+) -> Vec<(String, String)> {
     loaded
         .accounts
         .iter()
         .filter_map(|entry| {
-            let folder = entry.account.account.archive.clone()?;
+            let folder = pick(&entry.account.account)?;
             Some((entry.account.account.name.clone(), folder))
         })
         .collect()

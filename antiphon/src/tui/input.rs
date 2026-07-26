@@ -295,6 +295,23 @@ pub(super) fn prompt_key(
         }
         return;
     }
+    if app
+        .prompt
+        .as_ref()
+        .is_some_and(|prompt| prompt.kind == PromptKind::ConfirmDelete)
+    {
+        match key.code {
+            KeyCode::Char('y' | 'Y') => {
+                app.prompt = None;
+                app.delete_selected_forever();
+            }
+            KeyCode::Char('n' | 'N') | KeyCode::Esc => {
+                app.prompt = None
+            }
+            _ => {}
+        }
+        return;
+    }
     if app.confirming_unsubscribe() {
         let confirmed = matches!(key.code, KeyCode::Char('y' | 'Y'));
         app.confirm_unsubscribe(confirmed);
@@ -334,7 +351,9 @@ fn submit_prompt(app: &mut App, layout: &StoreLayout) {
         PromptKind::SaveAttachment => {
             drawer::save_selected(app, &prompt.buffer)
         }
-        PromptKind::ConfirmUnsubscribe | PromptKind::ConfirmDraft => {}
+        PromptKind::ConfirmUnsubscribe
+        | PromptKind::ConfirmDraft
+        | PromptKind::ConfirmDelete => {}
     }
 }
 

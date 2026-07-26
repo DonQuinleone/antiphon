@@ -80,6 +80,8 @@ const DEFAULT_ARCHIVE_FOLDER: &str = "archive";
 // Typing "inbox" moves to the account root, whose folder path
 // is empty.
 const ROOT_FOLDER_INPUT: &str = "inbox";
+// Lowercase like every local folder name.
+const DEFAULT_TRASH_FOLDER: &str = "trash";
 
 impl App {
     pub(super) fn apply_in_list(&mut self, action: Action) {
@@ -265,7 +267,29 @@ impl App {
         });
     }
 
-    fn delete_selected(&mut self) {
+    /// d is a move to the account's trash folder; only inside
+    /// that folder does it become a real deletion, and then
+    /// only after a y/n confirmation. The server's own trash
+    /// expiry does the rest.
+    pub(super) fn delete_selected(&mut self) {
+        let Some(message) = self.selected_message() else {
+            return;
+        };
+        let account = account_of(&message.path);
+        let trash = self.trash_folder_of(&account);
+        if folder_of(&message.path) == trash {
+            self.open_prompt(
+                super::commands::PromptKind::ConfirmDelete,
+            );
+            return;
+        }
+        self.move_selected_to(&trash);
+    }
+
+    /// The confirmed permanent deletion, from the trash tab
+    /// of the prompt; everything else still goes through
+    /// delete_selected's move.
+    pub(super) fn delete_selected_forever(&mut self) {
         if self.selected >= self.messages.len() {
             return;
         }
@@ -276,6 +300,14 @@ impl App {
             message_id: message.id,
         });
         self.selected = self.selected.min(self.last_index());
+    }
+
+    fn trash_folder_of(&self, account: &str) -> String {
+        self.trash_folders
+            .iter()
+            .find(|(name, _)| name == account)
+            .map(|(_, folder)| folder.clone())
+            .unwrap_or_else(|| DEFAULT_TRASH_FOLDER.to_string())
     }
 
     /// a sends the message to the account's archive folder
@@ -408,6 +440,39 @@ mod tests {
             app.alias_for("work", "inbox/accounts"),
             Some("accounts")
         );
+    }
+
+    #[test]
+    fn delete_trashes_first_and_only_confirms_inside_trash() {
+        let mut app = app_with_messages(2);
+        app.messages[0].path =
+            std::path::PathBuf::from("store/maildir/work/cur/one.eml");
+        app.messages[1].path = std::path::PathBuf::from(
+            "store/maildir/work/trash/cur/two.eml",
+        );
+        app.apply_in_list(Action::DeleteMessage);
+        let Some(OpIntent::Move { to_folder, .. }) =
+            app.pending_ops.last()
+        else {
+            panic!("expected a move to trash");
+        };
+        assert_eq!(to_folder, "trash");
+        assert_eq!(app.messages.len(), 1);
+
+        app.selected = 0;
+        app.apply_in_list(Action::DeleteMessage);
+        assert!(
+            app.prompt.is_some(),
+            "inside trash, d asks before deleting"
+        );
+        assert_eq!(app.messages.len(), 1, "nothing removed yet");
+        app.prompt = None;
+        app.delete_selected_forever();
+        assert!(matches!(
+            app.pending_ops.last(),
+            Some(OpIntent::Delete { .. })
+        ));
+        assert!(app.messages.is_empty());
     }
 
     #[test]
@@ -573,7 +638,10 @@ mod tests {
         assert_eq!(app.messages.len(), 1);
         assert_eq!(app.selected, 0);
         assert_eq!(app.total_messages, 1);
-        assert!(matches!(app.pending_ops[0], OpIntent::Delete { .. }));
+        assert!(
+            matches!(app.pending_ops[0], OpIntent::Move { .. }),
+            "delete is a move to trash outside the trash folder"
+        );
     }
 
     #[test]

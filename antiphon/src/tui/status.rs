@@ -37,6 +37,12 @@ fn prompt_line(theme: &Theme, prompt: &Prompt) -> Line<'static> {
                 Style::new().fg(theme.accent_strong),
             ));
         }
+        PromptKind::ConfirmDelete => {
+            return Line::from(Span::styled(
+                "delete forever? this cannot be undone \u{b7} y/n",
+                Style::new().fg(theme.accent_strong),
+            ));
+        }
     };
     Line::from(vec![
         Span::styled(
