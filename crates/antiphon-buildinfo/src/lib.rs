@@ -2,8 +2,27 @@ use std::process::Command;
 
 pub fn emit_version() {
     println!("cargo:rustc-env=ANTIPHON_VERSION={}", version());
+    // HEAD only changes on branch switches; commits move the
+    // ref it points at, so watch that file too or the stamp
+    // goes stale while the code stays fresh.
     println!("cargo:rerun-if-changed=../.git/HEAD");
+    for ref_file in resolved_refs() {
+        println!("cargo:rerun-if-changed={ref_file}");
+    }
     println!("cargo:rerun-if-env-changed=ANTIPHON_VERSION");
+}
+
+fn resolved_refs() -> Vec<String> {
+    let Ok(head) = std::fs::read_to_string("../.git/HEAD") else {
+        return Vec::new();
+    };
+    let Some(reference) = head.trim().strip_prefix("ref: ") else {
+        return Vec::new();
+    };
+    vec![
+        format!("../.git/{reference}"),
+        "../.git/packed-refs".to_string(),
+    ]
 }
 
 /// Tag archives carry no .git, so packagers (AUR, Nix, brew)
