@@ -3,7 +3,7 @@ packages:
   - rust
   - notmuch
   - hut
-oauth: git.sr.ht/OBJECTS:RW
+oauth: git.sr.ht/PROFILE:RO git.sr.ht/REPOSITORIES:RO git.sr.ht/OBJECTS:RW
 sources:
   - https://git.sr.ht/~donquinleone/antiphon
 environment:
