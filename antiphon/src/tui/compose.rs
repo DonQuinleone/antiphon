@@ -188,11 +188,16 @@ pub(super) struct Outgoing {
     pub body: String,
 }
 
+/// Header lists keep what you typed, display names included,
+/// split with the same quote-aware rules the harvester uses;
+/// only the envelope reduces entries to bare addresses.
 fn address_list(value: &str) -> Vec<String> {
-    value
-        .split(',')
-        .map(bare_address)
-        .filter(|address| !address.is_empty())
+    antiphon_store::contacts::address_entries(value)
+        .into_iter()
+        .map(|(address, name)| match name.is_empty() {
+            true => address,
+            false => format!("{name} <{address}>"),
+        })
         .collect()
 }
 
@@ -243,7 +248,7 @@ pub(super) fn envelope(account: &str, outgoing: &Outgoing) -> Envelope {
             .iter()
             .chain(&outgoing.cc)
             .chain(&outgoing.bcc)
-            .cloned()
+            .map(|entry| bare_address(entry))
             .collect(),
     }
 }
@@ -341,11 +346,18 @@ mod tests {
         let outgoing = state.outgoing().unwrap();
         assert_eq!(
             outgoing.to,
-            ["mara@example.com", "quin@example.com"]
+            ["Mara <mara@example.com>", "quin@example.com"],
+            "headers keep the display name as typed"
         );
         assert_eq!(outgoing.cc, ["cc@example.com"]);
         let envelope = envelope("personal", &outgoing);
         assert_eq!(envelope.recipients.len(), 4);
+        assert!(
+            envelope
+                .recipients
+                .contains(&"mara@example.com".to_string()),
+            "the envelope reduces entries to bare addresses"
+        );
         assert_eq!(envelope.from, "tester@example.com");
     }
 

@@ -70,11 +70,22 @@ fn from_address<'a>(draft: &Draft<'a>) -> Address<'a> {
 
 fn address_list<'a>(addresses: &[&'a str]) -> Address<'a> {
     Address::new_list(
-        addresses
-            .iter()
-            .map(|address| Address::new_address(None::<&str>, *address))
-            .collect(),
+        addresses.iter().map(|entry| name_addr(entry)).collect(),
     )
+}
+
+/// "Alba Voss <alba@example.com>" keeps its display name in
+/// the header; a bare address stays bare.
+fn name_addr(entry: &str) -> Address<'_> {
+    let Some((name, rest)) = entry.split_once('<') else {
+        return Address::new_address(None::<&str>, entry.trim());
+    };
+    let address = rest.trim_end().trim_end_matches('>').trim();
+    let name = name.trim().trim_matches('"');
+    if name.is_empty() {
+        return Address::new_address(None::<&str>, address);
+    }
+    Address::new_address(Some(name), address)
 }
 
 fn message_id(domain: &str, date_unix: i64) -> String {
