@@ -2,8 +2,7 @@ class Antiphon < Formula
   desc "Modern mail client for the terminal"
   homepage "https://git.sr.ht/~donquinleone/antiphon"
   url "https://git.sr.ht/~donquinleone/antiphon/archive/v1.0.0.tar.gz"
-  # placeholder; stamp the real sha256 once the v1.0.0 tag exists
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 "6677eb4976eb2a87d0eb32ce4c6fcddaf0ca2a052dd82bc6d9001ba4e45149be"
   license "GPL-3.0-or-later"
 
   depends_on "rust" => :build

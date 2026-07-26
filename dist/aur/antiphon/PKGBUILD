@@ -10,19 +10,17 @@ depends=(notmuch)
 optdepends=('gnupg: OpenPGP signing and decryption via gpg-agent')
 makedepends=(cargo scdoc)
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-# placeholder; pin with updpkgsums once the v$pkgver tag exists,
-# see README.md next to this file
-sha256sums=('0000000000000000000000000000000000000000000000000000000000000000')
+sha256sums=('6677eb4976eb2a87d0eb32ce4c6fcddaf0ca2a052dd82bc6d9001ba4e45149be')
 
 prepare() {
-    cd "$pkgname-$pkgver"
+    cd "$pkgname-v$pkgver"
     export RUSTUP_TOOLCHAIN=stable
     cargo fetch --locked --target "$(rustc -vV \
         | sed -n 's/host: //p')"
 }
 
 build() {
-    cd "$pkgname-$pkgver"
+    cd "$pkgname-v$pkgver"
     export RUSTUP_TOOLCHAIN=stable
     export CARGO_TARGET_DIR=target
     export ANTIPHON_VERSION="v$pkgver"
@@ -33,13 +31,13 @@ build() {
 }
 
 check() {
-    cd "$pkgname-$pkgver"
+    cd "$pkgname-v$pkgver"
     export RUSTUP_TOOLCHAIN=stable
     cargo test --frozen --workspace
 }
 
 package() {
-    cd "$pkgname-$pkgver"
+    cd "$pkgname-v$pkgver"
     install -Dm755 target/release/antiphon \
         "$pkgdir/usr/bin/antiphon"
     install -Dm755 target/release/antiphond \
