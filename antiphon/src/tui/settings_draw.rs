@@ -17,6 +17,9 @@ const UNSELECTED_MARK: &str = "  ";
 const NAME_WIDTH: usize = 16;
 const ADDRESS_WIDTH: usize = 28;
 const LABEL_WIDTH: usize = 26;
+const STATE_WIDTH: usize = 10;
+const FOLDERS_HELP: &str = "Shift-J/K reorder \u{b7} h hide \u{b7} \
+     u unsync \u{b7} enter alias";
 
 pub(super) fn draw_settings(frame: &mut Frame, app: &App, area: Rect) {
     let Some(state) = &app.settings else {
@@ -239,6 +242,11 @@ fn draw_folders(
             index == state.folder_selected,
         ));
     }
+    lines.push(Line::default());
+    lines.push(Line::from(Span::styled(
+        FOLDERS_HELP,
+        Style::new().fg(theme.text_muted),
+    )));
     frame.render_widget(Paragraph::new(lines), area);
 }
 
@@ -253,23 +261,28 @@ fn folder_line(
     if selected {
         style = style.bg(theme.selection_bg).fg(theme.selection_fg);
     }
-    let alias = alias_text(row);
     Line::from(Span::styled(
         format!(
-            "{marker}{:<NAME_WIDTH$}{:<ADDRESS_WIDTH$}{alias}",
-            row.account, row.folder,
+            "{marker}{:<NAME_WIDTH$}{:<ADDRESS_WIDTH$}\
+             {:<STATE_WIDTH$}{}",
+            row.account,
+            row.folder,
+            state_label(row),
+            row.alias,
         ),
         style,
     ))
 }
 
-/// The alias column doubles as the hidden marker, so a hidden
-/// folder says so on its own row.
-fn alias_text(row: &FolderRow) -> String {
-    match (row.hidden, row.alias.is_empty()) {
-        (false, _) => row.alias.clone(),
-        (true, true) => "(hidden)".to_string(),
-        (true, false) => format!("{} (hidden)", row.alias),
+/// The row's sync state: unsynced dominates, since an unsynced
+/// folder is never downloaded and so a redundant hidden flag on
+/// it is moot; a hidden folder is still synced, just off the
+/// sidebar.
+fn state_label(row: &FolderRow) -> &'static str {
+    match (row.unsynced, row.hidden) {
+        (true, _) => "unsynced",
+        (false, true) => "hidden",
+        (false, false) => "visible",
     }
 }
 

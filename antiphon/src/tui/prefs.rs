@@ -68,6 +68,7 @@ pub(super) fn account_seeds(loaded: &Loaded) -> Vec<AccountEntry> {
             folders: Vec::new(),
             order: entry.account.folder_order.clone(),
             hidden: entry.account.folders_hidden.clone(),
+            unsynced: entry.account.folders_unsynced.clone(),
         })
         .collect()
 }

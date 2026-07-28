@@ -2,7 +2,7 @@ use antiphon_config::SavedSearch;
 use antiphon_store::StoreLayout;
 
 pub const ALL_LABEL: &str = "all";
-const INBOX_LABEL: &str = "inbox";
+pub const INBOX_LABEL: &str = "inbox";
 const ALL_QUERY: &str = "*";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,14 +41,16 @@ impl SidebarEntry {
 }
 
 /// An account, the store folders discovered under it, and the
-/// account's own sidebar preferences (`folder_order` and
-/// `folders_hidden` from its config file).
+/// account's own sidebar preferences (`folder_order`,
+/// `folders_hidden` and `folders_unsynced` from its config
+/// file).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AccountEntry {
     pub name: String,
     pub folders: Vec<String>,
     pub order: Vec<String>,
     pub hidden: Vec<String>,
+    pub unsynced: Vec<String>,
 }
 
 /// Refreshes each account's discovered folders, keeping the
@@ -64,6 +66,7 @@ pub fn discover(
             folders: layout.account_folders(&seed.name),
             order: seed.order.clone(),
             hidden: seed.hidden.clone(),
+            unsynced: seed.unsynced.clone(),
         })
         .collect()
 }
@@ -89,6 +92,14 @@ fn order_rank(order: &[String], name: &str) -> usize {
 
 pub fn is_hidden(account: &AccountEntry, name: &str) -> bool {
     account.hidden.iter().any(|hidden| hidden == name)
+}
+
+/// Whether the daemon is told to skip this folder entirely
+/// (`folders_unsynced`). The names match the store's
+/// maildir-relative folder paths, which is what the sync
+/// engine's exclusion check compares against.
+pub fn is_unsynced(account: &AccountEntry, name: &str) -> bool {
+    account.unsynced.iter().any(|unsynced| unsynced == name)
 }
 
 /// Built-in unified views, `all` first so an inbox-zero
@@ -149,9 +160,11 @@ fn search_entries(saved: &[SavedSearch]) -> Vec<SidebarEntry> {
 }
 
 /// The account's folder rows, `folder_order` applied and the
-/// hidden ones dropped; sorting the built entries rather than
-/// bare names keeps a subdirectory literally named inbox
-/// distinct from the root inbox.
+/// hidden and unsynced ones dropped; sorting the built entries
+/// rather than bare names keeps a subdirectory literally named
+/// inbox distinct from the root inbox. An unsynced folder that
+/// still has local mail from before it was excluded is dropped
+/// here just as a hidden one is.
 pub fn folder_entries(account: &AccountEntry) -> Vec<SidebarEntry> {
     let mut items = vec![inbox_entry(&account.name)];
     items.extend(
@@ -162,7 +175,10 @@ pub fn folder_entries(account: &AccountEntry) -> Vec<SidebarEntry> {
     );
     items
         .sort_by_key(|entry| order_rank(&account.order, entry.label()));
-    items.retain(|entry| !is_hidden(account, entry.label()));
+    items.retain(|entry| {
+        let name = entry.label();
+        !is_hidden(account, name) && !is_unsynced(account, name)
+    });
     items
 }
 

@@ -208,12 +208,21 @@ fn folders_tab_lists_rows_and_the_selected_ones_edit_shows() {
                 folder: "lists/aerc".to_string(),
                 alias: "aerc-list".to_string(),
                 hidden: false,
+                unsynced: false,
             },
             FolderRow {
                 account: "work".to_string(),
                 folder: "spam".to_string(),
                 alias: String::new(),
                 hidden: true,
+                unsynced: false,
+            },
+            FolderRow {
+                account: "work".to_string(),
+                folder: "archive".to_string(),
+                alias: String::new(),
+                hidden: false,
+                unsynced: true,
             },
         ],
         folder_selected: 0,
@@ -238,12 +247,52 @@ fn folders_tab_lists_rows_and_the_selected_ones_edit_shows() {
         (0..buffer.area.height).map(|y| row(&buffer, y)).collect();
     assert!(text.contains("Folders"));
     assert!(
-        text.contains("spam") && text.contains("(hidden)"),
-        "hidden folders wear their marker: {text}"
+        text.contains("spam") && text.contains("hidden"),
+        "a hidden folder wears its state marker: {text}"
+    );
+    assert!(
+        text.contains("archive") && text.contains("unsynced"),
+        "an unsynced folder wears its state marker: {text}"
+    );
+    assert!(
+        text.contains("aerc-list") && text.contains("visible"),
+        "a plain folder reads as visible: {text}"
     );
     assert!(
         text.contains("alias for personal/lists/rust"),
         "the modal names the folder being aliased"
     );
     assert!(text.contains("renamed"), "the edit lives in the modal");
+}
+
+#[test]
+fn folders_tab_footer_lists_its_keys() {
+    let mut app = app_with_messages(1);
+    app.settings = Some(SettingsState {
+        tab: SettingsTab::Folders,
+        accounts: Vec::new(),
+        account_selected: 0,
+        pending_delete: None,
+        pending_revoke: None,
+        essentials_selected: 0,
+        daemon_hint: None,
+        folders: vec![FolderRow {
+            account: "work".to_string(),
+            folder: "spam".to_string(),
+            alias: String::new(),
+            hidden: false,
+            unsynced: false,
+        }],
+        folder_selected: 0,
+    });
+    let buffer = rendered(&app);
+    let text: String =
+        (0..buffer.area.height).map(|y| row(&buffer, y)).collect();
+    assert!(
+        text.contains("reorder")
+            && text.contains("h hide")
+            && text.contains("u unsync")
+            && text.contains("enter alias"),
+        "the footer lists the folder keys: {text}"
+    );
 }
