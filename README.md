@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://git.sr.ht/~donquinleone/antiphon/blob/master/assets/banner.svg"
+  <img src="assets/banner.svg"
        width="480"
        alt="antiphon: a modern mail client for the terminal">
 </p>
@@ -24,7 +24,7 @@ and your own gpg-agent, keyring and smartcard included.
 
 ## A look around
 
-<img src="https://git.sr.ht/~donquinleone/antiphon/blob/master/assets/screenshots/themes.gif"
+<img src="assets/screenshots/themes.gif"
      alt="The message list cycling through all seventeen
           shipped themes: two accounts in the sidebar, unread
           counts, status markers and the reading pane"
