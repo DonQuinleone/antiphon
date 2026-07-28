@@ -45,6 +45,7 @@ mod review;
 mod scope;
 mod session;
 mod settings;
+mod settings_accounts;
 mod settings_draw;
 mod settingscmd;
 mod sidebar;
