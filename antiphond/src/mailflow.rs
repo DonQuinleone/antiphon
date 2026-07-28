@@ -140,6 +140,9 @@ impl Mailflow {
             report.total_updated(),
             report.total_removed(),
         );
+        for error in &report.errors {
+            eprintln!("sync {account}: {error}");
+        }
         let rules = account_rules(&self.rules, account);
         if !rules.is_empty() {
             let mut state = lock_state(&self.state);

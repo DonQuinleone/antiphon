@@ -56,6 +56,10 @@ pub fn sync(
     let mut state = AccountState::load(&state_path)?;
     let mut report = SyncReport::default();
     let indexer = Indexer::start(layout, &account.name);
+    // One failing folder must not abort the rest: record it
+    // and carry on, so a folder the server mishandles costs
+    // only itself. Saving state still aborts, because a store
+    // that cannot persist cursors corrupts every later pass.
     let outcome = (|| {
         for folder in folders {
             let folder_report = sync_folder(
@@ -65,7 +69,16 @@ pub fn sync(
                 &folder,
                 &mut state,
                 &indexer,
-            )?;
+            );
+            let folder_report = match folder_report {
+                Ok(folder_report) => folder_report,
+                Err(error) => {
+                    report
+                        .errors
+                        .push(format!("{}: {error}", folder.name));
+                    continue;
+                }
+            };
             state.save(&state_path)?;
             report.folders.push(folder_report);
         }
@@ -396,18 +409,45 @@ fn mirror_flags(
     Ok(updated)
 }
 
+/// The extension is appended, never substituted: an account
+/// named `work.gmail` must not share `work.state` with an
+/// account named `work`.
 pub(crate) fn state_path(
     layout: &StoreLayout,
     account: &SyncAccount,
 ) -> PathBuf {
     layout
         .sync_state_dir()
-        .join(&account.name)
-        .with_extension(STATE_FILE_EXTENSION)
+        .join(format!("{}.{STATE_FILE_EXTENSION}", account.name))
 }
 
 fn ensure_dir(dir: &Path) -> Result<(), SyncError> {
     fs::create_dir_all(dir).map_err(SyncError::io(dir))
+}
+
+#[cfg(test)]
+mod state_path_tests {
+    use super::*;
+
+    fn account(name: &str) -> SyncAccount {
+        SyncAccount {
+            name: name.to_owned(),
+            host: "imap.example.com".to_owned(),
+            port: 993,
+            user: "quin@example.com".to_owned(),
+            auth: Auth::Password("never-used".to_owned()),
+        }
+    }
+
+    #[test]
+    fn dotted_account_names_keep_distinct_state_files() {
+        let layout = StoreLayout::new(PathBuf::from("/store"));
+        let plain = state_path(&layout, &account("work"));
+        let dotted = state_path(&layout, &account("work.gmail"));
+        assert!(plain.ends_with("work.state"));
+        assert!(dotted.ends_with("work.gmail.state"));
+        assert_ne!(plain, dotted);
+    }
 }
 
 pub(crate) fn run_notmuch_new(config: &Path) -> Result<(), SyncError> {

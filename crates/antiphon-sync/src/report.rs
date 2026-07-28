@@ -12,6 +12,9 @@ pub struct FolderReport {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SyncReport {
     pub folders: Vec<FolderReport>,
+    /// Folders that failed this pass, one line each; the rest
+    /// of the account synced regardless.
+    pub errors: Vec<String>,
 }
 
 impl SyncReport {
@@ -67,6 +70,7 @@ mod tests {
                     delivered: Vec::new(),
                 },
             ],
+            errors: Vec::new(),
         };
         let expected =
             vec![PathBuf::from("/m/new/a"), PathBuf::from("/m/new/b")];

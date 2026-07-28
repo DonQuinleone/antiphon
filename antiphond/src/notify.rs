@@ -82,6 +82,7 @@ mod tests {
                     delivered: Vec::new(),
                 })
                 .collect(),
+            errors: Vec::new(),
         }
     }
 
