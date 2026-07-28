@@ -63,6 +63,13 @@ impl Outbox {
     pub fn remove(&self, id: u64) -> Result<(), SpoolError> {
         self.spool.remove(id)
     }
+
+    /// Sets a permanently failing message aside so it stops
+    /// retrying; the files survive under outbox/dead for the
+    /// user to inspect or requeue by hand.
+    pub fn reject(&self, id: u64) -> Result<(), SpoolError> {
+        self.spool.reject(id)
+    }
 }
 
 #[cfg(test)]
@@ -109,6 +116,23 @@ mod tests {
         let left = outbox.pending().unwrap();
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].id, 2);
+    }
+
+    #[test]
+    fn a_rejected_message_leaves_the_queue_but_not_the_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let outbox = outbox_in(&dir);
+        let queued =
+            outbox.enqueue(&envelope(), b"Subject: doomed").unwrap();
+        outbox.reject(queued.id).unwrap();
+        assert!(outbox.pending().unwrap().is_empty());
+        let dead = queued
+            .message_path
+            .parent()
+            .unwrap()
+            .join(crate::spool::DEAD_DIR);
+        let kept = fs::read_dir(&dead).unwrap().count();
+        assert_eq!(kept, 2);
     }
 
     #[test]

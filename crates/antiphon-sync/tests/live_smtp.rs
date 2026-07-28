@@ -78,7 +78,13 @@ fn live_smtp_send_and_verify() {
          smtp delivery test body\r\n"
     );
 
-    send(&smtp, message.as_bytes()).unwrap();
+    send(
+        &smtp,
+        recipient,
+        std::slice::from_ref(recipient),
+        message.as_bytes(),
+    )
+    .unwrap();
     eprintln!("smtp accepted message <{message_id}>");
 
     let dir = tempfile::tempdir().unwrap();

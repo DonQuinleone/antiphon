@@ -8,6 +8,7 @@ use serde::de::DeserializeOwned;
 
 pub(crate) const MESSAGE_EXT: &str = "eml";
 pub(crate) const ENVELOPE_EXT: &str = "json";
+pub(crate) const DEAD_DIR: &str = "dead";
 
 #[derive(Debug)]
 pub enum SpoolError {
@@ -76,6 +77,28 @@ impl Spool {
         ids.into_iter()
             .filter_map(|id| self.load(id).transpose())
             .collect()
+    }
+
+    /// Moves a permanently failing message aside into dead/,
+    /// where pending() never looks: the queue stops retrying
+    /// it, but nothing is lost.
+    pub fn reject(&self, id: u64) -> Result<(), SpoolError> {
+        let dead = self.dir.join(DEAD_DIR);
+        fs::create_dir_all(&dead).map_err(|source| SpoolError::Io {
+            path: dead.clone(),
+            source,
+        })?;
+        for ext in [MESSAGE_EXT, ENVELOPE_EXT] {
+            let from = self.path_for(id, ext);
+            if !from.exists() {
+                continue;
+            }
+            let name = format!("{id:016}.{ext}");
+            fs::rename(&from, dead.join(name)).map_err(|source| {
+                SpoolError::Io { path: from, source }
+            })?;
+        }
+        Ok(())
     }
 
     pub fn remove(&self, id: u64) -> Result<(), SpoolError> {

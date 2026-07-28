@@ -18,6 +18,36 @@ use crate::tokens;
 pub(crate) type SharedAccounts =
     std::sync::Arc<std::sync::Mutex<AccountSet>>;
 
+/// A send failure with its retry verdict attached: permanent
+/// means no later drain can succeed without the user changing
+/// something, so the message leaves the retry queue.
+pub(crate) struct ShipError {
+    pub(crate) detail: String,
+    pub(crate) permanent: bool,
+}
+
+impl ShipError {
+    pub(crate) fn transient(
+        detail: impl std::fmt::Display,
+    ) -> ShipError {
+        ShipError {
+            detail: detail.to_string(),
+            permanent: false,
+        }
+    }
+}
+
+/// A rejected message (5xx) or one the server can never parse
+/// will fail identically on every retry; connection trouble
+/// and 4xx throttling deserve another pass.
+fn smtp_permanent(error: &SyncError) -> bool {
+    match error {
+        SyncError::Smtp { source, .. } => source.is_permanent(),
+        SyncError::SmtpMessage { .. } => true,
+        _ => false,
+    }
+}
+
 pub(crate) struct Mailflow {
     pub(crate) layout: StoreLayout,
     pub(crate) set: SharedAccounts,
@@ -211,8 +241,8 @@ impl Mailflow {
                 return;
             }
         };
-        if let Err(error) = self.ship(set, &account, &raw, queued.id) {
-            eprintln!("send {}: {error}", queued.id);
+        if let Err(error) = self.ship(set, &queued.envelope, &raw) {
+            self.settle_failure(outbox, queued.id, &error);
             return;
         }
         if let Err(error) = self.file_sent(&account, &raw) {
@@ -226,25 +256,64 @@ impl Mailflow {
         println!("sent outbox message {}", queued.id);
     }
 
+    /// A transient failure stays queued for the next drain; a
+    /// permanent one moves aside into outbox/dead, so a message
+    /// no server will ever take stops retrying forever.
+    fn settle_failure(
+        &self,
+        outbox: &Outbox,
+        queued_id: u64,
+        error: &ShipError,
+    ) {
+        if !error.permanent {
+            eprintln!("send {queued_id}: {}; will retry", error.detail);
+            return;
+        }
+        match outbox.reject(queued_id) {
+            Ok(()) => eprintln!(
+                "send {queued_id}: {}; giving up, message moved \
+                 to outbox/dead",
+                error.detail
+            ),
+            Err(reject_error) => eprintln!(
+                "send {queued_id}: {}; also failed to set it \
+                 aside: {reject_error}",
+                error.detail
+            ),
+        }
+    }
+
     /// One message leaves the machine here: through Graph
-    /// when the account opted in, else through SMTP.
+    /// when the account opted in, else through SMTP. The queued
+    /// envelope carries the true recipient list, Bcc included.
     fn ship(
         &self,
         set: &AccountSet,
-        account: &str,
+        envelope: &antiphon_store::Envelope,
         raw: &[u8],
-        queued_id: u64,
-    ) -> Result<(), String> {
+    ) -> Result<(), ShipError> {
+        let account = &envelope.account;
         if let Some(spec) = set.graph_spec(account) {
-            let token = self.graph_token(spec)?;
-            return crate::graph::send_raw(&token, raw);
+            let token =
+                self.graph_token(spec).map_err(ShipError::transient)?;
+            let upload = crate::graph::with_envelope_bcc(
+                raw,
+                &envelope.recipients,
+            );
+            return crate::graph::send_raw(&token, &upload);
         }
         let Some(smtp) = self.smtp_for(set, account) else {
-            return Err(format!(
-                "outbox {queued_id}: no smtp account for {account}"
-            ));
+            return Err(ShipError {
+                detail: format!("no smtp account for {account}"),
+                permanent: true,
+            });
         };
-        send(&smtp, raw).map_err(|error| error.to_string())
+        send(&smtp, &envelope.from, &envelope.recipients, raw).map_err(
+            |error| ShipError {
+                permanent: smtp_permanent(&error),
+                detail: error_chain(&error),
+            },
+        )
     }
 
     /// Best-effort mirror of the local sent twin into the

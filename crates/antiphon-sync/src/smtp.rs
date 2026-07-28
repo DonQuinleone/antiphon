@@ -18,13 +18,22 @@ pub struct SmtpAccount {
 }
 
 /// Submits a fully formed RFC 5322 message over SMTP with
-/// mandatory STARTTLS on the configured port. The envelope is
-/// derived from the message's own From, To, Cc and Bcc headers.
+/// mandatory STARTTLS on the configured port. The SMTP
+/// envelope comes from the queued envelope, so Bcc recipients
+/// (kept out of the headers by design) are still delivered.
+/// An empty recipient list falls back to the message's own
+/// From, To, Cc and Bcc headers.
 pub fn send(
     account: &SmtpAccount,
+    from: &str,
+    recipients: &[String],
     raw_message: &[u8],
 ) -> Result<(), SyncError> {
-    let envelope = envelope_for(raw_message)?;
+    let envelope = if recipients.is_empty() {
+        envelope_for(raw_message)?
+    } else {
+        explicit_envelope(from, recipients)?
+    };
     let (credentials, mechanisms) = transport_auth(account);
     let transport = SmtpTransport::starttls_relay(&account.host)
         .map_err(SyncError::smtp(&account.host))?
@@ -51,6 +60,22 @@ fn transport_auth(
             XOAUTH2_MECHANISMS.to_vec(),
         ),
     }
+}
+
+fn explicit_envelope(
+    from: &str,
+    recipients: &[String],
+) -> Result<Envelope, SyncError> {
+    let sender = parse_addresses(from)?.into_iter().next();
+    let mut delivery = Vec::new();
+    for recipient in recipients {
+        delivery.extend(parse_addresses(recipient)?);
+    }
+    Envelope::new(sender, delivery).map_err(|source| {
+        SyncError::SmtpMessage {
+            detail: source.to_string(),
+        }
+    })
 }
 
 fn envelope_for(raw: &[u8]) -> Result<Envelope, SyncError> {
@@ -165,6 +190,36 @@ mod tests {
             .iter()
             .map(|address| address.to_string())
             .collect()
+    }
+
+    #[test]
+    fn an_explicit_envelope_carries_every_recipient() {
+        let envelope = explicit_envelope(
+            "Quin <quin@example.com>",
+            &[
+                "mara@example.com".to_string(),
+                "hidden@example.com".to_string(),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            envelope.from().unwrap().to_string(),
+            "quin@example.com"
+        );
+        assert_eq!(
+            recipient_strings(&envelope),
+            ["mara@example.com", "hidden@example.com"]
+        );
+    }
+
+    #[test]
+    fn an_explicit_envelope_rejects_a_bad_recipient() {
+        let error = explicit_envelope(
+            "quin@example.com",
+            &["not-an-address".to_string()],
+        )
+        .unwrap_err();
+        assert!(matches!(error, SyncError::SmtpMessage { .. }));
     }
 
     #[test]
