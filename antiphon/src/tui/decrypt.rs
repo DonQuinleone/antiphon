@@ -106,6 +106,34 @@ mod tests {
     }
 
     #[test]
+    fn an_html_only_message_renders_with_its_links() {
+        let raw = concat!(
+            "From: alba@example.com\r\n",
+            "Subject: rich\r\n",
+            "MIME-Version: 1.0\r\n",
+            "Content-Type: text/html; charset=utf-8\r\n",
+            "\r\n",
+            "<p>See <a href=\"https://example.com/x\">",
+            "the docs</a></p>\r\n",
+        );
+        let dir = TempDir::new();
+        let keyring = Keyring::from_dir(&dir.path);
+        let opened = read_message(
+            raw.as_bytes(),
+            &keyring,
+            Some(Path::new("/nonexistent")),
+        );
+        assert_eq!(opened.body, "See the docs[1]");
+        let links: Vec<(&str, &str)> = opened
+            .rendered
+            .links
+            .iter()
+            .map(|link| (link.url.as_str(), link.label.as_str()))
+            .collect();
+        assert_eq!(links, [("https://example.com/x", "the docs")]);
+    }
+
+    #[test]
     fn a_calendar_part_yields_an_invite_block() {
         let raw = concat!(
             "From: alba@example.com\r\n",

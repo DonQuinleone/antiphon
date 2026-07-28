@@ -7,9 +7,6 @@ use crate::flowed::unflow;
 use crate::html::html_body;
 use crate::links::{RenderedBody, plain_body};
 
-const HTML_ONLY_NOTICE: &str = "[HTML-only message: no plain-text \
-     part; HTML rendering is not yet supported]";
-
 enum RawBody {
     Plain(String),
     Html(String),
@@ -35,8 +32,8 @@ pub fn body_text(raw: &[u8]) -> BodyText {
             text,
             kind: BodyKind::Plain,
         },
-        RawBody::Html(_) => BodyText {
-            text: HTML_ONLY_NOTICE.to_owned(),
+        RawBody::Html(html) => BodyText {
+            text: rendered_html_text(&html),
             kind: BodyKind::HtmlOnly,
         },
         RawBody::Empty => empty(),
@@ -113,9 +110,6 @@ fn raw_body_preferring(
     }
 }
 
-/// Unlike body_text, an html part renders through the html
-/// converter here instead of collapsing to a notice, so the
-/// pager's html view shows real content.
 pub fn body_text_preferring(
     raw: &[u8],
     preference: BodyPreference,
@@ -179,7 +173,7 @@ fn empty() -> BodyText {
 
 #[cfg(test)]
 mod tests {
-    use super::{BodyKind, HTML_ONLY_NOTICE, body_text};
+    use super::{BodyKind, body_text};
 
     #[test]
     fn extracts_the_right_body() {
@@ -255,7 +249,7 @@ mod tests {
                 "Deep plain",
             ),
             (
-                "html only yields a placeholder",
+                "html only renders through the converter",
                 concat!(
                     "From: alice@example.com\r\n",
                     "Subject: html\r\n",
@@ -266,7 +260,7 @@ mod tests {
                     "</body></html>\r\n",
                 ),
                 BodyKind::HtmlOnly,
-                HTML_ONLY_NOTICE,
+                "Only rich",
             ),
             (
                 "flowed body is unflowed",
