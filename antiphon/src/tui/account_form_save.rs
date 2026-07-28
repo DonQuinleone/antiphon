@@ -6,9 +6,8 @@ use std::path::Path;
 
 use antiphon_config::{Dirs, GraphAuth, OauthProvider};
 
-use super::account_form::{
-    AccountFormState, graph_auth_toml, provider_name,
-};
+use super::account_form::AccountFormState;
+use super::account_form_fields::{graph_auth_toml, provider_name};
 use super::app::App;
 use super::configedit;
 use crate::account_file;

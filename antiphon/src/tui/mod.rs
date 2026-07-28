@@ -1,5 +1,6 @@
 mod account_form;
 mod account_form_draw;
+mod account_form_fields;
 mod account_form_save;
 mod actions;
 mod app;

@@ -4,8 +4,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph};
 
-use super::account_form::{
-    AccountFormState, Field, PASSWORD_HINT, client_id_env_hint,
+use super::account_form::AccountFormState;
+use super::account_form_fields::{
+    Field, PASSWORD_HINT, client_id_env_hint,
 };
 use super::app::App;
 use super::draw::segmented::{self, SegmentStyle};
@@ -186,7 +187,7 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    use super::super::account_form::AccountType;
+    use super::super::account_form_fields::AccountType;
     use super::super::testkit::app_with_messages;
     use super::*;
 

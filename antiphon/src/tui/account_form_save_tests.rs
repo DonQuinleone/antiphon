@@ -1,5 +1,5 @@
-use super::super::account_form::AccountType;
 use super::super::account_form::tests::{filled_answers, filled_form};
+use super::super::account_form_fields::AccountType;
 use super::super::testkit::TempDir;
 use super::*;
 
