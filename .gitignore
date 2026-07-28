@@ -1,4 +1,7 @@
 /target
+/.rpmbuild/
+dist/copr/*.tar.gz
+*.src.rpm
 .claude/
 HANDOFF.md
 .DS_Store
