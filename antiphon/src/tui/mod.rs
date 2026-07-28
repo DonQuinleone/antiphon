@@ -11,6 +11,7 @@ mod complete;
 mod compose;
 pub(crate) mod configedit;
 mod crypto;
+mod daemon;
 mod decrypt;
 mod dispatch;
 mod drafts;
@@ -67,13 +68,11 @@ use ratatui::crossterm::event::{
 };
 use ratatui::crossterm::execute;
 
-use antiphon_ipc::{
-    IpcClient, OpId, OpKind, Operation, Request, Response, socket_path,
-};
 use antiphon_pgp::Keyring;
 
-use actions::{OpIntent, account_names};
+use actions::account_names;
 use app::{App, DEFAULT_QUERY, KeyRoute, View};
+use daemon::{nudge_daemon, request_reload};
 use dispatch::{
     pending_resume_request, pending_rsvp_request,
     pending_template_request, pending_unsubscribe_request,
@@ -91,7 +90,6 @@ const REFRESH_EVERY: Duration = Duration::from_secs(2);
 /// "sending: ..." cannot outlive the send it described.
 const NOTICE_TTL: Duration = Duration::from_secs(8);
 const LIST_WINDOW: usize = 500;
-const DAEMON_ASSIGNS_ID: u64 = 0;
 const UNREAD_QUERY: &str = "tag:unread";
 const PGP_KEYRING_DIR: &str = "pgp";
 const CONFIG_FILE_NAME: &str = "config.toml";
@@ -222,7 +220,7 @@ fn event_loop(
         terminal.draw(|frame| draw::draw(frame, app))?;
         app.frame_stats.record(drawing.elapsed());
         if !event::poll(poll_interval(app))? {
-            drain_ops(app);
+            daemon::drain_ops(app);
             maybe_refresh(
                 app,
                 layout,
@@ -234,7 +232,7 @@ fn event_loop(
         let event = event::read()?;
         if let Event::Mouse(mouse) = event {
             input::pager_mouse(terminal, app, mouse)?;
-            drain_ops(app);
+            daemon::drain_ops(app);
             continue;
         }
         let Event::Key(key) = event else {
@@ -277,7 +275,7 @@ fn event_loop(
                 key,
             ),
         }
-        drain_ops(app);
+        daemon::drain_ops(app);
     }
     Ok(())
 }
@@ -392,99 +390,6 @@ fn maybe_refresh(
     let selected = app.selected;
     app.set_results(messages, fresh_total, query);
     app.selected = selected.min(app.messages.len().saturating_sub(1));
-}
-
-fn drain_ops(app: &mut App) {
-    // A read-only session must never hand ops to a daemon
-    // that may be serving the real accounts.
-    if app.read_only {
-        app.pending_ops.clear();
-        return;
-    }
-    if app.pending_ops.is_empty() {
-        return;
-    }
-    let path = socket_path(|var| std::env::var_os(var));
-    let Ok(mut client) = IpcClient::connect(&path) else {
-        return;
-    };
-    let _ = client.set_read_timeout(IPC_WAIT);
-    while let Some(intent) = app.pending_ops.first().cloned() {
-        let request = Request::EnqueueOp(wire_op(intent));
-        let Ok(_) = client.request(&request) else {
-            return;
-        };
-        app.pending_ops.remove(0);
-    }
-}
-
-fn nudge_daemon() {
-    let path = socket_path(|var| std::env::var_os(var));
-    let Ok(mut client) = IpcClient::connect(&path) else {
-        return;
-    };
-    let _ = client.set_read_timeout(IPC_WAIT);
-    let _ = client.request(&Request::DrainOutbox);
-}
-
-/// A reload restarts the daemon's IDLE watchers, which can
-/// take a few seconds to wind down; the usual IPC timeout
-/// would misread that as a failure.
-const RELOAD_WAIT: Duration = Duration::from_secs(10);
-
-/// Asks antiphond to re-read configuration after an account
-/// change. `None` means the daemon took it; `Some` carries the
-/// message the caller should show instead.
-pub(super) fn request_reload() -> Option<String> {
-    let path = socket_path(|var| std::env::var_os(var));
-    let Ok(mut client) = IpcClient::connect(&path) else {
-        return Some(
-            "antiphond is not running; it reads the change when \
-             it starts"
-                .to_string(),
-        );
-    };
-    let _ = client.set_read_timeout(RELOAD_WAIT);
-    match client.request(&Request::Reload) {
-        Ok(Response::Ack) => None,
-        Ok(Response::Error(error)) => Some(format!("reload: {error}")),
-        Ok(_) => Some("reload: unexpected daemon reply".to_string()),
-        Err(error) => Some(format!("reload: {error}")),
-    }
-}
-
-fn wire_op(intent: OpIntent) -> Operation {
-    let (account, message_id, kind) = match intent {
-        OpIntent::Flag {
-            account,
-            message_id,
-            add,
-            remove,
-        } => (account, message_id, OpKind::Flag { add, remove }),
-        OpIntent::Delete {
-            account,
-            message_id,
-        } => (account, message_id, OpKind::Delete),
-        OpIntent::Move {
-            account,
-            message_id,
-            to_folder,
-            from_folder,
-        } => (
-            account,
-            message_id,
-            OpKind::Move {
-                to_folder,
-                from_folder: Some(from_folder),
-            },
-        ),
-    };
-    Operation {
-        op_id: OpId(DAEMON_ASSIGNS_ID),
-        account,
-        message_id,
-        kind,
-    }
 }
 
 fn run_search(app: &mut App, layout: &StoreLayout, raw: String) {
