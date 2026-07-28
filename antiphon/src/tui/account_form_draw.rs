@@ -274,6 +274,9 @@ mod tests {
         app.account_form = Some(form_of(AccountType::Imap));
         let shown = text(&rendered(&app));
         assert!(shown.contains("password command"));
+        assert!(shown.contains("imap host"));
+        assert!(shown.contains("smtp host"));
+        assert!(shown.contains("from name"));
         assert!(!shown.contains("oauth client id"));
         assert!(!shown.contains("graph send"));
     }
@@ -285,7 +288,10 @@ mod tests {
         let shown = text(&rendered(&app));
         assert!(shown.contains("oauth client id"));
         assert!(shown.contains("ANTIPHON_GOOGLE_CLIENT_ID"));
+        assert!(shown.contains("from name"));
         assert!(!shown.contains("password command"));
+        assert!(!shown.contains("imap host"));
+        assert!(!shown.contains("smtp host"));
         assert!(!shown.contains("graph send"));
     }
 
