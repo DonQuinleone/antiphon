@@ -237,6 +237,38 @@ fn microsoft_pkce_consent_skips_the_google_params() {
 }
 
 #[test]
+fn app_only_exchanges_client_credentials() {
+    let stub = Stub::serve(vec![ok(&token_body(None))]);
+    let secret = SecretString::from("s3cret");
+    let tokens = crate::app_only::app_only_token_at(
+        &format!("{}/token", stub.base_url),
+        "client-app",
+        &secret,
+    )
+    .expect("app-only token");
+    assert_eq!(tokens.access_token.expose_secret(), "at-1");
+    assert!(tokens.refresh_token.expose_secret().is_empty());
+    assert_eq!(tokens.provider, Provider::Microsoft);
+
+    let requests = stub.finish();
+    assert!(requests[0].contains("grant_type=client_credentials"));
+    assert!(requests[0].contains("client_secret=s3cret"));
+    assert!(requests[0].contains(".default"));
+}
+
+#[test]
+fn the_tenant_token_url_names_the_tenant() {
+    let url = crate::microsoft_tenant_token_url(
+        "11111111-2222-3333-4444-555555555555",
+    );
+    assert_eq!(
+        url,
+        "https://login.microsoftonline.com/\
+         11111111-2222-3333-4444-555555555555/oauth2/v2.0/token"
+    );
+}
+
+#[test]
 fn stale_tokens_are_detected_with_a_margin() {
     let mut tokens = stored_set("rt");
     tokens.expires_at_unix = 1_000;

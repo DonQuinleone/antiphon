@@ -1,3 +1,4 @@
+mod app_only;
 mod client;
 mod device;
 mod error;
@@ -13,6 +14,12 @@ mod flow_tests;
 #[cfg(any(test, feature = "stub"))]
 pub mod stub;
 
+#[cfg(any(test, feature = "stub"))]
+pub use app_only::app_only_token_at;
+pub use app_only::{
+    MICROSOFT_GRAPH_APP_SCOPES, app_only_token,
+    microsoft_tenant_token_url,
+};
 pub use device::device_code_flow;
 pub use error::OauthError;
 pub use pkce::pkce_loopback_flow;
