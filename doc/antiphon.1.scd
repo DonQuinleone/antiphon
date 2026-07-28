@@ -73,6 +73,24 @@ FILES).
 	_path_, encrypting to the *[export] recipients* keys from
 	*config.toml*; the passphrase mode is command-line only.
 
+*view* _archive_ [*-i* _identity-file_]... [*-p*]
+	Open an archive written by *export* read-only, without
+	needing the account it came from. Decrypt with one or more
+	age identity files via *-i*/*--identity*, or with a
+	passphrase prompted on the terminal via
+	*-p*/*--passphrase*; exactly one of the two must be
+	chosen. The archive is unpacked and indexed into a
+	throwaway store under
+	_$XDG_CACHE_HOME/antiphon/view/<stem>_ (the archive file
+	name without its extensions, which also names the account
+	in the client), then the normal interface opens over it:
+	reading, search, threading and attachments all work, while
+	anything that would change mail answers "read-only archive
+	view". No daemon is started or contacted. Reopening the
+	same archive reuses the unpacked store, so it is instant;
+	on exit the store's path is printed together with the *rm
+	-r* command that removes it.
+
 *setup*
 	Interactive first-time setup: asks for an address and
 	server details, stores the mail and vault secrets, writes
@@ -116,6 +134,11 @@ _$XDG_DATA_HOME/antiphon/store_
 	The Maildir, notmuch index, operation log, outbox and sync
 	state, sealed inside the vault where one is configured.
 	Defaults to _~/.local/share/antiphon/store_.
+
+_$XDG_CACHE_HOME/antiphon/view/_
+	Throwaway stores unpacked by *view*, one directory per
+	archive, safe to remove at any time. Defaults to
+	_~/.cache/antiphon/view_.
 
 _$XDG_STATE_HOME/antiphon/antiphond.log_
 	Log of a daemon started automatically by the client.

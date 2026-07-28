@@ -8,6 +8,8 @@ mod sendmail;
 mod setup;
 mod tui;
 mod vaultcmd;
+mod view;
+mod viewcmd;
 
 use std::process::ExitCode;
 
@@ -58,6 +60,18 @@ enum Command {
         #[arg(short, long)]
         passphrase: bool,
     },
+    /// Open an exported archive read-only, without its account.
+    View {
+        /// The .tar.gz.age archive to open.
+        archive: std::path::PathBuf,
+        /// Decrypt with this age identity file; repeatable.
+        #[arg(short, long = "identity")]
+        identity: Vec<std::path::PathBuf>,
+        /// Prompt for the passphrase the archive was
+        /// encrypted to.
+        #[arg(short, long)]
+        passphrase: bool,
+    },
     /// Interactive first-time setup: account, secrets, vault,
     /// store, daemon.
     Setup,
@@ -104,6 +118,15 @@ fn main() -> ExitCode {
             account: account.as_deref(),
             output: &output,
             recipients: &recipient,
+            passphrase,
+        }),
+        Some(Command::View {
+            archive,
+            identity,
+            passphrase,
+        }) => viewcmd::run(&viewcmd::ViewArgs {
+            archive: &archive,
+            identities: &identity,
             passphrase,
         }),
         Some(Command::Setup) => setup::run(),
