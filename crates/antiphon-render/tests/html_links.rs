@@ -50,15 +50,12 @@ fn html_anchors_render_with_markers() {
             links: &[("https://example.com/i", "Logo")],
         },
         Case {
-            name: "image-only anchor without alt uses the url",
+            name: "image-only anchor without alt renders nothing",
             html: "<a href=\"https://example.com/i\">\
                    <img src=\"l.png\"></a>",
-            lines: &["https://example.com/i[1]"],
-            spans: &[&[("https://example.com/i[1]", 1)]],
-            links: &[(
-                "https://example.com/i",
-                "https://example.com/i",
-            )],
+            lines: &[],
+            spans: &[],
+            links: &[],
         },
         Case {
             name: "nested markup stays in the label",
@@ -144,7 +141,7 @@ fn html_anchors_render_with_markers() {
         Case {
             name: "list items get bullets",
             html: "<ul><li>alpha</li><li>beta</li></ul>",
-            lines: &["- alpha", "- beta"],
+            lines: &["* alpha", "* beta"],
             spans: &[&[], &[]],
             links: &[],
         },

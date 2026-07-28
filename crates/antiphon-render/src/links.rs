@@ -91,10 +91,6 @@ impl LinkRegistry {
         link.label = label.to_owned();
     }
 
-    pub(crate) fn url(&self, id: usize) -> &str {
-        &self.links[id].url
-    }
-
     pub(crate) fn into_links(self) -> Vec<Link> {
         self.links
     }

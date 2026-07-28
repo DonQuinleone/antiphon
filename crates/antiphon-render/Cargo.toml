@@ -13,5 +13,6 @@ mail-parser = "=0.11.5"
 mail-builder = "=0.4.4"
 icalendar = "=0.17.12"
 chrono = { version = "=0.4.45", default-features = false }
+html2text = "=0.17.1"
 
 [dev-dependencies]
