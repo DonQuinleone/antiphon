@@ -45,6 +45,7 @@ fn imap_account() -> Option<SyncAccount> {
         port: IMAPS_PORT,
         user: env::var(USER_VAR).ok()?,
         auth: Auth::Password(password()?),
+        excluded_folders: Vec::new(),
     })
 }
 

@@ -134,7 +134,10 @@ _$XDG_CONFIG_HOME/antiphon/accounts/\*.toml_
 	order; the rest stay alphabetical. *folders_hidden* lists
 	folders to drop from the sidebar; a hidden folder stays
 	synced and searchable. The settings Folders tab edits both:
-	Shift-J/K reorder, *h* hides and unhides.
+	Shift-J/K reorder, *h* hides and unhides. *folders_unsynced*
+	lists folders the daemon skips entirely (matched on the
+	maildir-relative name, case-insensitively; the inbox is
+	never excludable); see *antiphond*(1).
 
 _$XDG_CONFIG_HOME/antiphon/signatures/_, _templates/_, _pgp/_
 	Signature files, compose templates and the trusted OpenPGP

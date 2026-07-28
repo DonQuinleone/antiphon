@@ -60,6 +60,7 @@ pub struct OauthAccount {
     pub imap_port: u16,
     pub smtp: Option<SmtpEndpoint>,
     pub graph_send: bool,
+    pub excluded_folders: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -84,6 +85,7 @@ impl OauthAccount {
                 user: self.user.clone(),
                 access_token,
             },
+            excluded_folders: self.excluded_folders.clone(),
         }
     }
 
@@ -121,6 +123,7 @@ pub fn sync_accounts(loaded: &Loaded) -> Vec<SyncAccount> {
                 port: account.imap.port.unwrap_or(IMAPS_PORT),
                 user: account.imap.user.clone(),
                 auth: Auth::Password(password),
+                excluded_folders: account.folders_unsynced.clone(),
             })
         })
         .collect()
@@ -151,6 +154,7 @@ pub fn oauth_accounts(loaded: &Loaded) -> Vec<OauthAccount> {
                     .graph
                     .as_ref()
                     .is_some_and(|graph| graph.send),
+                excluded_folders: account.folders_unsynced.clone(),
             })
         })
         .collect()
@@ -269,6 +273,7 @@ mod tests {
                 folder_names: Default::default(),
                 folder_order: Vec::new(),
                 folders_hidden: Vec::new(),
+                folders_unsynced: Vec::new(),
             },
         }
     }

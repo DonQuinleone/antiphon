@@ -44,6 +44,7 @@ fn live_account() -> Option<SyncAccount> {
         port: IMAPS_PORT,
         user,
         auth: Auth::Password(password),
+        excluded_folders: Vec::new(),
     })
 }
 

@@ -365,6 +365,10 @@ mod tests {
     #[test]
     fn account_files_parse_the_full_shape() {
         let text = r#"
+folder_order = ["lists/aerc", "inbox"]
+folders_hidden = ["spam"]
+folders_unsynced = ["archive/2019"]
+
 [account]
 name = "personal"
 
@@ -392,6 +396,9 @@ move_to = "lists/aerc"
         assert_eq!(account.identities[0].matches.len(), 2);
         assert!(account.identities[0].pgp_sign);
         assert_eq!(account.rules.len(), 1);
+        assert_eq!(account.folder_order, ["lists/aerc", "inbox"]);
+        assert_eq!(account.folders_hidden, ["spam"]);
+        assert_eq!(account.folders_unsynced, ["archive/2019"]);
     }
 
     #[test]

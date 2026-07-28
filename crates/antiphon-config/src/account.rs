@@ -18,6 +18,8 @@ pub struct AccountFile {
     pub folder_order: Vec<String>,
     #[serde(default)]
     pub folders_hidden: Vec<String>,
+    #[serde(default)]
+    pub folders_unsynced: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]

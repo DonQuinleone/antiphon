@@ -222,6 +222,7 @@ mod tests {
             port,
             user: "quin@example.com".to_owned(),
             auth: Auth::Password("secret".to_owned()),
+            excluded_folders: Vec::new(),
         }
     }
 

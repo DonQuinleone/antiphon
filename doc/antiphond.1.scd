@@ -18,7 +18,9 @@ Run with no arguments to start it; it stays in the foreground
 until stopped, which makes it a first-class citizen under any
 service supervisor and trivially scriptable everywhere else.
 
-Each sync pass fetches new mail per folder, sends queued
+Each sync pass fetches new mail per folder (skipping any the
+account's *folders_unsynced* list excludes; the inbox is never
+excludable), sends queued
 outbound mail from the crash-safe outbox, files sent and
 delivered mail per the account's rules, uploads drafts, and
 posts desktop notifications. Passes run on the configured

@@ -272,6 +272,7 @@ mod tests {
             folder_names: Default::default(),
             folder_order: Vec::new(),
             folders_hidden: Vec::new(),
+            folders_unsynced: Vec::new(),
         };
         let defaults = AccountAnswers::from_existing(&account);
         assert_eq!(defaults.address, "quin@example.com");
