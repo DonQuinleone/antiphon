@@ -5,49 +5,61 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use antiphon_oauth::{TokenStore, refresh};
 use antiphon_store::{Op, Outbox, StoreLayout};
 use antiphon_sync::{
-    DeliveryRule, RuleOutcome, SmtpAccount, SyncAccount, SyncError,
-    SyncProgress, SyncReport, append_sent, apply_rules, replay, send,
-    sync, write_progress,
+    RuleOutcome, SmtpAccount, SyncAccount, SyncError, SyncProgress,
+    SyncReport, append_sent, apply_rules, replay, send, sync,
+    write_progress,
 };
 
-use crate::accounts::OauthAccount;
-use crate::daemon::{SharedState, lock_state};
+use crate::accounts::{AccountSet, OauthAccount};
+use crate::daemon::{SharedState, lock_set, lock_state};
 use crate::notify;
 use crate::tokens;
 
+pub(crate) type SharedAccounts =
+    std::sync::Arc<std::sync::Mutex<AccountSet>>;
+
 pub(crate) struct Mailflow {
     pub(crate) layout: StoreLayout,
-    pub(crate) accounts: Vec<SyncAccount>,
-    pub(crate) oauth: Vec<OauthAccount>,
-    pub(crate) smtp: Vec<(String, SmtpAccount)>,
-    pub(crate) rules: Vec<(String, Vec<DeliveryRule>)>,
-    pub(crate) notify: bool,
+    pub(crate) set: SharedAccounts,
     pub(crate) state: SharedState,
 }
 
 impl Mailflow {
-    pub(crate) fn sync_pass(&self, announce: bool) {
-        self.drain_outbox();
-        self.drain_drafts();
-        self.sync_all(announce);
-        self.drain_ops();
+    /// One job runs against one snapshot: a reload landing
+    /// mid-pass takes effect on the next job, never halfway
+    /// through this one.
+    pub(crate) fn snapshot(&self) -> AccountSet {
+        lock_set(&self.set).clone()
     }
 
-    fn sync_all(&self, announce: bool) {
-        for account in &self.accounts {
-            self.sync_one(account, announce);
+    pub(crate) fn sync_pass(&self, announce: bool) {
+        let set = self.snapshot();
+        self.drain_outbox_of(&set);
+        self.drain_drafts_of(&set);
+        self.sync_all(&set, announce);
+        self.drain_ops_of(&set);
+    }
+
+    fn sync_all(&self, set: &AccountSet, announce: bool) {
+        for account in &set.accounts {
+            self.sync_one(set, account, announce);
         }
-        for spec in &self.oauth {
-            self.sync_oauth(spec, announce);
+        for spec in &set.oauth {
+            self.sync_oauth(set, spec, announce);
         }
         write_progress(&self.layout, &SyncProgress::idle());
         lock_state(&self.state).last_sync_unix = Some(now_unix());
     }
 
-    fn sync_one(&self, account: &SyncAccount, announce: bool) {
+    fn sync_one(
+        &self,
+        set: &AccountSet,
+        account: &SyncAccount,
+        announce: bool,
+    ) {
         match sync(account, &self.layout) {
             Ok(report) => {
-                self.after_sync(&account.name, &report, announce);
+                self.after_sync(set, &account.name, &report, announce);
             }
             Err(error) => {
                 eprintln!(
@@ -61,7 +73,12 @@ impl Mailflow {
 
     /// One AUTHENTICATIONFAILED gets one forced refresh and one
     /// retry; a second failure waits for the next pass.
-    fn sync_oauth(&self, spec: &OauthAccount, announce: bool) {
+    fn sync_oauth(
+        &self,
+        set: &AccountSet,
+        spec: &OauthAccount,
+        announce: bool,
+    ) {
         let token = match self.oauth_token(spec, false) {
             Ok(token) => token,
             Err(message) => {
@@ -89,7 +106,7 @@ impl Mailflow {
         }
         match outcome {
             Ok(report) => {
-                self.after_sync(&spec.name, &report, announce);
+                self.after_sync(set, &spec.name, &report, announce);
             }
             Err(error) => {
                 eprintln!(
@@ -129,6 +146,7 @@ impl Mailflow {
 
     fn after_sync(
         &self,
+        set: &AccountSet,
         account: &str,
         report: &SyncReport,
         announce: bool,
@@ -143,7 +161,7 @@ impl Mailflow {
         for error in &report.errors {
             eprintln!("sync {account}: {error}");
         }
-        let rules = account_rules(&self.rules, account);
+        let rules = set.rules_for(account);
         if !rules.is_empty() {
             let mut state = lock_state(&self.state);
             let outcome = apply_rules(
@@ -156,12 +174,16 @@ impl Mailflow {
             drop(state);
             announce_rules(account, outcome);
         }
-        if announce && self.notify {
+        if announce && set.notify {
             notify::new_mail(account, report);
         }
     }
 
     pub(crate) fn drain_outbox(&self) {
+        self.drain_outbox_of(&self.snapshot());
+    }
+
+    fn drain_outbox_of(&self, set: &AccountSet) {
         let outbox = Outbox::open(&self.layout);
         let pending = match outbox.pending() {
             Ok(pending) => pending,
@@ -171,12 +193,13 @@ impl Mailflow {
             }
         };
         for queued in pending {
-            self.send_queued(&outbox, queued);
+            self.send_queued(set, &outbox, queued);
         }
     }
 
     fn send_queued(
         &self,
+        set: &AccountSet,
         outbox: &Outbox,
         queued: antiphon_store::QueuedMessage,
     ) {
@@ -188,14 +211,14 @@ impl Mailflow {
                 return;
             }
         };
-        if let Err(error) = self.ship(&account, &raw, queued.id) {
+        if let Err(error) = self.ship(set, &account, &raw, queued.id) {
             eprintln!("send {}: {error}", queued.id);
             return;
         }
         if let Err(error) = self.file_sent(&account, &raw) {
             eprintln!("sent copy {}: {error}", queued.id);
         }
-        self.file_sent_on_server(&account, &raw);
+        self.file_sent_on_server(set, &account, &raw);
         if let Err(error) = outbox.remove(queued.id) {
             eprintln!("outbox {}: {error}", queued.id);
             return;
@@ -207,15 +230,16 @@ impl Mailflow {
     /// when the account opted in, else through SMTP.
     fn ship(
         &self,
+        set: &AccountSet,
         account: &str,
         raw: &[u8],
         queued_id: u64,
     ) -> Result<(), String> {
-        if let Some(spec) = self.graph_spec(account) {
+        if let Some(spec) = set.graph_spec(account) {
             let token = self.graph_token(spec)?;
             return crate::graph::send_raw(&token, raw);
         }
-        let Some(smtp) = self.smtp_for(account) else {
+        let Some(smtp) = self.smtp_for(set, account) else {
             return Err(format!(
                 "outbox {queued_id}: no smtp account for {account}"
             ));
@@ -226,11 +250,16 @@ impl Mailflow {
     /// Best-effort mirror of the local sent twin into the
     /// server's own sent folder; Graph accounts skip it since
     /// Graph files Sent Items itself.
-    fn file_sent_on_server(&self, account: &str, raw: &[u8]) {
-        if self.graph_spec(account).is_some() {
+    fn file_sent_on_server(
+        &self,
+        set: &AccountSet,
+        account: &str,
+        raw: &[u8],
+    ) {
+        if set.graph_spec(account).is_some() {
             return;
         }
-        let Some(sync_account) = self.imap_account(account) else {
+        let Some(sync_account) = self.imap_account(set, account) else {
             return;
         };
         match append_sent(&sync_account, raw) {
@@ -243,15 +272,19 @@ impl Mailflow {
         }
     }
 
-    fn imap_account(&self, account: &str) -> Option<SyncAccount> {
-        if let Some(found) = self
+    fn imap_account(
+        &self,
+        set: &AccountSet,
+        account: &str,
+    ) -> Option<SyncAccount> {
+        if let Some(found) = set
             .accounts
             .iter()
             .find(|candidate| candidate.name == account)
         {
             return Some(found.clone());
         }
-        let spec = self
+        let spec = set
             .oauth
             .iter()
             .find(|candidate| candidate.name == account)?;
@@ -263,12 +296,6 @@ impl Mailflow {
             }
         };
         Some(spec.sync_account(token))
-    }
-
-    fn graph_spec(&self, account: &str) -> Option<&OauthAccount> {
-        self.oauth
-            .iter()
-            .find(|spec| spec.name == account && spec.graph_send)
     }
 
     fn graph_token(
@@ -288,8 +315,12 @@ impl Mailflow {
         )
     }
 
-    fn smtp_for(&self, account: &str) -> Option<SmtpAccount> {
-        let stored = self
+    fn smtp_for(
+        &self,
+        set: &AccountSet,
+        account: &str,
+    ) -> Option<SmtpAccount> {
+        let stored = set
             .smtp
             .iter()
             .find(|(name, _)| name == account)
@@ -297,7 +328,7 @@ impl Mailflow {
         if stored.is_some() {
             return stored;
         }
-        let spec = self
+        let spec = set
             .oauth
             .iter()
             .find(|spec| spec.name == account && spec.smtp.is_some())?;
@@ -361,12 +392,16 @@ impl Mailflow {
     /// appended meanwhile get ids above the snapshot, so the
     /// cursor can never advance over an op replay did not see.
     pub(crate) fn drain_ops(&self) {
+        self.drain_ops_of(&self.snapshot());
+    }
+
+    fn drain_ops_of(&self, set: &AccountSet) {
         let pending = lock_state(&self.state).log.unsynced();
         if pending.is_empty() {
             return;
         }
         let mut resolved = HashSet::new();
-        for account in &self.accounts {
+        for account in &set.accounts {
             let ops: Vec<Op> = pending
                 .iter()
                 .filter(|op| op.account == account.name)
@@ -415,17 +450,6 @@ impl Mailflow {
     }
 }
 
-fn account_rules<'a>(
-    rules: &'a [(String, Vec<DeliveryRule>)],
-    account: &str,
-) -> &'a [DeliveryRule] {
-    rules
-        .iter()
-        .find(|(name, _)| name == account)
-        .map(|(_, rules)| rules.as_slice())
-        .unwrap_or(&[])
-}
-
 fn announce_rules(account: &str, outcome: RuleOutcome) {
     if outcome.tagged == 0 && outcome.moved == 0 {
         return;
@@ -456,19 +480,26 @@ pub(crate) fn now_unix() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use antiphon_sync::DeliveryRule;
+
     use super::*;
 
     #[test]
-    fn account_rules_picks_only_the_named_account() {
+    fn rules_lookup_picks_only_the_named_account() {
         let tagger = DeliveryRule {
             match_list: None,
             match_sender: Some("mara@example.com".to_owned()),
             move_to: None,
             tag: Some("mara".to_owned()),
         };
-        let rules = vec![("work".to_owned(), vec![tagger.clone()])];
-        assert_eq!(account_rules(&rules, "work"), &[tagger]);
-        assert!(account_rules(&rules, "home").is_empty());
-        assert!(account_rules(&[], "work").is_empty());
+        let set = AccountSet {
+            accounts: Vec::new(),
+            oauth: Vec::new(),
+            smtp: Vec::new(),
+            rules: vec![("work".to_owned(), vec![tagger.clone()])],
+            notify: false,
+        };
+        assert_eq!(set.rules_for("work"), &[tagger]);
+        assert!(set.rules_for("home").is_empty());
     }
 }

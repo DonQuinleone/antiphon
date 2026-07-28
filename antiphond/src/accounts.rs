@@ -7,6 +7,51 @@ use antiphon_sync::{Auth, DeliveryRule, SmtpAccount, SyncAccount};
 const IMAPS_PORT: u16 = 993;
 const SUBMISSION_PORT: u16 = 587;
 
+/// Everything the worker derives from configuration, swapped
+/// wholesale on reload so a pass never sees a half-updated
+/// account list.
+#[derive(Clone)]
+pub(crate) struct AccountSet {
+    pub(crate) accounts: Vec<SyncAccount>,
+    pub(crate) oauth: Vec<OauthAccount>,
+    pub(crate) smtp: Vec<(String, SmtpAccount)>,
+    pub(crate) rules: Vec<(String, Vec<DeliveryRule>)>,
+    pub(crate) notify: bool,
+}
+
+impl AccountSet {
+    pub(crate) fn from_loaded(loaded: &Loaded) -> AccountSet {
+        AccountSet {
+            accounts: sync_accounts(loaded),
+            oauth: oauth_accounts(loaded),
+            smtp: smtp_accounts(loaded),
+            rules: delivery_rules(loaded),
+            notify: loaded.config.notifications.enabled,
+        }
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.accounts.len() + self.oauth.len()
+    }
+
+    pub(crate) fn graph_spec(
+        &self,
+        account: &str,
+    ) -> Option<&OauthAccount> {
+        self.oauth
+            .iter()
+            .find(|spec| spec.name == account && spec.graph_send)
+    }
+
+    pub(crate) fn rules_for(&self, account: &str) -> &[DeliveryRule] {
+        self.rules
+            .iter()
+            .find(|(name, _)| name == account)
+            .map(|(_, rules)| rules.as_slice())
+            .unwrap_or(&[])
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct OauthAccount {
     pub name: String,

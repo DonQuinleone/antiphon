@@ -36,6 +36,7 @@ impl Daemon {
                 self.jobs.request(Job::Pass { announce: true });
                 Response::Ack
             }
+            Request::Reload => self.reload(),
             Request::DrainOutbox => {
                 self.jobs.request(Job::DrainOutbox);
                 Response::Ack
@@ -135,10 +136,12 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
+    use antiphon_config::{Config, Dirs, Loaded};
     use antiphon_ipc::OpKind as WireKind;
     use antiphon_ipc::{OpId, VaultState};
 
-    use crate::daemon::MailState;
+    use crate::accounts::AccountSet;
+    use crate::daemon::{MailState, lock_set};
     use crate::worker::{self, JobQueue, Plan};
 
     use super::*;
@@ -192,13 +195,27 @@ mod tests {
             let _ = plan_tx.send(plan);
             let _ = release_rx.recv();
         });
+        let dirs = Dirs {
+            config: dir.path().join("config"),
+            state: dir.path().join("state"),
+            cache: dir.path().join("cache"),
+            data: dir.path().join("data"),
+        };
+        let loaded = Loaded {
+            config: Config::default(),
+            accounts: Vec::new(),
+        };
+        let set =
+            Arc::new(Mutex::new(AccountSet::from_loaded(&loaded)));
         let daemon = Daemon {
             layout,
             state,
             jobs,
             vault: VaultState::Absent,
-            idle_wanted: false,
             watchers: None,
+            dirs,
+            loaded,
+            set,
         };
         Fixture {
             _dir: dir,
@@ -323,6 +340,53 @@ mod tests {
 
     fn worker_queue(fixture: &Fixture) -> JobQueue {
         fixture.daemon.jobs.clone()
+    }
+
+    #[test]
+    fn reload_picks_up_an_account_added_after_startup() {
+        let mut fixture = fixture();
+        assert!(lock_set(&fixture.daemon.set).accounts.is_empty());
+        let accounts = fixture.daemon.dirs.config.join("accounts");
+        std::fs::create_dir_all(&accounts).unwrap();
+        std::fs::write(
+            accounts.join("late.toml"),
+            "[account]\n\
+             name = \"late\"\n\
+             [imap]\n\
+             host = \"imap.example.com\"\n\
+             user = \"quin@example.com\"\n\
+             password_cmd = \"echo hunter2\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            fixture.daemon.respond(Request::Reload),
+            Response::Ack
+        );
+        let names: Vec<String> = lock_set(&fixture.daemon.set)
+            .accounts
+            .iter()
+            .map(|account| account.name.clone())
+            .collect();
+        assert_eq!(names, ["late"]);
+        let plan = fixture.plans.recv_timeout(WAIT).unwrap();
+        assert!(plan.pass && !plan.announce);
+        finish(fixture);
+    }
+
+    #[test]
+    fn reload_reports_a_broken_config_and_keeps_the_old_set() {
+        let mut fixture = fixture();
+        let accounts = fixture.daemon.dirs.config.join("accounts");
+        std::fs::create_dir_all(&accounts).unwrap();
+        std::fs::write(accounts.join("bad.toml"), "not toml [")
+            .unwrap();
+        let Response::Error(_) =
+            fixture.daemon.respond(Request::Reload)
+        else {
+            panic!("a broken config must surface as an error");
+        };
+        assert!(lock_set(&fixture.daemon.set).accounts.is_empty());
+        finish(fixture);
     }
 
     #[test]

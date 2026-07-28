@@ -1,7 +1,7 @@
 use antiphon_store::DraftSpool;
 use antiphon_sync::{DraftPush, SyncError, push_drafts};
 
-use crate::accounts::OauthAccount;
+use crate::accounts::{AccountSet, OauthAccount};
 use crate::mailflow::{Mailflow, error_chain};
 
 impl Mailflow {
@@ -10,14 +10,18 @@ impl Mailflow {
     /// refresh; anything that cannot be filed stays spooled
     /// for the next pass.
     pub(crate) fn drain_drafts(&self) {
+        self.drain_drafts_of(&self.snapshot());
+    }
+
+    pub(crate) fn drain_drafts_of(&self, set: &AccountSet) {
         let spool = DraftSpool::open(&self.layout);
-        for account in &self.accounts {
+        for account in &set.accounts {
             if !has_pending(&spool, &account.name) {
                 continue;
             }
             announce(&account.name, push_drafts(account, &self.layout));
         }
-        for spec in &self.oauth {
+        for spec in &set.oauth {
             self.drain_oauth_drafts(&spool, spec);
         }
     }

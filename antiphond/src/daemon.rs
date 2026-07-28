@@ -7,14 +7,12 @@ use std::time::{Duration, Instant};
 use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 
 use antiphon_config::{Dirs, Loaded, load};
-use antiphon_ipc::{IpcServer, VaultState, socket_path};
+use antiphon_ipc::{IpcServer, Response, VaultState, socket_path};
 use antiphon_store::{OpLog, StoreLayout};
 
-use crate::accounts::{
-    delivery_rules, oauth_accounts, smtp_accounts, sync_accounts,
-};
+use crate::accounts::AccountSet;
 use crate::idle;
-use crate::mailflow::Mailflow;
+use crate::mailflow::{Mailflow, SharedAccounts};
 use crate::vaultctl;
 use crate::worker::{self, Job, JobQueue};
 
@@ -22,9 +20,10 @@ const ACCEPT_POLL: Duration = Duration::from_millis(200);
 const CLIENT_READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The one piece of state the serve loop and the worker both
-/// mutate. Everything else is either owned by exactly one side
-/// or cloned read-only into the worker. This is the only lock
-/// in the daemon, so no lock ordering can arise.
+/// mutate. Everything else is either owned by exactly one side,
+/// cloned read-only into the worker, or swapped wholesale
+/// through the account-set lock. Neither lock is ever taken
+/// while holding the other, so no lock ordering can arise.
 pub(crate) struct MailState {
     pub(crate) log: OpLog,
     pub(crate) last_sync_unix: Option<u64>,
@@ -40,29 +39,40 @@ pub(crate) fn lock_state(
         .expect("a state holder panicked; cursors untrusted")
 }
 
+pub(crate) fn lock_set(
+    set: &SharedAccounts,
+) -> MutexGuard<'_, AccountSet> {
+    set.lock()
+        .expect("a set holder panicked; accounts untrusted")
+}
+
 pub(crate) struct Daemon {
     pub(crate) layout: StoreLayout,
     pub(crate) state: SharedState,
     pub(crate) jobs: JobQueue,
     pub(crate) vault: VaultState,
-    pub(crate) idle_wanted: bool,
     pub(crate) watchers: Option<idle::IdleWatchers>,
+    pub(crate) dirs: Dirs,
+    pub(crate) loaded: Loaded,
+    pub(crate) set: SharedAccounts,
 }
 
 impl Daemon {
-    fn start_watchers(&mut self, loaded: &Loaded) {
-        if !self.idle_wanted || self.watchers.is_some() {
+    fn idle_wanted(&self) -> bool {
+        self.loaded.config.sync.idle
+    }
+
+    fn start_watchers(&mut self) {
+        if !self.idle_wanted() || self.watchers.is_some() {
             return;
         }
-        let mut specs: Vec<idle::WatchSpec> = sync_accounts(loaded)
+        let set = lock_set(&self.set).clone();
+        let mut specs: Vec<idle::WatchSpec> = set
+            .accounts
             .into_iter()
             .map(idle::WatchSpec::Plain)
             .collect();
-        specs.extend(
-            oauth_accounts(loaded)
-                .into_iter()
-                .map(idle::WatchSpec::Oauth),
-        );
+        specs.extend(set.oauth.into_iter().map(idle::WatchSpec::Oauth));
         if specs.is_empty() {
             return;
         }
@@ -74,6 +84,33 @@ impl Daemon {
         if let Some(watchers) = self.watchers.take() {
             watchers.stop();
         }
+    }
+
+    /// Re-reads every account and the global config off disk
+    /// and swaps the worker's account set, so accounts added or
+    /// edited while the daemon runs sync without a restart. The
+    /// queued pass picks the new set up immediately.
+    pub(crate) fn reload(&mut self) -> Response {
+        let loaded = match load(&self.dirs) {
+            Ok(loaded) => loaded,
+            Err(error) => return Response::Error(error.to_string()),
+        };
+        let set = AccountSet::from_loaded(&loaded);
+        let count = set.len();
+        *lock_set(&self.set) = set;
+        self.loaded = loaded;
+        self.stop_watchers();
+        self.start_watchers();
+        self.jobs.request(Job::Pass { announce: false });
+        println!("configuration reloaded: {count} accounts");
+        Response::Ack
+    }
+
+    /// Hands the configuration back for the final vault seal
+    /// and drops everything else, including this daemon's job
+    /// queue handle.
+    fn finish(self) -> Loaded {
+        self.loaded
     }
 }
 
@@ -131,13 +168,11 @@ pub fn run() -> ExitCode {
         log,
         last_sync_unix: None,
     }));
+    let set: SharedAccounts =
+        Arc::new(Mutex::new(AccountSet::from_loaded(&loaded)));
     let flow = Mailflow {
         layout: layout.clone(),
-        accounts: sync_accounts(&loaded),
-        oauth: oauth_accounts(&loaded),
-        smtp: smtp_accounts(&loaded),
-        rules: delivery_rules(&loaded),
-        notify: loaded.config.notifications.enabled,
+        set: set.clone(),
         state: state.clone(),
     };
     let (jobs, worker) = worker::spawn(flow);
@@ -146,27 +181,20 @@ pub fn run() -> ExitCode {
         state,
         jobs: jobs.clone(),
         vault,
-        idle_wanted: loaded.config.sync.idle,
         watchers: None,
+        dirs,
+        loaded,
+        set,
     };
     jobs.request(Job::Pass { announce: false });
-    daemon.start_watchers(&loaded);
-    let interval = sync_interval(&loaded);
-    let idle_lock = idle_lock_interval(&loaded, daemon.vault);
+    daemon.start_watchers();
     let shutdown = install_shutdown();
-    let outcome = serve_with_timer(
-        &server,
-        &mut daemon,
-        &loaded,
-        interval,
-        idle_lock,
-        &shutdown,
-    );
+    let outcome = serve_with_timer(&server, &mut daemon, &shutdown);
     daemon.stop_watchers();
     // The worker must finish its pass before the seal below
     // unmounts the store it is writing to; closing the queue
     // stops it after the current batch.
-    drop(daemon);
+    let loaded = daemon.finish();
     drop(jobs);
     if worker.join().is_err() {
         eprintln!("the worker thread panicked");
@@ -220,9 +248,6 @@ fn due(last: Instant, interval: Option<Duration>) -> bool {
 fn serve_with_timer(
     server: &IpcServer,
     daemon: &mut Daemon,
-    loaded: &Loaded,
-    interval: Option<Duration>,
-    idle_lock: Option<Duration>,
     shutdown: &Arc<AtomicBool>,
 ) -> std::io::Result<()> {
     server.set_nonblocking(true)?;
@@ -231,7 +256,7 @@ fn serve_with_timer(
     while !shutdown.load(Ordering::Relaxed) {
         match server.accept() {
             Ok(stream) => {
-                wake(daemon, loaded);
+                wake(daemon);
                 last_client = Instant::now();
                 serve_client(daemon, stream);
             }
@@ -252,18 +277,23 @@ fn serve_with_timer(
         // A busy worker holds both timers off: stacking a pass
         // on a running one only queues duplicates, and sealing
         // would unmount the store under the running pass.
+        // Intervals are read fresh each turn so a reload's new
+        // config takes effect without a restart.
         if daemon.vault != VaultState::Sealed
-            && due(last_sync, interval)
+            && due(last_sync, sync_interval(&daemon.loaded))
             && daemon.jobs.idle()
         {
             daemon.jobs.request(Job::Pass { announce: true });
             last_sync = Instant::now();
         }
         if daemon.vault == VaultState::Open
-            && due(last_client, idle_lock)
+            && due(
+                last_client,
+                idle_lock_interval(&daemon.loaded, daemon.vault),
+            )
             && daemon.jobs.idle()
         {
-            idle_seal(daemon, loaded);
+            idle_seal(daemon);
         }
     }
     println!("shutting down; sealing the vault");
@@ -272,9 +302,9 @@ fn serve_with_timer(
 
 /// Sync pauses while sealed: the store only exists inside the
 /// mounted vault.
-fn idle_seal(daemon: &mut Daemon, loaded: &Loaded) {
+fn idle_seal(daemon: &mut Daemon) {
     daemon.stop_watchers();
-    match vaultctl::lock(loaded, &daemon.layout) {
+    match vaultctl::lock(&daemon.loaded, &daemon.layout) {
         Ok(()) => {
             daemon.vault = VaultState::Sealed;
             println!("idle: vault sealed, sync paused");
@@ -283,14 +313,14 @@ fn idle_seal(daemon: &mut Daemon, loaded: &Loaded) {
     }
 }
 
-fn wake(daemon: &mut Daemon, loaded: &Loaded) {
+fn wake(daemon: &mut Daemon) {
     if daemon.vault != VaultState::Sealed {
         return;
     }
-    match vaultctl::ensure_open(loaded, &daemon.layout) {
+    match vaultctl::ensure_open(&daemon.loaded, &daemon.layout) {
         Ok(state) => {
             daemon.vault = state;
-            daemon.start_watchers(loaded);
+            daemon.start_watchers();
             println!("client connected: vault unlocked");
         }
         Err(error) => eprintln!("wake unlock: {error}"),
