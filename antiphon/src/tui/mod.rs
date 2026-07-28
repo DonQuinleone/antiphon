@@ -57,6 +57,7 @@ mod settings_draw;
 mod settingscmd;
 mod settingscmd_rows;
 mod sidebar;
+mod sidebar_draw;
 mod status;
 mod tabs;
 #[cfg(test)]
