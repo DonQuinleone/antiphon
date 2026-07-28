@@ -18,7 +18,7 @@ pub(crate) fn sendmail_url(app_only_sender: Option<&str>) -> String {
     }
 }
 
-use crate::mailflow::ShipError;
+use crate::sending::ShipError;
 
 /// Ships an assembled RFC 5322 message through Microsoft
 /// Graph: the raw MIME goes base64-encoded to /me/sendMail

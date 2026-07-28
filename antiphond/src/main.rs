@@ -6,6 +6,7 @@ mod idle;
 mod ipc;
 mod mailflow;
 mod notify;
+mod sending;
 mod tokens;
 mod unsubscribe;
 mod vaultctl;
