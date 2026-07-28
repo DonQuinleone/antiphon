@@ -28,6 +28,8 @@ use serde::{Deserialize, Serialize};
 
 pub const MICROSOFT_DEVICE_AUTH_URL: &str =
     "https://login.microsoftonline.com/common/oauth2/v2.0/devicecode";
+pub const MICROSOFT_AUTH_URL: &str =
+    "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
 pub const MICROSOFT_TOKEN_URL: &str =
     "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 pub const GOOGLE_AUTH_URL: &str =

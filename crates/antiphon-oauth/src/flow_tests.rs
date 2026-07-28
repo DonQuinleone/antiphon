@@ -178,6 +178,7 @@ fn pkce_flow_exchanges_the_loopback_code() {
     let tokens = pkce::flow_at(
         "https://auth.example.com/consent",
         &format!("{}/token", stub.base_url),
+        &[("access_type", "offline"), ("prompt", "consent")],
         &google_grant(),
         &|prompt| {
             *consent_seen.lock().expect("consent lock") =
@@ -207,10 +208,32 @@ fn pkce_flow_exchanges_the_loopback_code() {
 }
 
 #[test]
-fn pkce_flow_needs_google() {
-    let error = crate::pkce_loopback_flow(&microsoft_grant(), &|_| {})
-        .expect_err("wrong provider");
-    assert!(matches!(error, OauthError::UnsupportedFlow(_)));
+fn microsoft_pkce_consent_skips_the_google_params() {
+    let stub = Stub::serve(vec![ok(&token_body(Some("rt-m")))]);
+    let consent_seen: Mutex<Option<String>> = Mutex::new(None);
+    let tokens = pkce::flow_at(
+        "https://auth.example.com/consent",
+        &format!("{}/token", stub.base_url),
+        &[],
+        &microsoft_grant(),
+        &|prompt| {
+            *consent_seen.lock().expect("consent lock") =
+                Some(prompt.consent_url.clone());
+            complete_consent(&prompt.consent_url);
+        },
+    )
+    .expect("pkce flow");
+    assert_eq!(tokens.provider, Provider::Microsoft);
+    assert_eq!(tokens.refresh_token.expose_secret(), "rt-m");
+
+    let consent = consent_seen
+        .lock()
+        .expect("consent lock")
+        .clone()
+        .expect("consent url shown");
+    assert!(consent.contains("code_challenge_method=S256"));
+    assert!(!consent.contains("access_type"));
+    stub.finish();
 }
 
 #[test]
