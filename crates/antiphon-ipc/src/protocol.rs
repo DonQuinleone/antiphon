@@ -7,8 +7,15 @@ pub enum Request {
     SyncNow,
     Reload,
     Shutdown,
+    /// Like Shutdown, but leaves the vault mounted for a
+    /// successor daemon to reuse: a version-mismatch restart
+    /// hands the open mount across rather than sealing and
+    /// remounting it, which is slow.
+    Restart,
     DrainOutbox,
-    Unsubscribe { url: String },
+    Unsubscribe {
+        url: String,
+    },
     EnqueueOp(Operation),
     Status,
     Subscribe,
@@ -147,6 +154,7 @@ mod tests {
             Request::SyncNow,
             Request::Reload,
             Request::Shutdown,
+            Request::Restart,
             Request::DrainOutbox,
             Request::EnqueueOp(operation(OpKind::Delete)),
             Request::Status,

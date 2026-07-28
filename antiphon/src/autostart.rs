@@ -9,9 +9,11 @@ use antiphon_ipc::{IpcClient, Request, Response, socket_path};
 /// passphrase_cmd and mount the vault before it binds.
 const STARTUP_WAIT: Duration = Duration::from_secs(20);
 const STARTUP_POLL: Duration = Duration::from_millis(200);
-/// A stopping daemon holds its listening socket open until the
-/// vault seal finishes, so it reads reachable throughout the
-/// unmount; this bounds how long we wait for it to disappear.
+/// A restarting daemon holds its listening socket open until it
+/// exits, so it reads reachable until then; this bounds how long
+/// we wait for it to disappear. The old unmount is gone (the
+/// vault is handed across, not sealed), but the daemon still
+/// finishes its in-flight sync batch first, which this covers.
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(30);
 const STATUS_WAIT: Duration = Duration::from_secs(2);
 /// The version buildinfo emits when there is no git tag to
@@ -57,7 +59,7 @@ pub fn ensure_matching_daemon(
     {
         return Ok(None);
     }
-    stop_daemon()?;
+    restart_daemon()?;
     spawn_daemon(dirs)?;
     wait_reachable()?;
     Ok(Some(format!(
@@ -99,15 +101,17 @@ fn daemon_version() -> Option<String> {
     }
 }
 
-/// Asks the daemon to stop and waits until it is gone. The
-/// listening socket stays up through the vault seal, so an
-/// unreachable socket means the old daemon has sealed and
-/// released the vault: only then is a fresh mount safe.
-fn stop_daemon() -> Result<(), String> {
+/// Asks the daemon to stop WITHOUT sealing the vault, and waits
+/// until it is gone. Restart leaves the mount open for the
+/// successor daemon to reuse, so no unmount and remount happens.
+/// The listening socket stays up until the process exits, so an
+/// unreachable socket means the old daemon has released the
+/// mount: only then is spawning the successor safe.
+fn restart_daemon() -> Result<(), String> {
     let path = socket_path(|var| std::env::var_os(var));
     if let Ok(mut client) = IpcClient::connect(&path) {
         let _ = client.set_read_timeout(STATUS_WAIT);
-        let _ = client.request(&Request::Shutdown);
+        let _ = client.request(&Request::Restart);
     }
     let deadline = Instant::now() + SHUTDOWN_WAIT;
     while Instant::now() < deadline {

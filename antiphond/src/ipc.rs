@@ -45,6 +45,16 @@ impl Daemon {
                     .store(true, std::sync::atomic::Ordering::Relaxed);
                 Response::Ack
             }
+            Request::Restart => {
+                // Raise skip-seal before shutdown so the vault
+                // is guaranteed handed across, not sealed, on
+                // the way out.
+                self.skip_seal
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+                self.shutdown
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+                Response::Ack
+            }
             Request::DrainOutbox => {
                 self.jobs.request(Job::DrainOutbox);
                 Response::Ack
@@ -227,6 +237,7 @@ mod tests {
             jobs,
             vault: VaultState::Absent,
             shutdown: Default::default(),
+            skip_seal: Default::default(),
             watchers: None,
             dirs,
             loaded,
@@ -367,6 +378,23 @@ mod tests {
             Response::Ack
         );
         assert!(fixture.daemon.shutdown.load(Ordering::Relaxed));
+        // A plain stop still seals: skip-seal must stay down.
+        assert!(!fixture.daemon.skip_seal.load(Ordering::Relaxed));
+        finish(fixture);
+    }
+
+    #[test]
+    fn restart_acks_and_raises_both_stop_and_skip_seal() {
+        use std::sync::atomic::Ordering;
+        let mut fixture = fixture();
+        assert!(!fixture.daemon.shutdown.load(Ordering::Relaxed));
+        assert!(!fixture.daemon.skip_seal.load(Ordering::Relaxed));
+        assert_eq!(
+            fixture.daemon.respond(Request::Restart),
+            Response::Ack
+        );
+        assert!(fixture.daemon.shutdown.load(Ordering::Relaxed));
+        assert!(fixture.daemon.skip_seal.load(Ordering::Relaxed));
         finish(fixture);
     }
 

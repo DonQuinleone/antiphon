@@ -56,6 +56,12 @@ pub(crate) struct Daemon {
     pub(crate) jobs: JobQueue,
     pub(crate) vault: VaultState,
     pub(crate) shutdown: Arc<AtomicBool>,
+    /// Set only by a Restart request: the successor daemon
+    /// re-opens the still-mounted vault, so sealing here would
+    /// unmount then force it to remount, the slow path we are
+    /// avoiding. A signal or a plain Shutdown leaves this false
+    /// and seals as normal.
+    pub(crate) skip_seal: Arc<AtomicBool>,
     pub(crate) watchers: Option<idle::IdleWatchers>,
     pub(crate) dirs: Dirs,
     pub(crate) loaded: Loaded,
@@ -183,12 +189,14 @@ pub fn run() -> ExitCode {
     };
     let (jobs, worker) = worker::spawn(flow);
     let shutdown = install_shutdown();
+    let skip_seal = Arc::new(AtomicBool::new(false));
     let mut daemon = Daemon {
         layout: layout.clone(),
         state,
         jobs: jobs.clone(),
         vault,
         shutdown: shutdown.clone(),
+        skip_seal: skip_seal.clone(),
         watchers: None,
         dirs,
         loaded,
@@ -207,8 +215,15 @@ pub fn run() -> ExitCode {
         eprintln!("the worker thread panicked");
     }
     // Seal the vault on the way out so a graceful stop leaves
-    // ciphertext at rest, not an open mount.
-    if let Err(error) = vaultctl::lock(&loaded, &layout) {
+    // ciphertext at rest, not an open mount. A Restart skips
+    // this: the successor daemon reuses the open mount, and
+    // sealing here would force a slow unmount then remount.
+    let sealed = if skip_seal.load(Ordering::Relaxed) {
+        Ok(())
+    } else {
+        vaultctl::lock(&loaded, &layout)
+    };
+    if let Err(error) = sealed {
         eprintln!("{error}");
     }
     if let Err(error) = outcome {
@@ -303,7 +318,11 @@ fn serve_with_timer(
             idle_seal(daemon);
         }
     }
-    println!("shutting down; sealing the vault");
+    if daemon.skip_seal.load(Ordering::Relaxed) {
+        println!("restarting; handing the open vault across");
+    } else {
+        println!("shutting down; sealing the vault");
+    }
     Ok(())
 }
 
