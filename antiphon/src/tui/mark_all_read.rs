@@ -83,6 +83,8 @@ mod tests {
             tags: vec![UNREAD_TAG.to_string()],
             unread: true,
             path: std::path::PathBuf::from(path),
+            in_reply_to: None,
+            references: Vec::new(),
         }
     }
 

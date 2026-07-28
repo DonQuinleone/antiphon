@@ -30,9 +30,15 @@ names the active account (or *unified*); there is no separate
 tab bar, so the reclaimed row goes to the message list. In
 either mode *g1*..*g9* jump to account 1..9, *gu* to unified, and
 *gt*/*gT* cycle (actions *account-1*..*account-9* and
-*account-unified*). Press *?* at any time for the live
-keybinding cheatsheet. The full key reference, theme gallery
-and every configuration key live in the guides at
+*account-unified*). *T* (action *thread-view*) opens the
+selected message's thread as an indented reply tree, each reply
+nested under the message it answers and siblings in date order;
+*za*/*zo*/*zc* (actions *fold-toggle*, *fold-open* and
+*fold-close*) fold a subtree away, a folded node showing the
+count of replies it hides, while *j*/*k* step over the visible
+nodes and *esc* returns to the prior list. Press *?* at any time
+for the live keybinding cheatsheet. The full key reference,
+theme gallery and every configuration key live in the guides at
 https://docs.antiphon.net.
 
 A message carrying image parts, whether attached or referenced

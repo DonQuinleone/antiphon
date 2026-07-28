@@ -20,6 +20,13 @@ pub struct MessageSummary {
     pub tags: Vec<String>,
     pub unread: bool,
     pub path: PathBuf,
+    /// The message this one answers, as a bare Message-ID (no
+    /// angle brackets, matching `id`); None when it opens a
+    /// thread. Drives the reply tree.
+    pub in_reply_to: Option<String>,
+    /// The ancestor chain from References, oldest first, each a
+    /// bare Message-ID.
+    pub references: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -190,6 +197,10 @@ fn summarise(
 ) -> Result<MessageSummary, notmuch::Error> {
     let tags: Vec<String> = message.tags().collect();
     let unread = tags.iter().any(|tag| tag == UNREAD_TAG);
+    let references =
+        message_ids(&header_or_empty(message, "references")?);
+    let in_reply_to =
+        sole_message_id(&header_or_empty(message, "in-reply-to")?);
     Ok(MessageSummary {
         id: message.id().into_owned(),
         thread_id: message.thread_id().into_owned(),
@@ -200,7 +211,43 @@ fn summarise(
         tags,
         unread,
         path: message.filename().to_path_buf(),
+        in_reply_to,
+        references,
     })
+}
+
+/// The bare Message-IDs inside a References or In-Reply-To
+/// header, in order, with the angle brackets stripped so they
+/// compare equal to notmuch's `id`.
+fn message_ids(value: &str) -> Vec<String> {
+    let mut ids = Vec::new();
+    let mut rest = value;
+    while let Some(open) = rest.find('<') {
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('>') else {
+            break;
+        };
+        let id = after[..close].trim();
+        if !id.is_empty() {
+            ids.push(id.to_string());
+        }
+        rest = &after[close + 1..];
+    }
+    ids
+}
+
+/// The single parent id from an In-Reply-To: the last bracketed
+/// id, or a lone unbracketed token where a client omitted the
+/// brackets.
+fn sole_message_id(value: &str) -> Option<String> {
+    if let Some(last) = message_ids(value).pop() {
+        return Some(last);
+    }
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.contains(char::is_whitespace) {
+        return None;
+    }
+    Some(trimmed.to_string())
 }
 
 fn header_or_empty(
@@ -209,4 +256,30 @@ fn header_or_empty(
 ) -> Result<String, notmuch::Error> {
     let value = message.header(name)?;
     Ok(value.map(Cow::into_owned).unwrap_or_default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn references_strip_brackets_and_keep_order() {
+        let ids = message_ids("<a@x>  <b@y>\n <c@z>");
+        assert_eq!(ids, ["a@x", "b@y", "c@z"]);
+        assert!(message_ids("no brackets here").is_empty());
+    }
+
+    #[test]
+    fn in_reply_to_takes_the_last_id_or_a_lone_token() {
+        assert_eq!(
+            sole_message_id("<old@x> <parent@y>").as_deref(),
+            Some("parent@y")
+        );
+        assert_eq!(
+            sole_message_id("bare@x").as_deref(),
+            Some("bare@x")
+        );
+        assert_eq!(sole_message_id("  "), None);
+        assert_eq!(sole_message_id("two bare@x"), None);
+    }
 }

@@ -62,6 +62,8 @@ mod tabs;
 #[cfg(test)]
 mod testkit;
 mod themecmd;
+mod thread_tree;
+mod thread_tree_draw;
 
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
@@ -437,6 +439,7 @@ fn maybe_refresh(
     let selected = app.selected;
     app.set_results(messages, fresh_total, query);
     app.selected = selected.min(app.messages.len().saturating_sub(1));
+    app.clamp_selected_visible();
 }
 
 /// Refreshes the daemon's auth-failure report for the status

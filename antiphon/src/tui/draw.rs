@@ -95,7 +95,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
     let (list, pane) =
         split_reading_pane(main, app.reading_pane, app.list_rows);
-    draw_list(frame, app, list);
+    if app.thread_tree.is_some() {
+        super::thread_tree_draw::draw_thread(frame, app, list);
+    } else {
+        draw_list(frame, app, list);
+    }
     if let Some(pane) = pane {
         draw_reading_pane(frame, app, pane);
     }
