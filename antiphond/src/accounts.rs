@@ -267,6 +267,8 @@ mod tests {
                 }),
                 graph: None,
                 folder_names: Default::default(),
+                folder_order: Vec::new(),
+                folders_hidden: Vec::new(),
             },
         }
     }

@@ -167,6 +167,8 @@ fn synthetic_loaded(account: &str) -> Loaded {
                 oauth: None,
                 graph: None,
                 folder_names: Default::default(),
+                folder_order: Vec::new(),
+                folders_hidden: Vec::new(),
             },
         }],
     }

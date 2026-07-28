@@ -199,8 +199,14 @@ fn folder_line(
     ))
 }
 
+/// The alias column doubles as the hidden marker, so a hidden
+/// folder says so on its own row.
 fn alias_text(row: &FolderRow) -> String {
-    row.alias.clone()
+    match (row.hidden, row.alias.is_empty()) {
+        (false, _) => row.alias.clone(),
+        (true, true) => "(hidden)".to_string(),
+        (true, false) => format!("{} (hidden)", row.alias),
+    }
 }
 
 const ALIAS_MODAL_WIDTH: u16 = 56;
@@ -369,15 +375,24 @@ mod tests {
             pending_delete: None,
             essentials_selected: 0,
             daemon_hint: None,
-            folders: vec![FolderRow {
-                account: "work".to_string(),
-                folder: "lists/aerc".to_string(),
-                alias: "aerc-list".to_string(),
-            }],
+            folders: vec![
+                FolderRow {
+                    account: "work".to_string(),
+                    folder: "lists/aerc".to_string(),
+                    alias: "aerc-list".to_string(),
+                    hidden: false,
+                },
+                FolderRow {
+                    account: "work".to_string(),
+                    folder: "spam".to_string(),
+                    alias: String::new(),
+                    hidden: true,
+                },
+            ],
             folder_selected: 0,
         });
         app.folder_alias_edit =
-            Some(super::super::folders::AliasEdit {
+            Some(super::super::folder_alias::AliasEdit {
                 account: "personal".to_string(),
                 folder: "lists/rust".to_string(),
                 text: "renamed".to_string(),
@@ -395,6 +410,10 @@ mod tests {
         let text: String =
             (0..buffer.area.height).map(|y| row(&buffer, y)).collect();
         assert!(text.contains("Folders"));
+        assert!(
+            text.contains("spam") && text.contains("(hidden)"),
+            "hidden folders wear their marker: {text}"
+        );
         assert!(
             text.contains("alias for personal/lists/rust"),
             "the modal names the folder being aliased"

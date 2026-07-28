@@ -162,7 +162,7 @@ impl Default for Notifications {
     }
 }
 
-#[derive(Debug, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SavedSearch {
     pub name: String,

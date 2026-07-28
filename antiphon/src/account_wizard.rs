@@ -270,6 +270,8 @@ mod tests {
             oauth: None,
             graph: None,
             folder_names: Default::default(),
+            folder_order: Vec::new(),
+            folders_hidden: Vec::new(),
         };
         let defaults = AccountAnswers::from_existing(&account);
         assert_eq!(defaults.address, "quin@example.com");

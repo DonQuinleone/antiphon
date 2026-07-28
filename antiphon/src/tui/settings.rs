@@ -107,7 +107,7 @@ pub(super) fn feed(app: &mut App, key: KeyEvent) -> SettingsOutcome {
         }
         _ => match tab {
             SettingsTab::Accounts => feed_accounts(app, key),
-            SettingsTab::Essentials => feed_essentials(app, key),
+            SettingsTab::Essentials => settingscmd::feed(app, key),
             SettingsTab::Folders => super::folders::feed(app, key),
         },
     }
@@ -168,23 +168,6 @@ fn feed_confirm_delete(
     SettingsOutcome::Stay
 }
 
-fn feed_essentials(app: &mut App, key: KeyEvent) -> SettingsOutcome {
-    match key.code {
-        KeyCode::Char('j') | KeyCode::Down => {
-            move_essentials_selection(app, 1)
-        }
-        KeyCode::Char('k') | KeyCode::Up => {
-            move_essentials_selection(app, -1)
-        }
-        KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
-            cycle_essential(app, 1)
-        }
-        KeyCode::Char('h') | KeyCode::Left => cycle_essential(app, -1),
-        _ => {}
-    }
-    SettingsOutcome::Stay
-}
-
 fn move_account_selection(app: &mut App, step: i32) {
     let Some(state) = app.settings.as_mut() else {
         return;
@@ -220,7 +203,7 @@ fn shift_account_order(app: &mut App, step: i32) {
         .iter()
         .map(|account| account.name.clone())
         .collect();
-    let value = super::themecmd::toml_string_array(&order);
+    let value = super::configedit::toml_string_array(&order);
     let result =
         settingscmd::persist(app, ACCOUNTS_TABLE, ORDER_KEY, &value);
     reorder_live_accounts(app, &order);
@@ -231,25 +214,18 @@ fn shift_account_order(app: &mut App, step: i32) {
 }
 
 /// Mirrors the persisted order onto the running session's
-/// account list, which every scope cycle, unified query and
-/// sidebar refresh reads.
+/// account list and sidebar, which every scope cycle, unified
+/// query and refresh reads.
 fn reorder_live_accounts(app: &mut App, order: &[String]) {
-    let position = |name: &String| {
+    let rank = |name: &str| {
         order
             .iter()
             .position(|entry| entry == name)
             .unwrap_or(order.len())
     };
-    app.accounts.sort_by_key(position);
-}
-
-fn move_essentials_selection(app: &mut App, step: i32) {
-    let Some(state) = app.settings.as_mut() else {
-        return;
-    };
-    let len = settingscmd::ESSENTIAL_ROWS.len();
-    state.essentials_selected =
-        wrapped(state.essentials_selected, len, step);
+    app.accounts.sort_by_key(|name| rank(name));
+    app.account_entries.sort_by_key(|entry| rank(&entry.name));
+    app.rebuild_sidebar();
 }
 
 fn selected_account_name(app: &App) -> Option<String> {
@@ -292,29 +268,6 @@ fn remove_account(app: &mut App, name: &str) {
     app.refresh_settings_accounts();
 }
 
-fn cycle_essential(app: &mut App, step: i32) {
-    let Some(index) =
-        app.settings.as_ref().map(|state| state.essentials_selected)
-    else {
-        return;
-    };
-    let row = &settingscmd::ESSENTIAL_ROWS[index];
-    let value = (row.cycle)(app, step);
-    let result = settingscmd::persist(app, row.table, row.key, &value);
-    let base = format!("{}: {value}", row.label);
-    app.notice = Some(match result {
-        Ok(()) => base,
-        Err(error) => format!("{base} (not saved: {error})"),
-    });
-    let hint = row.daemon.then(|| match super::request_reload() {
-        None => "applied to the running daemon".to_string(),
-        Some(notice) => notice,
-    });
-    if let Some(state) = app.settings.as_mut() {
-        state.daemon_hint = hint;
-    }
-}
-
 /// `current` moved by `step`, wrapping within `[0, len)`; a
 /// zero length always lands on 0.
 pub(super) fn wrapped(current: usize, len: usize, step: i32) -> usize {
@@ -348,7 +301,7 @@ fn summary_of(entry: &NamedAccount) -> AccountSummary {
 
 #[cfg(test)]
 mod tests {
-    use super::super::testkit::app_with_messages;
+    use super::super::testkit::app_with_settings;
     use super::*;
 
     fn key(code: KeyCode) -> KeyEvent {
@@ -356,29 +309,6 @@ mod tests {
             code,
             ratatui::crossterm::event::KeyModifiers::NONE,
         )
-    }
-
-    fn app_with_settings(accounts: &[&str]) -> App {
-        let mut app = app_with_messages(1);
-        app.settings = Some(SettingsState {
-            tab: SettingsTab::Accounts,
-            accounts: accounts
-                .iter()
-                .map(|name| AccountSummary {
-                    name: (*name).to_string(),
-                    address: format!("{name}@example.com"),
-                    host: format!("imap.{name}.example.com"),
-                })
-                .collect(),
-            account_selected: 0,
-            pending_delete: None,
-            essentials_selected: 0,
-            daemon_hint: None,
-            folders: Vec::new(),
-            folder_selected: 0,
-        });
-        app.view = View::Settings;
-        app
     }
 
     #[test]
@@ -528,45 +458,5 @@ mod tests {
         assert!(!accounts_dir.join("work.toml").exists());
         assert!(maildir.exists(), "the mail store is never touched");
         assert!(app.settings.as_ref().unwrap().accounts.is_empty());
-    }
-
-    #[test]
-    fn essentials_selection_cycles_a_row_and_persists() {
-        use super::super::testkit::TempDir;
-
-        let dir = TempDir::new();
-        let mut app = app_with_settings(&[]);
-        app.config_path = dir.path.join("config.toml");
-        app.settings.as_mut().unwrap().tab = SettingsTab::Essentials;
-
-        let before = app.list_rows;
-        for _ in 0..4 {
-            feed(&mut app, key(KeyCode::Char('j')));
-        }
-        feed(&mut app, key(KeyCode::Char('l')));
-        assert_ne!(app.list_rows, before);
-        let text = std::fs::read_to_string(&app.config_path).unwrap();
-        assert!(
-            text.contains(&format!("list_rows = {}", app.list_rows))
-        );
-    }
-
-    #[test]
-    fn a_daemon_key_sets_the_restart_hint_a_client_key_does_not() {
-        use super::super::testkit::TempDir;
-
-        let dir = TempDir::new();
-        let mut app = app_with_settings(&[]);
-        app.config_path = dir.path.join("config.toml");
-        app.settings.as_mut().unwrap().tab = SettingsTab::Essentials;
-
-        feed(&mut app, key(KeyCode::Char('l')));
-        assert!(app.settings.as_ref().unwrap().daemon_hint.is_none());
-
-        for _ in 0..2 {
-            feed(&mut app, key(KeyCode::Char('j')));
-        }
-        feed(&mut app, key(KeyCode::Char('l')));
-        assert!(app.settings.as_ref().unwrap().daemon_hint.is_some());
     }
 }

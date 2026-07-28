@@ -7,6 +7,7 @@ mod cells;
 mod commands;
 mod complete;
 mod compose;
+mod configedit;
 mod crypto;
 mod decrypt;
 mod dispatch;
@@ -15,6 +16,7 @@ mod draw;
 mod drawer;
 mod editor;
 mod export;
+mod folder_alias;
 mod folder_picker;
 mod folders;
 mod headers;
@@ -23,7 +25,6 @@ mod identity;
 mod input;
 mod link_picker;
 mod lists;
-mod loaded;
 mod mark_all_read;
 mod message_list;
 mod pager;
@@ -31,6 +32,7 @@ mod pager_actions;
 mod pager_body;
 mod patches;
 mod prefill;
+mod prefs;
 mod preview;
 mod reader;
 mod replies;
@@ -132,7 +134,8 @@ pub fn run(
     };
     let context = ComposeContext::from_loaded(loaded, dirs);
     let keyring = Keyring::from_dir(dirs.config.join(PGP_KEYRING_DIR));
-    let folders = sidebar::discover(layout, &accounts);
+    let folders =
+        sidebar::discover(layout, &prefs::account_seeds(loaded));
     let mut app = App::new(
         loaded,
         &folders,
@@ -160,14 +163,8 @@ pub fn run(
     }
     let mut terminal = ratatui::init();
     grab_mouse();
-    let outcome = event_loop(
-        &mut terminal,
-        &mut app,
-        keymap,
-        layout,
-        &context,
-        &loaded.config.saved_searches,
-    );
+    let outcome =
+        event_loop(&mut terminal, &mut app, keymap, layout, &context);
     release_mouse();
     ratatui::restore();
     match outcome {
@@ -207,7 +204,6 @@ fn event_loop(
     mut keymap: Keymap,
     layout: &StoreLayout,
     context: &ComposeContext,
-    saved: &[antiphon_config::SavedSearch],
 ) -> std::io::Result<()> {
     let mut last_refresh = Instant::now();
     let mut last_unread: Option<u32> = None;
@@ -224,7 +220,6 @@ fn event_loop(
             maybe_refresh(
                 app,
                 layout,
-                saved,
                 &mut last_refresh,
                 &mut last_unread,
             );
@@ -341,7 +336,6 @@ fn tick_editor(
 fn maybe_refresh(
     app: &mut App,
     layout: &StoreLayout,
-    saved: &[antiphon_config::SavedSearch],
     last_refresh: &mut Instant,
     last_unread: &mut Option<u32>,
 ) {
@@ -350,9 +344,11 @@ fn maybe_refresh(
     }
     *last_refresh = Instant::now();
     app.sync_progress = antiphon_sync::read_progress(layout);
-    let folders = sidebar::discover(layout, &app.accounts);
+    app.account_entries =
+        sidebar::discover(layout, &app.account_entries);
     let index = SearchIndex::open(layout).ok();
-    let mut entries = sidebar::entries(&folders, saved);
+    let mut entries =
+        sidebar::entries(&app.account_entries, &app.saved_searches);
     if let Some(index) = &index {
         sidebar::fill_unread(&mut entries, |query| {
             index.count(&format!("tag:unread and ({query})")).ok()

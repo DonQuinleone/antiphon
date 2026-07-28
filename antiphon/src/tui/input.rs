@@ -13,9 +13,10 @@ use super::dispatch::dispatch;
 use super::identity::ComposeContext;
 use super::settings::{self, SettingsOutcome};
 use super::{
-    account_form, attach, draw, drawer, export, folder_picker, folders,
-    headers, link_picker, mark_all_read, pager, pager_body, patches,
-    review, run_query, run_search, session,
+    account_form, attach, draw, drawer, export, folder_alias,
+    folder_picker, headers, link_picker, mark_all_read,
+    pager, pager_body, patches, review, run_query, run_search,
+    session,
 };
 
 const MOUSE_WHEEL_ROWS: usize = 3;
@@ -121,7 +122,7 @@ pub(super) fn settings_key(app: &mut App, key: KeyEvent) {
         return;
     }
     if app.folder_alias_edit.is_some() {
-        folders::feed_edit(app, key);
+        folder_alias::feed_edit(app, key);
         return;
     }
     match settings::feed(app, key) {

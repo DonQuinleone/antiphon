@@ -40,24 +40,55 @@ impl SidebarEntry {
     }
 }
 
-/// An account and the store folders discovered under it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// An account, the store folders discovered under it, and the
+/// account's own sidebar preferences (`folder_order` and
+/// `folders_hidden` from its config file).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AccountEntry {
     pub name: String,
     pub folders: Vec<String>,
+    pub order: Vec<String>,
+    pub hidden: Vec<String>,
 }
 
+/// Refreshes each account's discovered folders, keeping the
+/// name and preferences of the seed entries.
 pub fn discover(
     layout: &StoreLayout,
-    accounts: &[String],
+    seeds: &[AccountEntry],
 ) -> Vec<AccountEntry> {
-    accounts
+    seeds
         .iter()
-        .map(|name| AccountEntry {
-            name: name.clone(),
-            folders: layout.account_folders(name),
+        .map(|seed| AccountEntry {
+            name: seed.name.clone(),
+            folders: layout.account_folders(&seed.name),
+            order: seed.order.clone(),
+            hidden: seed.hidden.clone(),
         })
         .collect()
+}
+
+/// Every sidebar name of the account (inbox included, hidden
+/// ones too, for the settings Folders tab): names listed in
+/// `folder_order` lead in that order, the rest keep their
+/// alphabetical rank with inbox first among them.
+pub fn ordered_names(account: &AccountEntry) -> Vec<String> {
+    let mut names = Vec::with_capacity(account.folders.len() + 1);
+    names.push(INBOX_LABEL.to_string());
+    names.extend(account.folders.iter().cloned());
+    names.sort_by_key(|name| order_rank(&account.order, name));
+    names
+}
+
+fn order_rank(order: &[String], name: &str) -> usize {
+    order
+        .iter()
+        .position(|listed| listed == name)
+        .unwrap_or(order.len())
+}
+
+pub fn is_hidden(account: &AccountEntry, name: &str) -> bool {
+    account.hidden.iter().any(|hidden| hidden == name)
 }
 
 /// Built-in unified views, `all` first so an inbox-zero
@@ -76,13 +107,7 @@ pub fn entries(
     let mut items = vec![SidebarEntry::Unified];
     for account in accounts {
         items.push(SidebarEntry::Account(account.name.clone()));
-        items.push(inbox_entry(&account.name));
-        items.extend(
-            account
-                .folders
-                .iter()
-                .map(|folder| folder_entry(&account.name, folder)),
-        );
+        items.extend(folder_entries(account));
     }
     items.extend(BUILTIN_SEARCHES.iter().map(|(name, query)| {
         SidebarEntry::Saved {
@@ -94,6 +119,24 @@ pub fn entries(
         name: search.name.clone(),
         query: search.query.clone(),
     }));
+    items
+}
+
+/// The account's folder rows, `folder_order` applied and the
+/// hidden ones dropped; sorting the built entries rather than
+/// bare names keeps a subdirectory literally named inbox
+/// distinct from the root inbox.
+pub fn folder_entries(account: &AccountEntry) -> Vec<SidebarEntry> {
+    let mut items = vec![inbox_entry(&account.name)];
+    items.extend(
+        account
+            .folders
+            .iter()
+            .map(|folder| folder_entry(&account.name, folder)),
+    );
+    items
+        .sort_by_key(|entry| order_rank(&account.order, entry.label()));
+    items.retain(|entry| !is_hidden(account, entry.label()));
     items
 }
 
@@ -189,8 +232,51 @@ mod tests {
                     .iter()
                     .map(|folder| (*folder).to_string())
                     .collect(),
+                ..AccountEntry::default()
             })
             .collect()
+    }
+
+    fn strings(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    #[test]
+    fn folder_order_leads_and_the_rest_stay_alphabetical() {
+        let mut account = accounts(&[(
+            "work",
+            &["archive", "drafts", "lists/aerc"][..],
+        )])
+        .remove(0);
+        account.order = strings(&["lists/aerc", "ghost", "inbox"]);
+        let names = ordered_names(&account);
+        assert_eq!(names, ["lists/aerc", "inbox", "archive", "drafts"]);
+        let labels: Vec<String> = folder_entries(&account)
+            .iter()
+            .map(|entry| entry.label().to_string())
+            .collect();
+        assert_eq!(
+            labels,
+            ["lists/aerc", "inbox", "archive", "drafts"]
+        );
+    }
+
+    #[test]
+    fn hidden_folders_leave_the_sidebar_but_not_the_names() {
+        let mut account =
+            accounts(&[("work", &["archive", "spam"][..])]).remove(0);
+        account.hidden = strings(&["spam"]);
+        let labels: Vec<String> = folder_entries(&account)
+            .iter()
+            .map(|entry| entry.label().to_string())
+            .collect();
+        assert_eq!(labels, ["inbox", "archive"]);
+        assert!(is_hidden(&account, "spam"));
+        assert_eq!(
+            ordered_names(&account),
+            ["inbox", "archive", "spam"],
+            "the settings tab still lists hidden folders"
+        );
     }
 
     #[test]

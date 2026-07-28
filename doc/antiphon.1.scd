@@ -129,6 +129,12 @@ _$XDG_CONFIG_HOME/antiphon/local.toml_
 _$XDG_CONFIG_HOME/antiphon/accounts/\*.toml_
 	One file per mail account: IMAP, SMTP, identities, filing
 	rules and, optionally, OAuth and Microsoft Graph settings.
+	*folder_order* lists sidebar folder names (as the sidebar
+	shows them, *inbox* included) to place first, in that
+	order; the rest stay alphabetical. *folders_hidden* lists
+	folders to drop from the sidebar; a hidden folder stays
+	synced and searchable. The settings Folders tab edits both:
+	Shift-J/K reorder, *h* hides and unhides.
 
 _$XDG_CONFIG_HOME/antiphon/signatures/_, _templates/_, _pgp/_
 	Signature files, compose templates and the trusted OpenPGP

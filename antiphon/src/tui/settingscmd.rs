@@ -1,10 +1,11 @@
 use antiphon_config::ReadingPane;
 use antiphon_ui::Theme;
+use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use super::app::App;
+use super::configedit::persist_key;
 use super::draw::{SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN};
-use super::settings::wrapped;
-use super::themecmd::persist_key;
+use super::settings::{SettingsOutcome, wrapped};
 
 const LIST_ROWS_MIN: u16 = 1;
 const LIST_ROWS_MAX: u16 = 60;
@@ -81,6 +82,57 @@ pub(super) const ESSENTIAL_ROWS: [EssentialRow; 6] = [
         cycle: cycle_sidebar_width,
     },
 ];
+
+/// Keys on the Essentials tab: j/k select a row, h/l (or
+/// enter) cycle its value and persist it.
+pub(super) fn feed(app: &mut App, key: KeyEvent) -> SettingsOutcome {
+    match key.code {
+        KeyCode::Char('j') | KeyCode::Down => {
+            move_essentials_selection(app, 1)
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            move_essentials_selection(app, -1)
+        }
+        KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
+            cycle_essential(app, 1)
+        }
+        KeyCode::Char('h') | KeyCode::Left => cycle_essential(app, -1),
+        _ => {}
+    }
+    SettingsOutcome::Stay
+}
+
+fn move_essentials_selection(app: &mut App, step: i32) {
+    let Some(state) = app.settings.as_mut() else {
+        return;
+    };
+    let len = ESSENTIAL_ROWS.len();
+    state.essentials_selected =
+        wrapped(state.essentials_selected, len, step);
+}
+
+fn cycle_essential(app: &mut App, step: i32) {
+    let Some(index) =
+        app.settings.as_ref().map(|state| state.essentials_selected)
+    else {
+        return;
+    };
+    let row = &ESSENTIAL_ROWS[index];
+    let value = (row.cycle)(app, step);
+    let result = persist(app, row.table, row.key, &value);
+    let base = format!("{}: {value}", row.label);
+    app.notice = Some(match result {
+        Ok(()) => base,
+        Err(error) => format!("{base} (not saved: {error})"),
+    });
+    let hint = row.daemon.then(|| match super::request_reload() {
+        None => "applied to the running daemon".to_string(),
+        Some(notice) => notice,
+    });
+    if let Some(state) = app.settings.as_mut() {
+        state.daemon_hint = hint;
+    }
+}
 
 /// Writes one essentials key through the same surgical config
 /// edit `:theme` uses, so every other line survives untouched.
@@ -195,8 +247,56 @@ fn stepped(value: u32, step: i32, min: u32, max: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::super::testkit::app_with_messages;
+    use super::super::settings::SettingsTab;
+    use super::super::testkit::{app_with_messages, app_with_settings};
     use super::*;
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(
+            code,
+            ratatui::crossterm::event::KeyModifiers::NONE,
+        )
+    }
+
+    #[test]
+    fn essentials_selection_cycles_a_row_and_persists() {
+        use super::super::testkit::TempDir;
+
+        let dir = TempDir::new();
+        let mut app = app_with_settings(&[]);
+        app.config_path = dir.path.join("config.toml");
+        app.settings.as_mut().unwrap().tab = SettingsTab::Essentials;
+
+        let before = app.list_rows;
+        for _ in 0..4 {
+            feed(&mut app, key(KeyCode::Char('j')));
+        }
+        feed(&mut app, key(KeyCode::Char('l')));
+        assert_ne!(app.list_rows, before);
+        let text = std::fs::read_to_string(&app.config_path).unwrap();
+        assert!(
+            text.contains(&format!("list_rows = {}", app.list_rows))
+        );
+    }
+
+    #[test]
+    fn a_daemon_key_sets_the_restart_hint_a_client_key_does_not() {
+        use super::super::testkit::TempDir;
+
+        let dir = TempDir::new();
+        let mut app = app_with_settings(&[]);
+        app.config_path = dir.path.join("config.toml");
+        app.settings.as_mut().unwrap().tab = SettingsTab::Essentials;
+
+        feed(&mut app, key(KeyCode::Char('l')));
+        assert!(app.settings.as_ref().unwrap().daemon_hint.is_none());
+
+        for _ in 0..2 {
+            feed(&mut app, key(KeyCode::Char('j')));
+        }
+        feed(&mut app, key(KeyCode::Char('l')));
+        assert!(app.settings.as_ref().unwrap().daemon_hint.is_some());
+    }
 
     #[test]
     fn every_row_renders_and_cycles_without_panicking() {

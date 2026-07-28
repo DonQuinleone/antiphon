@@ -15,7 +15,7 @@ use super::commands::{
 use super::compose::ComposeState;
 use super::editor::EditorPane;
 use super::link_picker::LinkPicker;
-use super::loaded::{
+use super::prefs::{
     archive_folders, folder_aliases, own_addresses, trash_folders,
 };
 use super::scope::{self, ViewScope};
@@ -49,6 +49,8 @@ pub enum KeyRoute {
 pub struct App {
     pub accounts: Vec<String>,
     pub scope: ViewScope,
+    pub account_entries: Vec<AccountEntry>,
+    pub saved_searches: Vec<antiphon_config::SavedSearch>,
     pub sidebar_entries: Vec<SidebarEntry>,
     pub sidebar_selected: usize,
     pub active_search: Option<String>,
@@ -70,7 +72,7 @@ pub struct App {
     pub link_picker: Option<LinkPicker>,
     pub folder_picker: Option<super::folder_picker::FolderPicker>,
     pub account_form: Option<super::account_form::AccountFormState>,
-    pub folder_alias_edit: Option<super::folders::AliasEdit>,
+    pub folder_alias_edit: Option<super::folder_alias::AliasEdit>,
     pub drawer_open: bool,
     pub drawer_selected: usize,
     pub header_names: Vec<String>,
@@ -146,6 +148,8 @@ impl App {
         App {
             accounts,
             scope: ViewScope::Unified,
+            account_entries: folders.to_vec(),
+            saved_searches: loaded.config.saved_searches.clone(),
             sidebar_entries,
             sidebar_selected,
             active_search: Some(sidebar::ALL_LABEL.to_string()),
@@ -331,6 +335,34 @@ impl App {
         self.total_messages = total;
         self.selected = 0;
         self.current_query = query;
+    }
+
+    /// Rebuilds the sidebar from the in-memory account entries
+    /// (after a settings edit, say), carrying the unread counts
+    /// over so the rebuild does not blank them until the next
+    /// periodic refresh.
+    pub(super) fn rebuild_sidebar(&mut self) {
+        let mut entries = sidebar::entries(
+            &self.account_entries,
+            &self.saved_searches,
+        );
+        let counts: Vec<(String, u32)> = self
+            .sidebar_entries
+            .iter()
+            .filter_map(|entry| match entry {
+                SidebarEntry::Folder { query, unread, .. } => {
+                    Some((query.clone(), *unread))
+                }
+                _ => None,
+            })
+            .collect();
+        sidebar::fill_unread(&mut entries, |query| {
+            counts
+                .iter()
+                .find(|(known, _)| known == query)
+                .map(|(_, unread)| *unread)
+        });
+        self.update_sidebar(entries);
     }
 
     /// Folders come and go as syncs land; the highlight is

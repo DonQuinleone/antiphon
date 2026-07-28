@@ -12,6 +12,7 @@ use super::commands::FrameStats;
 use super::crypto::{ComposeCrypto, PgpPlan};
 use super::identity::ComposeIdentity;
 use super::scope::ViewScope;
+use super::settings::{AccountSummary, SettingsState, SettingsTab};
 use super::sidebar::{self, AccountEntry};
 
 pub(super) fn app_with_messages(count: usize) -> App {
@@ -31,6 +32,8 @@ pub(super) fn app_with_messages(count: usize) -> App {
     App {
         accounts: Vec::new(),
         scope: ViewScope::Unified,
+        account_entries: Vec::new(),
+        saved_searches: Vec::new(),
         sidebar_entries: Vec::new(),
         sidebar_selected: 0,
         active_search: None,
@@ -141,9 +144,34 @@ pub(super) fn app_with_folders(accounts: &[(&str, &[&str])]) -> App {
                 .iter()
                 .map(|folder| (*folder).to_string())
                 .collect(),
+            ..AccountEntry::default()
         })
         .collect();
     app.sidebar_entries = sidebar::entries(&entries, &[]);
+    app.account_entries = entries;
+    app
+}
+
+pub(super) fn app_with_settings(accounts: &[&str]) -> App {
+    let mut app = app_with_messages(1);
+    app.settings = Some(SettingsState {
+        tab: SettingsTab::Accounts,
+        accounts: accounts
+            .iter()
+            .map(|name| AccountSummary {
+                name: (*name).to_string(),
+                address: format!("{name}@example.com"),
+                host: format!("imap.{name}.example.com"),
+            })
+            .collect(),
+        account_selected: 0,
+        pending_delete: None,
+        essentials_selected: 0,
+        daemon_hint: None,
+        folders: Vec::new(),
+        folder_selected: 0,
+    });
+    app.view = View::Settings;
     app
 }
 

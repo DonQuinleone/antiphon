@@ -14,6 +14,10 @@ pub struct AccountFile {
     pub graph: Option<Graph>,
     #[serde(default)]
     pub folder_names: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    pub folder_order: Vec<String>,
+    #[serde(default)]
+    pub folders_hidden: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
