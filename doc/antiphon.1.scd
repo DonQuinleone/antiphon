@@ -55,11 +55,22 @@ https://docs.antiphon.net.
 	*client_id* on that account, unless the matching
 	environment variable overrides it:
 	*ANTIPHON_MS_CLIENT_ID* for Microsoft accounts,
-	*ANTIPHON_GOOGLE_CLIENT_ID* for Google accounts.
+	*ANTIPHON_GOOGLE_CLIENT_ID* for Google accounts. The same
+	sign-in runs from inside the client: *o* on an account in
+	the settings Accounts tab opens the browser consent
+	(falling back to Microsoft's device code when the local
+	listener cannot bind) while the interface stays
+	responsive; esc cancels. *x* there revokes an account's
+	stored grants after a confirmation, and each row shows
+	its grant state: ok with minutes left, refresh due, needs
+	sign-in, or app-only for client-credential Graph.
 
 *oauth status* _account_
 	Show the grants stored for _account_ and how long each
-	access token has left before it needs a refresh.
+	access token has left before it needs a refresh. The
+	settings Accounts tab shows the same detail for the
+	selected account, and the client's status line names any
+	account the daemon reports as needing a fresh sign-in.
 
 *export* [_account_] *-o* _path_ [*-r* _recipient_]... [*-p*]
 	Export _account_'s Maildir, or every configured account's
@@ -93,8 +104,8 @@ https://docs.antiphon.net.
 	anything that would change mail answers "read-only archive
 	view". No daemon is started or contacted. Reopening the
 	same archive reuses the unpacked store, so it is instant;
-	on exit the store's path is printed together with the *rm
-	-r* command that removes it.
+	on exit the store's path is printed together with the
+	*rm -r* command that removes it.
 
 *setup*
 	Interactive first-time setup: asks for an address and
@@ -136,6 +147,12 @@ _$XDG_CONFIG_HOME/antiphon/local.toml_
 _$XDG_CONFIG_HOME/antiphon/accounts/\*.toml_
 	One file per mail account: IMAP, SMTP, identities, filing
 	rules and, optionally, OAuth and Microsoft Graph settings.
+	The settings Accounts tab's add/edit form covers the
+	common keys, including the OAuth provider, *client_id*
+	and the Graph send toggle with its *tenant*; it edits
+	files surgically, so hand-written keys and comments
+	survive. An account with an *[oauth]* provider needs no
+	*password_cmd*.
 	A *[graph]* table with *send = true* routes outgoing mail
 	through Microsoft Graph: *auth = "delegated"* (the default)
 	uses a signed-in grant from *oauth login*, honouring an
