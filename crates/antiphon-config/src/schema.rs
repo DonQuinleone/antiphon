@@ -63,6 +63,7 @@ const DEFAULT_SYNC_INTERVAL_MINUTES: u32 = 2;
 pub struct Ui {
     pub theme: String,
     pub reading_pane: ReadingPane,
+    pub accounts_bar: AccountsBar,
     pub date_format: String,
     pub composer: Composer,
     pub list_rows: u16,
@@ -75,6 +76,7 @@ impl Default for Ui {
         Ui {
             theme: "vespers".to_string(),
             reading_pane: ReadingPane::Below,
+            accounts_bar: AccountsBar::Sidebar,
             date_format: "%Y-%m-%d %H:%M".to_string(),
             composer: Composer::Embedded,
             list_rows: DEFAULT_LIST_ROWS,
@@ -90,6 +92,14 @@ impl Default for Ui {
 const DEFAULT_LIST_ROWS: u16 = 7;
 const DEFAULT_SIDEBAR_WIDTH: u16 = 16;
 const DEFAULT_HEADERS: [&str; 4] = ["from", "to", "date", "subject"];
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AccountsBar {
+    #[default]
+    Sidebar,
+    Tabs,
+}
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]

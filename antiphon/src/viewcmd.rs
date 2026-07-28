@@ -169,6 +169,7 @@ fn synthetic_loaded(account: &str) -> Loaded {
                 folder_names: Default::default(),
                 folder_order: Vec::new(),
                 folders_hidden: Vec::new(),
+                folders_unsynced: Vec::new(),
             },
         }],
     }

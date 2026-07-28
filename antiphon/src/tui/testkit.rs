@@ -79,6 +79,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         pending_rsvp: None,
         keyring: Keyring::default(),
         reading_pane: ReadingPane::Below,
+        accounts_bar: antiphon_config::AccountsBar::Sidebar,
         sidebar: true,
         list_rows: antiphon_config::Ui::default().list_rows,
         sidebar_width: antiphon_config::Ui::default().sidebar_width,

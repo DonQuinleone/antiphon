@@ -24,7 +24,13 @@ setup* for a guided first run.
 
 Once open, the interface is a sidebar, a message list and a
 reading pane, entirely keyboard driven and fully rebindable.
-Press *?* at any time for the live keybinding cheatsheet. The
+With *ui.accounts_bar = "tabs"* a one-line tab bar above the
+panes names *unified* and every account, and the sidebar shows
+only the active account's folders plus the searches. In either
+mode *g1*..*g9* jump to account 1..9, *gu* to unified, and
+*gt*/*gT* cycle (actions *account-1*..*account-9* and
+*account-unified*). Press *?* at any time for the live
+keybinding cheatsheet. The
 full key reference, theme gallery and every configuration key
 live in the *CONFIG.md* guide bundled with the project (see
 FILES).
@@ -120,7 +126,9 @@ _$XDG_CONFIG_HOME/antiphon/config.toml_
 	follow alphabetically by file name, and the first account
 	is the primary: selected on startup and the unified view's
 	compose From. Shift-J/K in the settings Accounts tab edit
-	the same list.
+	the same list. *ui.accounts_bar* is *"sidebar"* (default)
+	or *"tabs"* (see DESCRIPTION), togglable live from the
+	settings Essentials tab.
 
 _$XDG_CONFIG_HOME/antiphon/local.toml_
 	Per-machine overrides, loaded after *config.toml* and

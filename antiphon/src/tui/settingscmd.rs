@@ -1,4 +1,4 @@
-use antiphon_config::ReadingPane;
+use antiphon_config::{AccountsBar, ReadingPane};
 use antiphon_ui::Theme;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
@@ -12,6 +12,11 @@ const LIST_ROWS_MAX: u16 = 60;
 const INTERVAL_MINUTES_MIN: u32 = 1;
 const INTERVAL_MINUTES_MAX: u32 = 1440;
 const STEP: u32 = 1;
+
+const ACCOUNTS_BARS: [(AccountsBar, &str); 2] = [
+    (AccountsBar::Sidebar, "sidebar"),
+    (AccountsBar::Tabs, "tabs"),
+];
 
 const READING_PANES: [(ReadingPane, &str); 3] = [
     (ReadingPane::Below, "below"),
@@ -32,7 +37,7 @@ pub(super) struct EssentialRow {
     pub(super) cycle: fn(&mut App, i32) -> String,
 }
 
-pub(super) const ESSENTIAL_ROWS: [EssentialRow; 6] = [
+pub(super) const ESSENTIAL_ROWS: [EssentialRow; 7] = [
     EssentialRow {
         label: "theme",
         table: "ui",
@@ -56,6 +61,14 @@ pub(super) const ESSENTIAL_ROWS: [EssentialRow; 6] = [
         daemon: true,
         render: render_idle,
         cycle: cycle_idle,
+    },
+    EssentialRow {
+        label: "accounts bar",
+        table: "ui",
+        key: "accounts_bar",
+        daemon: false,
+        render: render_accounts_bar,
+        cycle: cycle_accounts_bar,
     },
     EssentialRow {
         label: "reading pane",
@@ -155,6 +168,31 @@ fn cycle_theme(app: &mut App, step: i32) -> String {
     let next = wrapped(current.unwrap_or(0), names.len(), step);
     let name = names[next];
     app.theme = Theme::by_name(name).unwrap_or_else(Theme::vespers);
+    format!("\"{name}\"")
+}
+
+fn render_accounts_bar(app: &App) -> String {
+    accounts_bar_name(app.accounts_bar).to_string()
+}
+
+fn accounts_bar_name(bar: AccountsBar) -> &'static str {
+    ACCOUNTS_BARS
+        .iter()
+        .find(|(candidate, _)| *candidate == bar)
+        .map_or("sidebar", |(_, name)| name)
+}
+
+/// Toggling the mode live also rebuilds the sidebar, so the
+/// tab bar and the trimmed folder list appear at once.
+fn cycle_accounts_bar(app: &mut App, step: i32) -> String {
+    let current = ACCOUNTS_BARS
+        .iter()
+        .position(|(bar, _)| *bar == app.accounts_bar)
+        .unwrap_or(0);
+    let next = wrapped(current, ACCOUNTS_BARS.len(), step);
+    let (bar, name) = ACCOUNTS_BARS[next];
+    app.accounts_bar = bar;
+    app.rebuild_sidebar();
     format!("\"{name}\"")
 }
 
@@ -268,7 +306,7 @@ mod tests {
         app.settings.as_mut().unwrap().tab = SettingsTab::Essentials;
 
         let before = app.list_rows;
-        for _ in 0..4 {
+        for _ in 0..5 {
             feed(&mut app, key(KeyCode::Char('j')));
         }
         feed(&mut app, key(KeyCode::Char('l')));

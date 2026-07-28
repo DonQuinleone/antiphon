@@ -2,6 +2,7 @@ mod account_form;
 mod account_form_draw;
 mod actions;
 mod app;
+mod app_sidebar;
 mod attach;
 mod cells;
 mod commands;
@@ -25,6 +26,7 @@ mod identity;
 mod input;
 mod link_picker;
 mod lists;
+mod mailops;
 mod mark_all_read;
 mod message_list;
 mod pager;
@@ -44,6 +46,7 @@ mod settings_draw;
 mod settingscmd;
 mod sidebar;
 mod status;
+mod tabs;
 #[cfg(test)]
 mod testkit;
 mod themecmd;
@@ -347,8 +350,7 @@ fn maybe_refresh(
     app.account_entries =
         sidebar::discover(layout, &app.account_entries);
     let index = SearchIndex::open(layout).ok();
-    let mut entries =
-        sidebar::entries(&app.account_entries, &app.saved_searches);
+    let mut entries = app.build_sidebar_entries();
     if let Some(index) = &index {
         sidebar::fill_unread(&mut entries, |query| {
             index.count(&format!("tag:unread and ({query})")).ok()

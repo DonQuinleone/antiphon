@@ -1,4 +1,6 @@
-use antiphon_config::{Composer, Dirs, Loaded, ReadingPane};
+use antiphon_config::{
+    AccountsBar, Composer, Dirs, Loaded, ReadingPane,
+};
 use antiphon_core::Action;
 use antiphon_pgp::{Keyring, Signature};
 use antiphon_render::{
@@ -9,6 +11,7 @@ use antiphon_store::contacts::Contact;
 use antiphon_ui::Theme;
 
 use super::actions::{OpIntent, account_names};
+use super::app_sidebar::initial_scope;
 use super::commands::{
     ExportCommand, FrameStats, PatchCommand, Prompt,
 };
@@ -90,6 +93,7 @@ pub struct App {
     pub contacts: Vec<Contact>,
     pub preview: Option<super::preview::Preview>,
     pub reading_pane: ReadingPane,
+    pub accounts_bar: AccountsBar,
     pub sidebar: bool,
     pub list_rows: u16,
     pub sidebar_width: u16,
@@ -139,15 +143,29 @@ impl App {
     ) -> App {
         let accounts = account_names(loaded);
         let own_addresses = own_addresses(loaded);
-        let sidebar_entries =
-            sidebar::entries(folders, &loaded.config.saved_searches);
+        let scope = initial_scope(loaded, &accounts);
+        let sidebar_entries = match loaded.config.ui.accounts_bar {
+            AccountsBar::Sidebar => {
+                sidebar::entries(folders, &loaded.config.saved_searches)
+            }
+            AccountsBar::Tabs => sidebar::tab_entries(
+                folders,
+                &loaded.config.saved_searches,
+                match &scope {
+                    ViewScope::Unified => None,
+                    ViewScope::Account(account) => {
+                        Some(account.as_str())
+                    }
+                },
+            ),
+        };
         let sidebar_selected =
             sidebar::default_selection(&sidebar_entries);
         let theme = Theme::by_name(&loaded.config.ui.theme)
             .unwrap_or(Theme::vespers());
         App {
             accounts,
-            scope: ViewScope::Unified,
+            scope,
             account_entries: folders.to_vec(),
             saved_searches: loaded.config.saved_searches.clone(),
             sidebar_entries,
@@ -189,6 +207,7 @@ impl App {
             contacts: Vec::new(),
             preview: None,
             reading_pane: loaded.config.ui.reading_pane,
+            accounts_bar: loaded.config.ui.accounts_bar,
             sidebar: true,
             list_rows: loaded.config.ui.list_rows,
             sidebar_width: loaded.config.ui.sidebar_width,
@@ -335,45 +354,6 @@ impl App {
         self.total_messages = total;
         self.selected = 0;
         self.current_query = query;
-    }
-
-    /// Rebuilds the sidebar from the in-memory account entries
-    /// (after a settings edit, say), carrying the unread counts
-    /// over so the rebuild does not blank them until the next
-    /// periodic refresh.
-    pub(super) fn rebuild_sidebar(&mut self) {
-        let mut entries = sidebar::entries(
-            &self.account_entries,
-            &self.saved_searches,
-        );
-        let counts: Vec<(String, u32)> = self
-            .sidebar_entries
-            .iter()
-            .filter_map(|entry| match entry {
-                SidebarEntry::Folder { query, unread, .. } => {
-                    Some((query.clone(), *unread))
-                }
-                _ => None,
-            })
-            .collect();
-        sidebar::fill_unread(&mut entries, |query| {
-            counts
-                .iter()
-                .find(|(known, _)| known == query)
-                .map(|(_, unread)| *unread)
-        });
-        self.update_sidebar(entries);
-    }
-
-    /// Folders come and go as syncs land; the highlight is
-    /// clamped rather than reset so it never dangles.
-    pub fn update_sidebar(&mut self, entries: Vec<SidebarEntry>) {
-        if entries == self.sidebar_entries {
-            return;
-        }
-        let last = entries.len().saturating_sub(1);
-        self.sidebar_entries = entries;
-        self.sidebar_selected = self.sidebar_selected.min(last);
     }
 
     pub(super) fn not_built_notice(&mut self) {

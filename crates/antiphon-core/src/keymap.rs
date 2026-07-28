@@ -23,6 +23,16 @@ const DEFAULT_BINDINGS: &[(Action, &str)] = &[
     (Action::Command, ":"),
     (Action::NextAccount, "gt"),
     (Action::PreviousAccount, "gT"),
+    (Action::AccountTab(1), "g1"),
+    (Action::AccountTab(2), "g2"),
+    (Action::AccountTab(3), "g3"),
+    (Action::AccountTab(4), "g4"),
+    (Action::AccountTab(5), "g5"),
+    (Action::AccountTab(6), "g6"),
+    (Action::AccountTab(7), "g7"),
+    (Action::AccountTab(8), "g8"),
+    (Action::AccountTab(9), "g9"),
+    (Action::AccountUnified, "gu"),
     (Action::SidebarNext, "ctrl-n"),
     (Action::SidebarPrevious, "ctrl-p"),
     (Action::SidebarOpen, "ctrl-o"),
@@ -381,6 +391,9 @@ mod tests {
             (press(KeyCode::Char('g')), Action::Top),
             (press(KeyCode::Char('t')), Action::NextAccount),
             (shifted('T'), Action::PreviousAccount),
+            (press(KeyCode::Char('1')), Action::AccountTab(1)),
+            (press(KeyCode::Char('9')), Action::AccountTab(9)),
+            (press(KeyCode::Char('u')), Action::AccountUnified),
         ];
         for (second, action) in cases {
             let mut keymap = Keymap::default();

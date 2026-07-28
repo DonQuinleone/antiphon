@@ -109,12 +109,38 @@ pub fn entries(
         items.push(SidebarEntry::Account(account.name.clone()));
         items.extend(folder_entries(account));
     }
-    items.extend(BUILTIN_SEARCHES.iter().map(|(name, query)| {
-        SidebarEntry::Saved {
+    items.extend(search_entries(saved));
+    items
+}
+
+/// The sidebar for tabs mode: only the active account's
+/// folders (no Unified row, no account headers), then the
+/// searches; the tab bar itself carries the account list.
+/// The unified tab (no active account) keeps the searches.
+pub fn tab_entries(
+    accounts: &[AccountEntry],
+    saved: &[SavedSearch],
+    active: Option<&str>,
+) -> Vec<SidebarEntry> {
+    let mut items = Vec::new();
+    if let Some(active) = active
+        && let Some(account) =
+            accounts.iter().find(|account| account.name == active)
+    {
+        items.extend(folder_entries(account));
+    }
+    items.extend(search_entries(saved));
+    items
+}
+
+fn search_entries(saved: &[SavedSearch]) -> Vec<SidebarEntry> {
+    let mut items: Vec<SidebarEntry> = BUILTIN_SEARCHES
+        .iter()
+        .map(|(name, query)| SidebarEntry::Saved {
             name: (*name).to_string(),
             query: (*query).to_string(),
-        }
-    }));
+        })
+        .collect();
     items.extend(saved.iter().map(|search| SidebarEntry::Saved {
         name: search.name.clone(),
         query: search.query.clone(),

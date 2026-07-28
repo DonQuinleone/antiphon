@@ -77,6 +77,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
         super::folder_picker::draw_picker(frame, app, area);
         return;
     }
+    let (tab_bar, content) =
+        super::tabs::split_tab_bar(content, app.accounts_bar);
+    if let Some(tab_bar) = tab_bar {
+        super::tabs::draw_tab_bar(frame, app, tab_bar);
+    }
     let (sidebar, main) =
         split_sidebar(content, app.sidebar, app.sidebar_width);
     if let Some(sidebar) = sidebar {
