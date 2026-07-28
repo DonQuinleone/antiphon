@@ -4,6 +4,7 @@ pub(in super::super) fn filled_answers() -> AccountAnswers {
     AccountAnswers {
         name: "work".to_string(),
         address: "quin@example.com".to_string(),
+        from_name: "Quin at Work".to_string(),
         imap_host: "imap.example.com".to_string(),
         imap_user: "quin@example.com".to_string(),
         smtp_host: "smtp.example.com".to_string(),
@@ -45,6 +46,7 @@ fn the_field_table_round_trips_every_answer() {
         let belongs = [
             answers.name.as_str(),
             answers.address.as_str(),
+            answers.from_name.as_str(),
             answers.imap_host.as_str(),
             answers.imap_user.as_str(),
             answers.smtp_host.as_str(),
@@ -68,9 +70,26 @@ fn prefill_infers_imap_and_focuses_the_type_toggle() {
     assert_eq!(form.focus, 0);
     assert_eq!(form.field_id(0), Field::AccountType);
     assert_eq!(form.address, answers.address);
+    assert_eq!(form.from_name, answers.from_name);
     assert_eq!(form.password_cmd, answers.password_cmd);
     assert!(form.keychain_secret.is_empty());
     assert_eq!(form.account_type, AccountType::Imap);
+}
+
+#[test]
+fn the_from_name_row_shows_for_every_type() {
+    let mut form = filled_form();
+    for account_type in [
+        AccountType::Imap,
+        AccountType::Microsoft,
+        AccountType::Google,
+    ] {
+        form.account_type = account_type;
+        assert!(
+            labels(&form).contains(&"from name"),
+            "from name is shown for {account_type:?}"
+        );
+    }
 }
 
 #[test]

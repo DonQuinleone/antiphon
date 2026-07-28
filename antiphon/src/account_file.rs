@@ -99,7 +99,18 @@ fn edited_account_toml(
         }
         text = with_key(&text, table, key, &quoted(value));
     }
-    with_identity_address(&text, &answers.address)
+    text = with_identity_address(&text, &answers.address);
+    with_identity_name(&text, &answers.from_name)
+}
+
+/// The first identity's From display name. An emptied name is
+/// left as the user wrote it, matching the password command's
+/// keep-what-is-there rule above.
+fn with_identity_name(text: &str, from_name: &str) -> String {
+    if from_name.is_empty() {
+        return text.to_string();
+    }
+    with_array_key(text, "identity", "name", &quoted(from_name))
 }
 
 /// The first identity follows the form's address; its `match`
@@ -150,6 +161,7 @@ fn account_toml(answers: &AccountAnswers) -> String {
     let AccountAnswers {
         name,
         address,
+        from_name,
         imap_host,
         imap_user,
         smtp_host,
@@ -158,6 +170,10 @@ fn account_toml(answers: &AccountAnswers) -> String {
     let password_line = match password_cmd.is_empty() {
         true => String::new(),
         false => format!("password_cmd = \"{password_cmd}\"\n"),
+    };
+    let name_line = match from_name.is_empty() {
+        true => String::new(),
+        false => format!("name = \"{from_name}\"\n"),
     };
     format!(
         "[account]\n\
@@ -170,6 +186,7 @@ fn account_toml(answers: &AccountAnswers) -> String {
          host = \"{smtp_host}\"\n\n\
          [[identity]]\n\
          address = \"{address}\"\n\
+         {name_line}\
          match = [\"{address}\"]\n"
     )
 }
@@ -191,6 +208,7 @@ mod tests {
         AccountAnswers {
             name: "work".to_string(),
             address: "quin@example.com".to_string(),
+            from_name: "Quin at Work".to_string(),
             imap_host: "imap.example.com".to_string(),
             imap_user: "quin@example.com".to_string(),
             smtp_host: "smtp.example.com".to_string(),
@@ -205,8 +223,21 @@ mod tests {
         assert!(text.contains("host = \"imap.example.com\""));
         assert!(text.contains("host = \"smtp.example.com\""));
         assert!(text.contains("address = \"quin@example.com\""));
+        assert!(text.contains("name = \"Quin at Work\""));
         assert!(
             text.contains("password_cmd = \"pass show mail/work\"")
+        );
+    }
+
+    #[test]
+    fn an_empty_from_name_is_left_out_of_a_fresh_identity() {
+        let mut no_name = answers();
+        no_name.from_name = String::new();
+        let text = account_toml(&no_name);
+        assert!(text.contains("address = \"quin@example.com\""));
+        assert!(
+            !text.contains("name = \"Quin"),
+            "no identity name line without a from name: {text}"
         );
     }
 
@@ -315,6 +346,35 @@ mod tests {
             ),
             "comments survive: {text}"
         );
+        assert!(
+            text.contains("name = \"Quin at Work\""),
+            "the from name lands in the identity: {text}"
+        );
+    }
+
+    /// A pre-existing identity name is updated in place while
+    /// its other keys (a signature here) survive untouched.
+    #[test]
+    fn an_edit_updates_the_identity_name_keeping_other_keys() {
+        let existing = "[account]\n\
+             name = \"work\"\n\
+             \n\
+             [imap]\n\
+             host = \"imap.example.com\"\n\
+             user = \"quin@example.com\"\n\
+             \n\
+             [smtp]\n\
+             host = \"smtp.example.com\"\n\
+             \n\
+             [[identity]]\n\
+             address = \"quin@example.com\"\n\
+             name = \"Old Name\"\n\
+             signature = \"~/.sig\"\n\
+             match = [\"quin@example.com\"]\n";
+        let text = edited_account_toml(existing, &answers());
+        assert!(text.contains("name = \"Quin at Work\""), "{text}");
+        assert!(!text.contains("name = \"Old Name\""), "{text}");
+        assert!(text.contains("signature = \"~/.sig\""), "{text}");
     }
 
     #[test]

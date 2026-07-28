@@ -8,6 +8,7 @@ use crate::setup::{mail_secret, prompt, required, validate_address};
 pub(crate) struct AccountAnswers {
     pub(crate) name: String,
     pub(crate) address: String,
+    pub(crate) from_name: String,
     pub(crate) imap_host: String,
     pub(crate) imap_user: String,
     pub(crate) smtp_host: String,
@@ -24,6 +25,11 @@ impl AccountAnswers {
                 .identities
                 .first()
                 .map(|identity| identity.address.clone())
+                .unwrap_or_default(),
+            from_name: account
+                .identities
+                .first()
+                .and_then(|identity| identity.name.clone())
                 .unwrap_or_default(),
             imap_host: account.imap.host.clone(),
             imap_user: account.imap.user.clone(),
@@ -54,6 +60,10 @@ pub(crate) fn prompt_account(
         "account name",
         defaults.map_or("personal", |d| d.name.as_str()),
     )?;
+    let from_name = prompt(
+        "from name (optional)",
+        defaults.map_or("", |d| d.from_name.as_str()),
+    )?;
     let imap_host = prompt(
         "imap host",
         &defaults.map_or_else(
@@ -76,6 +86,7 @@ pub(crate) fn prompt_account(
     Ok(AccountAnswers {
         name,
         address,
+        from_name,
         imap_host,
         imap_user,
         smtp_host,
@@ -147,7 +158,7 @@ mod tests {
             }),
             identities: vec![Identity {
                 address: "quin@example.com".to_string(),
-                name: None,
+                name: Some("Quin at Work".to_string()),
                 signature: None,
                 matches: Vec::new(),
                 pgp_sign: false,
@@ -163,6 +174,7 @@ mod tests {
         };
         let defaults = AccountAnswers::from_existing(&account);
         assert_eq!(defaults.address, "quin@example.com");
+        assert_eq!(defaults.from_name, "Quin at Work");
         assert_eq!(defaults.imap_user, "quin");
         assert_eq!(defaults.smtp_host, "smtp.example.com");
         assert_eq!(defaults.password_cmd, "pass show mail/work");

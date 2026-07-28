@@ -48,6 +48,7 @@ fn build_and_write(
     let answers = AccountAnswers {
         name: form.name.trim().to_string(),
         address,
+        from_name: form.from_name.trim().to_string(),
         imap_host,
         imap_user,
         smtp_host,
@@ -287,6 +288,20 @@ mod tests {
         form.password_cmd = String::new();
         form.account_type = AccountType::Google;
         assert_eq!(resolve_password_cmd(&form), Ok(String::new()));
+    }
+
+    #[test]
+    fn the_from_name_is_written_to_the_identity() {
+        let root = TempDir::new();
+        let dirs = dirs_at(&root.path);
+        let mut form = filled_form();
+        form.from_name = "Quin at Work".to_string();
+        build_and_write(&dirs, &form).expect("save");
+
+        let loaded = antiphon_config::load(&dirs).expect("parse");
+        let identity = &loaded.accounts[0].account.identities[0];
+        assert_eq!(identity.address, "quin@example.com");
+        assert_eq!(identity.name.as_deref(), Some("Quin at Work"));
     }
 
     #[test]
