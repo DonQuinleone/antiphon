@@ -1,8 +1,8 @@
 class Antiphon < Formula
   desc "Modern mail client for the terminal"
   homepage "https://git.sr.ht/~donquinleone/antiphon"
-  url "https://git.sr.ht/~donquinleone/antiphon/archive/v1.1.0.tar.gz"
-  sha256 "e1ee9869d89dd48cb7470b87216fe43f9025de956f8a9cb0bfd143535c4bfb40"
+  url "https://git.sr.ht/~donquinleone/antiphon/archive/v1.1.1.tar.gz"
+  sha256 "5a833a19178c44f9c1ad35b71b7df2533746e2a3829daa6ee4c5f234fe0cdd69"
   license "GPL-3.0-or-later"
 
   depends_on "rust" => :build
