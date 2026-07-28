@@ -18,18 +18,27 @@ type ArgHandler = fn(&mut App, &str);
 
 /// Commands taking one argument: name, usage line, and the
 /// handler arming the app state the event loop consumes.
-const ARG_COMMANDS: [(&str, &str, ArgHandler); 5] = [
+const ARG_COMMANDS: [(&str, &str, ArgHandler); 6] = [
     ("template", "template <name>", arm_template),
     ("resume", "resume <draft-path>", arm_resume),
     ("save-patches", "save-patches <path>", arm_save_patches),
     ("apply", "apply <repo-dir>", arm_apply),
     ("move", "move <folder>", arm_move),
+    ("export", EXPORT_USAGE, arm_export),
 ];
+
+const EXPORT_USAGE: &str = "export <account> <path>";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PatchCommand {
     Save(PathBuf),
     Apply(PathBuf),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExportCommand {
+    pub account: String,
+    pub path: PathBuf,
 }
 
 fn arm_template(app: &mut App, name: &str) {
@@ -50,6 +59,20 @@ fn arm_save_patches(app: &mut App, path: &str) {
 
 fn arm_apply(app: &mut App, repo: &str) {
     app.pending_patches = Some(PatchCommand::Apply(repo.into()));
+}
+
+fn arm_export(app: &mut App, argument: &str) {
+    let mut words = argument.split_whitespace();
+    let (Some(account), Some(path), None) =
+        (words.next(), words.next(), words.next())
+    else {
+        app.notice = Some(format!("usage: {EXPORT_USAGE}"));
+        return;
+    };
+    app.pending_export = Some(ExportCommand {
+        account: account.to_string(),
+        path: path.into(),
+    });
 }
 
 fn argument_of<'a>(command: &'a str, name: &str) -> Option<&'a str> {
@@ -320,6 +343,28 @@ mod tests {
         );
         app.run_command("resume /tmp/draft-1.eml");
         assert_eq!(app.pending_resume, Some("/tmp/draft-1.eml".into()));
+    }
+
+    #[test]
+    fn export_needs_an_account_and_a_path() {
+        let mut app = app_with_messages(1);
+        for wrong in ["export", "export work", "export a b c"] {
+            app.run_command(wrong);
+            assert_eq!(
+                app.notice.as_deref(),
+                Some("usage: export <account> <path>"),
+                "{wrong}"
+            );
+            assert!(app.pending_export.is_none(), "{wrong}");
+        }
+        app.run_command("export work /tmp/out");
+        assert_eq!(
+            app.pending_export,
+            Some(ExportCommand {
+                account: "work".to_string(),
+                path: "/tmp/out".into(),
+            })
+        );
     }
 
     #[test]

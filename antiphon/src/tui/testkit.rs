@@ -99,6 +99,8 @@ pub(super) fn app_with_messages(count: usize) -> App {
         pending_template: None,
         pending_resume: None,
         pending_patches: None,
+        pending_export: None,
+        export_recipients: Vec::new(),
         pending_sign: None,
         pending_encrypt: None,
         pending_one_click: None,

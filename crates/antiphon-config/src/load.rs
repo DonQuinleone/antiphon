@@ -207,6 +207,17 @@ mod tests {
     }
 
     #[test]
+    fn recipients_parse_from_the_export_table() {
+        let config: Config = parse(
+            "[export]\nrecipients = [\"age1abc\", \"age1def\"]\n",
+            Path::new("config.toml"),
+        )
+        .unwrap();
+        assert_eq!(config.export.recipients, ["age1abc", "age1def"]);
+        assert!(Config::default().export.recipients.is_empty());
+    }
+
+    #[test]
     fn headers_parse_from_the_ui_table() {
         let config: Config = parse(
             "[ui]\nheaders = [\"from\", \"x-mailer\"]\n",

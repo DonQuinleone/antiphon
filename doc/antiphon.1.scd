@@ -65,7 +65,10 @@ FILES).
 	*-p*/*--passphrase*; exactly one of the two must be
 	chosen. After writing, each archive is re-opened to
 	confirm its age header parses, and a summary line reports
-	the account, file count, bytes and destination.
+	the account, file count, bytes and destination. The same
+	export runs from inside the client as *:export* _account_
+	_path_, encrypting to the *[export] recipients* keys from
+	*config.toml*; the passphrase mode is command-line only.
 
 *setup*
 	Interactive first-time setup: asks for an address and

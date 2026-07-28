@@ -12,6 +12,13 @@ pub struct Config {
     pub notifications: Notifications,
     pub keys: BTreeMap<String, String>,
     pub saved_searches: Vec<SavedSearch>,
+    pub export: Export,
+}
+
+#[derive(Debug, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct Export {
+    pub recipients: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]

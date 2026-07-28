@@ -9,10 +9,15 @@ use antiphon_store::contacts::Contact;
 use antiphon_ui::Theme;
 
 use super::actions::{OpIntent, account_names};
-use super::commands::{FrameStats, PatchCommand, Prompt};
+use super::commands::{
+    ExportCommand, FrameStats, PatchCommand, Prompt,
+};
 use super::compose::ComposeState;
 use super::editor::EditorPane;
 use super::link_picker::LinkPicker;
+use super::loaded::{
+    archive_folders, folder_aliases, own_addresses, trash_folders,
+};
 use super::scope::{self, ViewScope};
 use super::sidebar::{self, AccountEntry, SidebarEntry};
 use antiphon_store::ScopeError;
@@ -101,6 +106,8 @@ pub struct App {
     pub pending_template: Option<String>,
     pub pending_resume: Option<std::path::PathBuf>,
     pub pending_patches: Option<PatchCommand>,
+    pub pending_export: Option<ExportCommand>,
+    pub export_recipients: Vec<String>,
     pub(super) pending_sign: Option<bool>,
     pub(super) pending_encrypt: Option<bool>,
     pub(super) pending_rsvp: Option<antiphon_render::Rsvp>,
@@ -195,6 +202,8 @@ impl App {
             pending_template: None,
             pending_resume: None,
             pending_patches: None,
+            pending_export: None,
+            export_recipients: loaded.config.export.recipients.clone(),
             pending_sign: None,
             pending_encrypt: None,
             pending_rsvp: None,
@@ -336,52 +345,6 @@ impl App {
     pub(super) fn not_built_notice(&mut self) {
         self.notice = Some("not built yet".to_string());
     }
-}
-
-fn archive_folders(loaded: &Loaded) -> Vec<(String, String)> {
-    named_folders(loaded, |account| account.archive.clone())
-}
-
-fn trash_folders(loaded: &Loaded) -> Vec<(String, String)> {
-    named_folders(loaded, |account| account.trash.clone())
-}
-
-fn named_folders(
-    loaded: &Loaded,
-    pick: fn(&antiphon_config::Account) -> Option<String>,
-) -> Vec<(String, String)> {
-    loaded
-        .accounts
-        .iter()
-        .filter_map(|entry| {
-            let folder = pick(&entry.account.account)?;
-            Some((entry.account.account.name.clone(), folder))
-        })
-        .collect()
-}
-
-fn folder_aliases(loaded: &Loaded) -> Vec<(String, String, String)> {
-    loaded
-        .accounts
-        .iter()
-        .flat_map(|entry| {
-            let account = entry.account.account.name.clone();
-            entry.account.folder_names.iter().map(
-                move |(real, alias)| {
-                    (account.clone(), real.clone(), alias.clone())
-                },
-            )
-        })
-        .collect()
-}
-
-fn own_addresses(loaded: &Loaded) -> Vec<String> {
-    loaded
-        .accounts
-        .iter()
-        .flat_map(|entry| entry.account.identities.iter())
-        .map(|identity| identity.address.to_lowercase())
-        .collect()
 }
 
 impl App {

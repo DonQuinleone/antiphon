@@ -13,7 +13,7 @@ use super::dispatch::dispatch;
 use super::identity::ComposeContext;
 use super::settings::{self, SettingsOutcome};
 use super::{
-    account_form, attach, draw, drawer, folder_picker, folders,
+    account_form, attach, draw, drawer, export, folder_picker, folders,
     headers, link_picker, mark_all_read, pager, pager_body, patches,
     review, run_query, run_search, session,
 };
@@ -347,6 +347,7 @@ fn submit_prompt(app: &mut App, layout: &StoreLayout) {
         PromptKind::Command => {
             app.run_command(&prompt.buffer);
             patches::run_pending(app, layout);
+            export::run_pending(app, layout);
         }
         PromptKind::Search => run_search(app, layout, prompt.buffer),
         PromptKind::AttachmentPath => {
