@@ -140,9 +140,10 @@ fn settings_hint(app: &App) -> String {
         return "y confirm \u{b7} any other key cancels".to_string();
     }
     match state.tab {
-        SettingsTab::Accounts => "j/k select \u{b7} a add \u{b7} \
-             e edit \u{b7} o sign in \u{b7} x revoke \u{b7} \
-             d delete \u{b7} tab essentials \u{b7} esc back"
+        SettingsTab::Accounts => "j/k select \u{b7} J/K reorder \
+             \u{b7} a add \u{b7} e edit \u{b7} o sign in \u{b7} \
+             x revoke \u{b7} d delete \u{b7} tab essentials \u{b7} \
+             esc back"
             .to_string(),
         SettingsTab::Essentials => "j/k select \u{b7} h/l change \
              \u{b7} tab folders \u{b7} esc back"
@@ -314,6 +315,18 @@ mod tests {
 
         app.scope = ViewScope::Unified;
         assert_eq!(status_line(&app).spans[1].content, "unified");
+    }
+
+    #[test]
+    fn the_accounts_footer_documents_the_reorder_keys() {
+        let mut app = app_with_messages(1);
+        app.view = View::Settings;
+        app.open_settings();
+        let text = line_text(&status_line(&app));
+        assert!(
+            text.contains("j/k select") && text.contains("J/K reorder"),
+            "the footer names both selection and reorder: {text}"
+        );
     }
 
     #[test]
