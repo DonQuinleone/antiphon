@@ -35,6 +35,7 @@ mod mark_all_read;
 mod message_list;
 mod oauth_status;
 mod oauthflow;
+mod oauthflow_worker;
 mod pager;
 mod pager_actions;
 mod pager_body;
