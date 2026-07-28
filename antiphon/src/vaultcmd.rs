@@ -3,8 +3,8 @@ use std::process::ExitCode;
 use antiphon_config::{Dirs, Loaded, load};
 use antiphon_store::StoreLayout;
 use antiphon_vault::{
-    Auth, CreateOptions, VaultStatus, passphrase_command,
-    select_backend,
+    Auth, CreateOptions, VaultStatus, enrol_touchid,
+    passphrase_command, select_backend,
 };
 
 pub fn create() -> ExitCode {
@@ -33,6 +33,51 @@ pub fn create() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+pub fn touchid_enrol() -> ExitCode {
+    let Some(dirs) = Dirs::from_process() else {
+        eprintln!("cannot resolve the home directory");
+        return ExitCode::FAILURE;
+    };
+    let loaded = match load(&dirs) {
+        Ok(loaded) => loaded,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match run_touchid_enrol(&dirs, &loaded) {
+        Ok(()) => {
+            println!(
+                "Touch ID enrolled; add `touchid` to `[vault] \
+                 unlock` to use it"
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run_touchid_enrol(
+    dirs: &Dirs,
+    loaded: &Loaded,
+) -> Result<(), String> {
+    let Some(command) = &loaded.config.vault.passphrase_cmd else {
+        return Err(
+            "set `[vault] passphrase_cmd` first; enrolment stores \
+             the passphrase it yields behind Touch ID"
+                .to_string(),
+        );
+    };
+    let layout = StoreLayout::new(dirs.store_root());
+    let secret =
+        passphrase_command(command).map_err(|e| e.to_string())?;
+    enrol_touchid(layout.root(), &secret)
+        .map_err(|error| format!("enrolling Touch ID: {error}"))
 }
 
 pub(crate) fn run_create(

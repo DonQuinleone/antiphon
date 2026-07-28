@@ -326,6 +326,7 @@ dependencies = [
  "antiphon-config",
  "antiphon-store",
  "secrecy",
+ "security-framework",
  "tempfile",
 ]
 

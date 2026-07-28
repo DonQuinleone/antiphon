@@ -89,6 +89,8 @@ enum Command {
 enum VaultAction {
     /// Create and unlock the vault at the store path.
     Create,
+    /// Store the vault passphrase behind Touch ID (macOS).
+    TouchidEnrol,
 }
 
 #[derive(Subcommand)]
@@ -104,6 +106,7 @@ fn main() -> ExitCode {
         Some(Command::Doctor { init_store }) => doctor::run(init_store),
         Some(Command::Vault { action }) => match action {
             VaultAction::Create => vaultcmd::create(),
+            VaultAction::TouchidEnrol => vaultcmd::touchid_enrol(),
         },
         Some(Command::Oauth { action }) => match action {
             OauthAction::Login { account } => oauthcmd::login(&account),

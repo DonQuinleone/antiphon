@@ -148,3 +148,36 @@ fn apfs_round_trip_keeps_plaintext_in_session_only() {
         file_contains(&image, MARKER.as_bytes())
     });
 }
+
+/// A real Touch ID round trip. Enrolment is silent; the read
+/// raises the system biometric prompt, so this needs a Mac with
+/// an enrolled fingerprint and a human to touch the sensor. The
+/// throwaway store root keeps it clear of any real vault item.
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "prompts for a real Touch ID and needs a fingerprint"]
+fn touchid_round_trip_returns_the_enrolled_passphrase() {
+    use std::process::Command;
+
+    use antiphon_vault::{enrol_touchid, touchid};
+    use secrecy::ExposeSecret;
+
+    let dir = tempfile::tempdir().unwrap();
+    let store_root = dir.path().join("store");
+    let secret = throwaway_passphrase();
+
+    enrol_touchid(&store_root, &secret).unwrap();
+
+    let read = touchid::read_passphrase(&store_root).unwrap();
+    assert_eq!(read.expose_secret(), secret.expose_secret());
+
+    let _ = Command::new("security")
+        .args([
+            "delete-generic-password",
+            "-s",
+            "antiphon vault",
+            "-a",
+            &store_root.display().to_string(),
+        ])
+        .status();
+}

@@ -100,6 +100,8 @@ pub enum VaultError {
     },
     NotYet(&'static str),
     PassphraseCommand(String),
+    Touchid(String),
+    NoUnlockMethod,
 }
 
 impl fmt::Display for VaultError {
@@ -162,6 +164,16 @@ impl fmt::Display for VaultError {
             }
             VaultError::PassphraseCommand(detail) => {
                 write!(out, "vault passphrase_cmd: {detail}")
+            }
+            VaultError::Touchid(detail) => {
+                write!(out, "Touch ID: {detail}")
+            }
+            VaultError::NoUnlockMethod => {
+                write!(
+                    out,
+                    "no unlock method yielded the vault \
+                     passphrase; check `[vault] unlock`"
+                )
             }
         }
     }

@@ -134,9 +134,10 @@ impl Default for Vault {
         Vault {
             backend: VaultBackend::Auto,
             idle_lock_minutes: 0,
-            // Touchid and Yubikey parse for forward
-            // compatibility, but no backend implements them
-            // yet, so the default promises only what works.
+            // Touch ID unlocks on macOS once enrolled, but it
+            // needs that one-time setup, so the default lists
+            // only the passphrase; opt in with `touchid`.
+            // Yubikey still parses without a backend behind it.
             unlock: vec![Unlock::Passphrase],
             passphrase_cmd: None,
         }

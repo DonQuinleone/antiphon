@@ -13,5 +13,8 @@ antiphon-config = { path = "../antiphon-config" }
 antiphon-store = { path = "../antiphon-store" }
 secrecy = "=0.10.3"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "=3.7.0"
+
 [dev-dependencies]
 tempfile = "=3.27.0"

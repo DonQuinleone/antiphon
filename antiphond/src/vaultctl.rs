@@ -1,10 +1,10 @@
-use antiphon_config::Loaded;
+use antiphon_config::{Loaded, Unlock};
 use antiphon_ipc::VaultState;
 use antiphon_store::StoreLayout;
 use antiphon_vault::{
-    Auth, Vault, VaultStatus, passphrase_command, select_backend,
+    Auth, PassphraseCmdSource, SecretSource, TouchidSource, Vault,
+    VaultStatus, resolve_passphrase, select_backend,
 };
-use secrecy::SecretString;
 
 /// Ensure the store is readable before the daemon opens it. An
 /// absent vault means the store is a plain directory (the
@@ -22,7 +22,7 @@ pub fn ensure_open(
             Ok(VaultState::Absent)
         }
         VaultStatus::Sealed => {
-            open_sealed(loaded, vault.as_ref())?;
+            open_sealed(loaded, layout, vault.as_ref())?;
             Ok(VaultState::Open)
         }
     }
@@ -51,9 +51,18 @@ fn backend(
 
 fn open_sealed(
     loaded: &Loaded,
+    layout: &StoreLayout,
     vault: &dyn Vault,
 ) -> Result<(), String> {
-    let secret = passphrase(loaded)?;
+    let sources = unlock_sources(loaded, layout);
+    if sources.is_empty() {
+        return Err("vault is sealed but no unlock method is \
+             configured; set `[vault] passphrase_cmd` or enrol \
+             Touch ID"
+            .to_string());
+    }
+    let secret = resolve_passphrase(&sources)
+        .map_err(|error| format!("unlocking the vault: {error}"))?;
     vault
         .unlock(&Auth::Passphrase(secret))
         .map_err(|error| format!("unlocking the vault: {error}"))?;
@@ -61,11 +70,30 @@ fn open_sealed(
     Ok(())
 }
 
-fn passphrase(loaded: &Loaded) -> Result<SecretString, String> {
-    let Some(command) = &loaded.config.vault.passphrase_cmd else {
-        return Err("vault is sealed but no `[vault] passphrase_cmd` \
-             is configured to unlock it"
-            .to_string());
-    };
-    passphrase_command(command).map_err(|error| error.to_string())
+/// The `[vault] unlock` list turned into ordered secret sources.
+/// Touch ID is tried before the passphrase command when listed
+/// first; a passphrase entry with no `passphrase_cmd`, and the
+/// as-yet-unimplemented Yubikey method, contribute no source.
+fn unlock_sources(
+    loaded: &Loaded,
+    layout: &StoreLayout,
+) -> Vec<Box<dyn SecretSource>> {
+    let mut sources: Vec<Box<dyn SecretSource>> = Vec::new();
+    for method in &loaded.config.vault.unlock {
+        match method {
+            Unlock::Touchid => sources
+                .push(Box::new(TouchidSource::new(layout.root()))),
+            Unlock::Passphrase => {
+                let Some(command) = &loaded.config.vault.passphrase_cmd
+                else {
+                    continue;
+                };
+                sources.push(Box::new(PassphraseCmdSource::new(
+                    command.clone(),
+                )));
+            }
+            Unlock::Yubikey => {}
+        }
+    }
+    sources
 }

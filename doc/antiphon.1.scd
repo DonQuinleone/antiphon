@@ -62,6 +62,16 @@ drawer alone, opened through the system viewer.
 	store path, using *[vault] passphrase_cmd* for the
 	passphrase. Fails if a store or vault already exists there.
 
+*vault touchid-enrol*
+	macOS only. Store the passphrase from *[vault]
+	passphrase_cmd* in a biometry-gated Keychain item so Touch
+	ID can unlock the vault. Re-run after adding or removing a
+	fingerprint: the item is bound to the enrolled set and is
+	invalidated when it changes. Add *touchid* to *[vault]
+	unlock* to have the daemon use it. This only stores the
+	secret; unlocking with a wrong or absent item falls back to
+	the passphrase command, never past the vault.
+
 *oauth login* _account_
 	Run the configured provider's sign-in flow for _account_
 	(an account name from *accounts/\*.toml*) and store the

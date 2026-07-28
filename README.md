@@ -92,7 +92,10 @@ mystery.
 - **Sealed at rest.** The store, index, tokens and state live
   inside an encrypted vault (encrypted APFS on macOS, LUKS2 or
   gocryptfs on Linux). Back it up with anything; the copy is
-  ciphertext.
+  ciphertext. Unlock with a passphrase command or, on macOS,
+  with Touch ID (`antiphon vault touchid-enrol`, then add
+  `touchid` to `[vault] unlock`); biometrics fall back to the
+  passphrase, never past the vault.
 - **A daemon that behaves.** antiphond syncs on a timer, sends
   from a crash-safe outbox, files your sent mail, uploads
   drafts, applies your filing rules and posts desktop
