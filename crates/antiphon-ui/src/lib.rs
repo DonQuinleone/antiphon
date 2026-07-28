@@ -1,3 +1,3 @@
 mod theme;
 
-pub use theme::{Theme, ThemeError, load_themes};
+pub use theme::{AccountAccent, Theme, ThemeError, load_themes};

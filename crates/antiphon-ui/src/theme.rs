@@ -33,6 +33,16 @@ const BUILTIN_THEMES: [&str; 17] = [
 const VESPERS_NAME: &str = "vespers";
 const THEME_EXTENSION: &str = "toml";
 
+/// Which account type an accent is wanted for, so a theme can
+/// hand back a brand-evocative colour without the UI hardcoding
+/// hex.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccountAccent {
+    Imap,
+    Microsoft,
+    Google,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Theme {
     pub name: String,
@@ -119,6 +129,21 @@ impl Theme {
     pub fn vespers() -> &'static Theme {
         Self::by_name(VESPERS_NAME).unwrap_or_else(|| &registry()[0])
     }
+
+    /// A distinct, brand-evocative accent per account type, so
+    /// the selected type reads at a glance and stays on-theme
+    /// across every palette without hardcoded hex. Each maps to
+    /// a palette role that carries a consistent hue:
+    ///   IMAP      -> text_muted   (a neutral, cool blue-grey)
+    ///   Microsoft -> status_error (the palette's warm pole)
+    ///   Google    -> status_ok    (the palette's cool pole)
+    pub fn account_type_accent(&self, kind: AccountAccent) -> Color {
+        match kind {
+            AccountAccent::Imap => self.text_muted,
+            AccountAccent::Microsoft => self.status_error,
+            AccountAccent::Google => self.status_ok,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -164,6 +189,25 @@ mod tests {
         assert_eq!(vespers.background, Color::Rgb(0x0c, 0x0f, 0x1d));
         assert_eq!(vespers.accent, Color::Rgb(0xd9, 0xad, 0x52));
         assert_eq!(vespers.text_primary, Color::Rgb(0xe9, 0xe4, 0xd4));
+    }
+
+    #[test]
+    fn each_account_type_gets_a_distinct_on_theme_accent() {
+        for theme in Theme::all() {
+            let imap = theme.account_type_accent(AccountAccent::Imap);
+            let microsoft =
+                theme.account_type_accent(AccountAccent::Microsoft);
+            let google =
+                theme.account_type_accent(AccountAccent::Google);
+            assert_eq!(imap, theme.text_muted, "{}", theme.name);
+            assert_eq!(microsoft, theme.status_error, "{}", theme.name);
+            assert_eq!(google, theme.status_ok, "{}", theme.name);
+            assert!(
+                microsoft != google,
+                "{}: warm and cool accents must differ",
+                theme.name
+            );
+        }
     }
 
     #[test]
