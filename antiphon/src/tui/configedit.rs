@@ -84,16 +84,53 @@ pub(super) fn with_root_key(
     rewritten
 }
 
-pub(super) fn with_key(
+pub(crate) fn with_key(
     contents: &str,
     table: &str,
     key: &str,
     value: &str,
 ) -> String {
+    edited(contents, &format!("[{table}]"), key, value)
+}
+
+/// The `with_key` sibling for an array of tables: edits `key`
+/// in the first `[[table]]` entry, appending a fresh entry
+/// when none exists yet.
+pub(crate) fn with_array_key(
+    contents: &str,
+    table: &str,
+    key: &str,
+    value: &str,
+) -> String {
+    edited(contents, &format!("[[{table}]]"), key, value)
+}
+
+/// The raw TOML value of `key` in the first `[[table]]`
+/// entry, when both exist.
+pub(crate) fn array_key_value(
+    contents: &str,
+    table: &str,
+    key: &str,
+) -> Option<String> {
+    let lines: Vec<String> =
+        contents.lines().map(str::to_owned).collect();
+    let header = format!("[[{table}]]");
+    let (start, end) = table_range(&lines, &header)?;
+    let index = key_line_in(&lines, key, start, end)?;
+    let line = &lines[index];
+    let (from, to) = value_span(line)?;
+    Some(line[from..to].to_string())
+}
+
+fn edited(
+    contents: &str,
+    header: &str,
+    key: &str,
+    value: &str,
+) -> String {
     let mut lines: Vec<String> =
         contents.lines().map(str::to_owned).collect();
-    let header = format!("[{table}]");
-    match table_range(&lines, &header) {
+    match table_range(&lines, header) {
         Some((start, end)) => {
             match key_line_in(&lines, key, start, end) {
                 Some(index) => {
@@ -106,7 +143,7 @@ pub(super) fn with_key(
             if lines.last().is_some_and(|line| !line.is_empty()) {
                 lines.push(String::new());
             }
-            lines.push(header);
+            lines.push(header.to_string());
             lines.push(key_line(key, value));
         }
     }
@@ -395,6 +432,53 @@ mod tests {
         );
         assert_eq!(without_key(before, "elsewhere", "archive"), before);
         assert_eq!(without_key("", "folder_names", "archive"), "");
+    }
+
+    #[test]
+    fn an_array_table_key_is_edited_in_the_first_entry_only() {
+        let before = "[[identity]]\naddress = \"a@example.com\"\n\n\
+                      [[identity]]\naddress = \"b@example.com\"\n";
+        let after = with_array_key(
+            before,
+            "identity",
+            "address",
+            "\"c@example.com\"",
+        );
+        assert!(after.contains("address = \"c@example.com\""));
+        assert!(after.contains("address = \"b@example.com\""));
+        assert!(!after.contains("a@example.com"));
+    }
+
+    #[test]
+    fn a_missing_array_table_gets_a_fresh_entry() {
+        let before = "[account]\nname = \"work\"\n";
+        let after = with_array_key(
+            before,
+            "identity",
+            "address",
+            "\"a@example.com\"",
+        );
+        assert_eq!(
+            after,
+            "[account]\nname = \"work\"\n\n\
+             [[identity]]\naddress = \"a@example.com\"\n"
+        );
+    }
+
+    #[test]
+    fn array_key_value_reads_the_first_entry_or_nothing() {
+        let text = "[[identity]]\naddress = \"a@example.com\"\n\
+                    match = [\"a@example.com\", \"b@example.com\"]\n";
+        assert_eq!(
+            array_key_value(text, "identity", "address").as_deref(),
+            Some("\"a@example.com\"")
+        );
+        assert_eq!(
+            array_key_value(text, "identity", "match").as_deref(),
+            Some("[\"a@example.com\", \"b@example.com\"]")
+        );
+        assert_eq!(array_key_value(text, "identity", "name"), None);
+        assert_eq!(array_key_value(text, "rules", "from"), None);
     }
 
     #[test]

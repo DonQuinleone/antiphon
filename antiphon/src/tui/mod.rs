@@ -8,7 +8,7 @@ mod cells;
 mod commands;
 mod complete;
 mod compose;
-mod configedit;
+pub(crate) mod configedit;
 mod crypto;
 mod decrypt;
 mod dispatch;
