@@ -221,6 +221,19 @@ impl App {
         scope::effective_query(&self.scope, &self.accounts, user_query)
     }
 
+    /// The account a fresh compose starts from: the account in
+    /// view when the scope is pinned to one, else the primary
+    /// account (the first configured). The From field can still
+    /// cycle to any identity afterwards.
+    pub fn compose_account(&self) -> String {
+        match &self.scope {
+            ViewScope::Account(account) => account.clone(),
+            ViewScope::Unified => {
+                self.accounts.first().cloned().unwrap_or_default()
+            }
+        }
+    }
+
     pub fn take_requery(&mut self) -> bool {
         std::mem::take(&mut self.requery)
     }
@@ -483,6 +496,16 @@ mod tests {
         assert_eq!(app.selected, 0);
         assert_eq!(app.total_messages, 0);
         assert_eq!(app.current_query, "tag:flagged");
+    }
+
+    #[test]
+    fn a_fresh_compose_follows_the_scoped_account() {
+        let mut app = app_with_accounts(&["a", "b"]);
+        assert_eq!(app.compose_account(), "a");
+        app.scope = ViewScope::Account("b".into());
+        assert_eq!(app.compose_account(), "b");
+        app.scope = ViewScope::Unified;
+        assert_eq!(app.compose_account(), "a");
     }
 
     #[test]

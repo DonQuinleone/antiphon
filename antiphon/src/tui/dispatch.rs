@@ -25,8 +25,8 @@ pub(super) fn pending_template_request(
         app.notice = Some(format!("no template named {name}"));
         return None;
     };
-    let first = app.accounts.first().cloned().unwrap_or_default();
-    let (account, identity) = context.identity_for(&first)?;
+    let scoped = app.compose_account();
+    let (account, identity) = context.identity_for(&scoped)?;
     let fields = prefill::fresh_fields(
         identity,
         Some(&template),
@@ -243,8 +243,9 @@ fn fresh_request(
     app: &mut App,
     context: &ComposeContext,
 ) -> Option<ComposeState> {
-    let first = app.accounts.first().cloned().unwrap_or_default();
-    let Some((account, identity)) = context.identity_for(&first) else {
+    let scoped = app.compose_account();
+    let Some((account, identity)) = context.identity_for(&scoped)
+    else {
         app.notice = Some("no compose identity configured".into());
         return None;
     };

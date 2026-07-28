@@ -7,7 +7,7 @@ use mail_parser::{MessageParser, MessagePart, MimeHeaders, PartType};
 const METHOD_REQUEST: &str = "REQUEST";
 const MAILTO_SCHEME: &str = "mailto:";
 const NO_TITLE: &str = "(no title)";
-const REPLY_HINT: &str = "accept/decline not yet wired";
+const REPLY_HINT: &str = ":accept, :tentative or :decline";
 const DATE_FORMAT: &str = "%d %b %Y";
 const DATE_TIME_FORMAT: &str = "%d %b %Y %H:%M";
 const LABEL_WIDTH: usize = 10;
@@ -239,7 +239,7 @@ mod tests {
                 "  ends:      05 Aug 2026 15:00 (Europe/London)",
                 "  where:     Room 2",
                 "  attendees: Bram <bram@example.com>",
-                "  reply:     accept/decline not yet wired",
+                "  reply:     :accept, :tentative or :decline",
             ]
         );
     }
@@ -277,7 +277,7 @@ mod tests {
                 "  where:     Room 2",
                 "  attendees: Bram <bram@example.com>, \
                  cato@example.com",
-                "  reply:     accept/decline not yet wired",
+                "  reply:     :accept, :tentative or :decline",
             ]
         );
     }

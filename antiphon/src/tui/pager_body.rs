@@ -198,7 +198,8 @@ mod tests {
             Signature::none(),
             vec![
                 "calendar invite: Stand-up".to_string(),
-                "  reply:     accept/decline not yet wired".to_string(),
+                "  reply:     :accept, :tentative or :decline"
+                    .to_string(),
             ],
         );
         let rows = rows(&app);
@@ -208,7 +209,7 @@ mod tests {
             texts,
             [
                 "calendar invite: Stand-up",
-                "  reply:     accept/decline not yet wired",
+                "  reply:     :accept, :tentative or :decline",
                 "",
                 "body line",
             ],

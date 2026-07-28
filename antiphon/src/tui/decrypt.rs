@@ -140,7 +140,7 @@ mod tests {
             opened
                 .invite
                 .last()
-                .is_some_and(|line| line.contains("not yet wired"))
+                .is_some_and(|line| line.contains(":accept"))
         );
     }
 

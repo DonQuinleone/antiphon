@@ -65,12 +65,6 @@ fn matches_at(
         .any(|pattern| pattern.rank() == rank && pattern.matches(addr))
 }
 
-pub fn compose_identity(
-    identities: &[ParsedIdentity],
-) -> Option<&ParsedIdentity> {
-    identities.first()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,15 +202,6 @@ mod tests {
             reply_identity(&identities, &addrs(&["team@example.com"]))
                 .expect("should resolve");
         assert_eq!(resolved.identity.name.as_deref(), Some("First"),);
-    }
-
-    #[test]
-    fn compose_uses_the_first_identity() {
-        let identities = tiered();
-        let first =
-            compose_identity(&identities).expect("should pick one");
-        assert_eq!(first.address, "catch@example.com");
-        assert_eq!(compose_identity(&[]), None);
     }
 
     #[test]
