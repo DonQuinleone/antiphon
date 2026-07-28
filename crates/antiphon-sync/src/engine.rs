@@ -8,7 +8,7 @@ use antiphon_store::StoreLayout;
 
 use crate::auth::Auth;
 use crate::error::SyncError;
-use crate::folders::folder_subdir;
+use crate::folders::{excluded, folder_subdir};
 use crate::maildir::MaildirFolder;
 use crate::progress::{SyncProgress, write_progress};
 use crate::reconcile::{now_unix, remove_vanished, sweep_due};
@@ -97,29 +97,6 @@ pub fn sync(
     run_notmuch_new(&layout.notmuch_config_path())?;
     retag_folders(&layout.notmuch_config_path(), &account.name)?;
     Ok(report)
-}
-
-/// Whether the mailbox is excluded from syncing: compared on
-/// the maildir-relative path `folder_subdir` produces, case
-/// insensitively. INBOX maps to the empty path and so can
-/// never match; a folder whose name does not map at all is
-/// left for `sync_folder` to report.
-fn excluded(folder: &RemoteFolder, exclusions: &[String]) -> bool {
-    if exclusions.is_empty() {
-        return false;
-    }
-    let Ok(subdir) =
-        folder_subdir(&folder.name, folder.delimiter.as_deref())
-    else {
-        return false;
-    };
-    let subdir = subdir.to_string_lossy();
-    if subdir.is_empty() {
-        return false;
-    }
-    exclusions
-        .iter()
-        .any(|excluded| excluded.to_lowercase() == subdir)
 }
 
 /// Indexing overlaps the network: delivered batches become
@@ -492,59 +469,5 @@ mod state_path_tests {
         assert!(plain.ends_with("work.state"));
         assert!(dotted.ends_with("work.gmail.state"));
         assert_ne!(plain, dotted);
-    }
-}
-
-#[cfg(test)]
-mod exclusion_tests {
-    use super::*;
-
-    fn folder(name: &str, delimiter: Option<&str>) -> RemoteFolder {
-        RemoteFolder {
-            name: name.to_string(),
-            delimiter: delimiter.map(str::to_string),
-        }
-    }
-
-    fn exclusions(names: &[&str]) -> Vec<String> {
-        names.iter().map(|name| (*name).to_string()).collect()
-    }
-
-    #[test]
-    fn exclusions_match_the_maildir_relative_name() {
-        let listed = exclusions(&["archive/2019", "spam"]);
-        let cases = [
-            ("Archive/2019", Some("/"), true),
-            ("Archive.2019", Some("."), true),
-            ("SPAM", Some("/"), true),
-            ("archive/2020", Some("/"), false),
-            ("archive", Some("/"), false),
-        ];
-        for (name, delimiter, want) in cases {
-            assert_eq!(
-                excluded(&folder(name, delimiter), &listed),
-                want,
-                "{name}"
-            );
-        }
-    }
-
-    #[test]
-    fn exclusions_compare_case_insensitively_both_ways() {
-        let listed = exclusions(&["Lists/Aerc"]);
-        assert!(excluded(&folder("lists/aerc", Some("/")), &listed));
-    }
-
-    #[test]
-    fn the_inbox_is_never_excludable() {
-        let listed = exclusions(&["inbox", "INBOX", ""]);
-        assert!(!excluded(&folder("INBOX", Some("/")), &listed));
-    }
-
-    #[test]
-    fn no_exclusions_and_bad_names_never_exclude() {
-        assert!(!excluded(&folder("spam", Some("/")), &[]));
-        let listed = exclusions(&["spam"]);
-        assert!(!excluded(&folder("..", Some("/")), &listed));
     }
 }
