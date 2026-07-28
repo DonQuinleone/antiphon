@@ -317,6 +317,18 @@ mod tests {
     }
 
     #[test]
+    fn inline_images_defaults_on_and_toggles_off() {
+        let default: Config = Config::default();
+        assert!(default.ui.inline_images, "on unless disabled");
+        let config: Config = parse(
+            "[ui]\ninline_images = false\n",
+            Path::new("config.toml"),
+        )
+        .unwrap();
+        assert!(!config.ui.inline_images);
+    }
+
+    #[test]
     fn composer_accepts_the_suspend_fallback() {
         let config: Config = parse(
             "[ui]\ncomposer = \"suspend\"\n",

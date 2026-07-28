@@ -44,6 +44,8 @@ impl App {
         self.link_picker = None;
         self.pager_attachments =
             antiphon_render::attachments(&self.pager_raw);
+        self.pager_images = antiphon_render::images(&self.pager_raw);
+        self.image_view = None;
         self.drawer_open = false;
         self.drawer_selected = 0;
         self.pager_headers = antiphon_render::selected_headers(

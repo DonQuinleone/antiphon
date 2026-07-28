@@ -23,7 +23,15 @@ antiphon-ui = { path = "../crates/antiphon-ui" }
 age = "=0.11.1"
 chrono = "=0.4.45"
 flate2 = "=1.1.9"
+image = { version = "=0.25.6", default-features = false, features = [
+    "png",
+    "jpeg",
+    "gif",
+    "webp",
+    "bmp",
+] }
 ratatui = "=0.30.2"
+ratatui-image = "=11.0.6"
 clap = { version = "=4.6.4", features = ["derive"] }
 portable-pty = "=0.9.0"
 rpassword = "=7.5.4"

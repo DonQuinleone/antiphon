@@ -4,6 +4,7 @@ mod extract;
 mod flowed;
 mod headers;
 mod html;
+mod images;
 mod invite;
 mod itip;
 mod links;
@@ -25,6 +26,7 @@ pub use extract::{
 };
 pub use flowed::flow;
 pub use headers::{MessageHeader, all_headers, selected_headers};
+pub use images::{MessageImage, images};
 pub use invite::invite_lines;
 pub use itip::{ItipReply, Rsvp, itip_reply};
 pub use links::{BodyLine, Link, LinkSpan, RenderedBody, scan_text};

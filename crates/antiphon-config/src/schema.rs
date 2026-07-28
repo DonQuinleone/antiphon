@@ -69,6 +69,7 @@ pub struct Ui {
     pub list_rows: u16,
     pub sidebar_width: u16,
     pub headers: Vec<String>,
+    pub inline_images: bool,
 }
 
 impl Default for Ui {
@@ -85,6 +86,7 @@ impl Default for Ui {
                 .iter()
                 .map(|name| (*name).to_string())
                 .collect(),
+            inline_images: true,
         }
     }
 }

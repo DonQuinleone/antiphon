@@ -294,12 +294,27 @@ fn click(
         ratatui::layout::Rect::new(0, 0, size.width, size.height);
     let (content, _) = draw::split_status(area);
     let chrome = pager::chrome(app, content);
+    if let Some(index) =
+        pager_body::image_index_at(app, chrome.body, column, row)
+    {
+        open_pager_image(app, index);
+        return;
+    }
     let Some(url) =
         pager_body::link_url_at(app, chrome.body, column, row)
     else {
         return;
     };
     link_picker::open_url(app, &url);
+}
+
+fn open_pager_image(app: &mut App, index: usize) {
+    let Some(image) = app.pager_images.get(index) else {
+        return;
+    };
+    let name = image.name.clone();
+    let bytes = image.bytes.clone();
+    app.open_image_view(name, &bytes);
 }
 
 pub(super) fn prompt_key(

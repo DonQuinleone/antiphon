@@ -170,13 +170,21 @@ pub(super) fn save_selected(app: &mut App, input: &str) {
     }
 }
 
-/// v writes the decoded bytes to a temporary file and hands
-/// that file to the system opener; nothing is executed, the
-/// opener decides the viewer.
+/// v opens an image full-pane in the terminal where inline
+/// images are on; anything else (and images with the toggle
+/// off) writes a temporary file and hands it to the system
+/// opener, which decides the viewer. Nothing is executed.
 fn view_selected(app: &mut App) {
     let Some(attachment) = selected(app) else {
         return;
     };
+    if app.inline_images && is_image(&attachment.content_type) {
+        let name = attachment.filename.clone();
+        let bytes = attachment.bytes.clone();
+        app.drawer_open = false;
+        app.open_image_view(name, &bytes);
+        return;
+    }
     let path = match write_temp(attachment) {
         Ok(path) => path,
         Err(error) => {
@@ -185,6 +193,13 @@ fn view_selected(app: &mut App) {
         }
     };
     spawn_opener(app, &path.to_string_lossy());
+}
+
+fn is_image(content_type: &str) -> bool {
+    content_type
+        .split('/')
+        .next()
+        .is_some_and(|top| top.eq_ignore_ascii_case("image"))
 }
 
 fn write_temp(
@@ -336,6 +351,53 @@ mod tests {
                 .is_some_and(|notice| notice.starts_with("save ")),
             "{:?}",
             app.notice
+        );
+    }
+
+    fn tiny_png() -> Vec<u8> {
+        let image = image::DynamicImage::new_rgba8(1, 1);
+        let mut bytes = Vec::new();
+        image
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
+            .expect("encode a 1x1 png");
+        bytes
+    }
+
+    fn image_attachment() -> MessageAttachment {
+        MessageAttachment {
+            filename: "logo.png".to_string(),
+            content_type: "image/png".to_string(),
+            bytes: tiny_png(),
+        }
+    }
+
+    #[test]
+    fn v_on_an_image_opens_the_full_pane_view() {
+        let mut app = drawer_app();
+        app.pager_attachments = vec![image_attachment()];
+        app.drawer_open = true;
+        app.drawer_selected = 0;
+        feed(&mut app, key(KeyCode::Char('v')));
+        assert_eq!(app.view, super::super::app::View::Image);
+        assert!(!app.drawer_open, "the drawer closes behind the view");
+        assert!(app.image_view.is_some());
+    }
+
+    #[test]
+    fn the_toggle_off_keeps_images_in_the_system_opener() {
+        let mut app = drawer_app();
+        app.inline_images = false;
+        app.pager_attachments = vec![image_attachment()];
+        app.drawer_open = true;
+        app.drawer_selected = 0;
+        feed(&mut app, key(KeyCode::Char('v')));
+        assert_ne!(
+            app.view,
+            super::super::app::View::Image,
+            "with the toggle off the full-pane view never opens"
         );
     }
 

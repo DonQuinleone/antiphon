@@ -35,6 +35,19 @@ keybinding cheatsheet. The full key reference, theme gallery
 and every configuration key live in the guides at
 https://docs.antiphon.net.
 
+A message carrying image parts, whether attached or referenced
+inline by *cid:*, shows a *[image: <name>]* marker per image at
+the foot of the body. Pressing *v* on an image in the
+attachment drawer, or clicking a marker, opens it full-pane,
+drawn in the terminal over the Kitty, iTerm2 or Sixel graphics
+protocol where one is available and unicode half-blocks where
+none is; *esc* or *q* returns to the message. Under tmux the
+graphics protocols need passthrough enabled, otherwise the
+half-block fallback stands in. Remote *http(s)* images are not
+fetched: they stay markers only. Set *ui.inline_images = false*
+to drop the markers and full-pane view and keep images in the
+drawer alone, opened through the system viewer.
+
 # COMMANDS
 
 *doctor* [--init-store]

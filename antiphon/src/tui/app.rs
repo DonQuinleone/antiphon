@@ -4,7 +4,8 @@ use antiphon_config::{
 use antiphon_core::Action;
 use antiphon_pgp::{Keyring, Signature};
 use antiphon_render::{
-    MailtoUnsubscribe, MessageAttachment, MessageHeader, RenderedBody,
+    MailtoUnsubscribe, MessageAttachment, MessageHeader, MessageImage,
+    RenderedBody,
 };
 use antiphon_store::MessageSummary;
 use antiphon_store::contacts::Contact;
@@ -31,6 +32,7 @@ pub const DEFAULT_QUERY: &str = "*";
 pub enum View {
     List,
     Pager,
+    Image,
     Compose,
     Editor,
     Review,
@@ -72,6 +74,9 @@ pub struct App {
     pub pager_headers_all: Vec<MessageHeader>,
     pub pager_rendered: RenderedBody,
     pub pager_attachments: Vec<MessageAttachment>,
+    pub pager_images: Vec<MessageImage>,
+    pub inline_images: bool,
+    pub image_view: Option<super::image_view::ImageView>,
     pub link_picker: Option<LinkPicker>,
     pub folder_picker: Option<super::folder_picker::FolderPicker>,
     pub account_form: Option<super::account_form::AccountFormState>,
@@ -190,6 +195,9 @@ impl App {
             pager_headers_all: Vec::new(),
             pager_rendered: RenderedBody::default(),
             pager_attachments: Vec::new(),
+            pager_images: Vec::new(),
+            inline_images: loaded.config.ui.inline_images,
+            image_view: None,
             link_picker: None,
             folder_picker: None,
             account_form: None,
@@ -343,6 +351,7 @@ impl App {
         match self.view {
             View::List => self.apply_in_list(action),
             View::Pager => self.apply_in_pager(action),
+            View::Image => self.apply_in_image(action),
             View::Compose
             | View::Editor
             | View::Review

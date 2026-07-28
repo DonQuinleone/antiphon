@@ -73,6 +73,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
         draw_status(frame, app, status);
         return;
     }
+    if app.view == View::Image {
+        super::image_view::draw(frame, app, content);
+        draw_status(frame, app, status);
+        return;
+    }
     if app.view == View::Pager {
         draw_pager(frame, app, content);
         draw_status(frame, app, status);

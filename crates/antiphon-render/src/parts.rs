@@ -46,7 +46,7 @@ pub fn attachments(raw: &[u8]) -> Vec<MessageAttachment> {
         .collect()
 }
 
-fn content_type_text(part: &MessagePart<'_>) -> String {
+pub(crate) fn content_type_text(part: &MessagePart<'_>) -> String {
     let Some(content_type) = part.content_type() else {
         return OCTET_STREAM.to_string();
     };

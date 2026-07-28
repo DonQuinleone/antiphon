@@ -26,6 +26,7 @@ mod folders;
 mod headers;
 mod help;
 mod identity;
+mod image_view;
 mod input;
 mod link_picker;
 mod lists;
@@ -174,8 +175,15 @@ pub fn run(
     }
     let mut terminal = ratatui::init();
     grab_mouse();
-    let outcome =
-        event_loop(&mut terminal, &mut app, keymap, layout, &context);
+    let picker = image_view::make_picker();
+    let outcome = event_loop(
+        &mut terminal,
+        &mut app,
+        keymap,
+        layout,
+        &context,
+        picker,
+    );
     release_mouse();
     ratatui::restore();
     match outcome {
@@ -215,6 +223,7 @@ fn event_loop(
     mut keymap: Keymap,
     layout: &StoreLayout,
     context: &ComposeContext,
+    mut picker: ratatui_image::picker::Picker,
 ) -> std::io::Result<()> {
     let mut last_refresh = Instant::now();
     let mut last_unread: Option<u32> = None;
@@ -225,6 +234,7 @@ fn event_loop(
         oauthflow::poll(app);
         tick_editor(terminal, app)?;
         preview::refresh(app);
+        prepare_image(terminal, app, &mut picker)?;
         let drawing = Instant::now();
         terminal.draw(|frame| draw::draw(frame, app))?;
         app.frame_stats.record(drawing.elapsed());
@@ -316,6 +326,28 @@ fn expire_notice(app: &mut App, seen: &mut Option<(String, Instant)>) {
         }
         _ => *seen = Some((current, Instant::now())),
     }
+}
+
+/// Encodes the open image for the current terminal size before
+/// the frame that draws it; a graphics fault becomes a notice
+/// rather than a torn frame.
+fn prepare_image(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    picker: &mut ratatui_image::picker::Picker,
+) -> std::io::Result<()> {
+    if app.view != View::Image {
+        return Ok(());
+    }
+    let size = terminal.size()?;
+    let error = app
+        .image_view
+        .as_mut()
+        .and_then(|view| image_view::prepare(view, picker, size));
+    if let Some(error) = error {
+        app.notice = Some(format!("image render: {error}"));
+    }
+    Ok(())
 }
 
 fn poll_interval(app: &App) -> Duration {
