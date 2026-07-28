@@ -1,4 +1,4 @@
-use antiphon_config::{AccountsBar, ReadingPane};
+use antiphon_config::{AccountsBar, Composer, ReadingPane};
 use antiphon_ui::Theme;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
@@ -24,10 +24,21 @@ const READING_PANES: [(ReadingPane, &str); 3] = [
     (ReadingPane::Off, "off"),
 ];
 
+const COMPOSERS: [(Composer, &str); 2] = [
+    (Composer::Embedded, "embedded"),
+    (Composer::Suspend, "suspend"),
+];
+
+const IDLE_OPTIONS: [&str; 2] = ["off", "on"];
+const ACCOUNTS_BAR_OPTIONS: [&str; 2] = ["sidebar", "tabs"];
+const READING_PANE_OPTIONS: [&str; 3] = ["below", "right", "off"];
+const COMPOSER_OPTIONS: [&str; 2] = ["embedded", "suspend"];
+
 /// One essentials row: the label shown, the `[table] key`
 /// it's stored under, whether a change only takes effect
 /// once the daemon restarts, how its current value renders,
-/// and how it moves under `h`/`l`.
+/// how it moves under `h`/`l`, and, for a small-set field,
+/// the segmented options and which one is currently active.
 pub(super) struct EssentialRow {
     pub(super) label: &'static str,
     pub(super) table: &'static str,
@@ -35,9 +46,14 @@ pub(super) struct EssentialRow {
     pub(super) daemon: bool,
     pub(super) render: fn(&App) -> String,
     pub(super) cycle: fn(&mut App, i32) -> String,
+    /// `Some` draws the value as a segmented toggle; `None`
+    /// falls back to the plain rendered string (theme, the
+    /// numeric fields).
+    pub(super) segments: Option<&'static [&'static str]>,
+    pub(super) selected: fn(&App) -> usize,
 }
 
-pub(super) const ESSENTIAL_ROWS: [EssentialRow; 7] = [
+pub(super) const ESSENTIAL_ROWS: [EssentialRow; 8] = [
     EssentialRow {
         label: "theme",
         table: "ui",
@@ -45,6 +61,8 @@ pub(super) const ESSENTIAL_ROWS: [EssentialRow; 7] = [
         daemon: false,
         render: render_theme,
         cycle: cycle_theme,
+        segments: None,
+        selected: |_| 0,
     },
     EssentialRow {
         label: "sync interval (minutes)",
@@ -53,6 +71,8 @@ pub(super) const ESSENTIAL_ROWS: [EssentialRow; 7] = [
         daemon: true,
         render: render_interval_minutes,
         cycle: cycle_interval_minutes,
+        segments: None,
+        selected: |_| 0,
     },
     EssentialRow {
         label: "idle",
@@ -61,6 +81,8 @@ pub(super) const ESSENTIAL_ROWS: [EssentialRow; 7] = [
         daemon: true,
         render: render_idle,
         cycle: cycle_idle,
+        segments: Some(&IDLE_OPTIONS),
+        selected: |app| usize::from(app.sync_idle),
     },
     EssentialRow {
         label: "accounts bar",
@@ -69,6 +91,8 @@ pub(super) const ESSENTIAL_ROWS: [EssentialRow; 7] = [
         daemon: false,
         render: render_accounts_bar,
         cycle: cycle_accounts_bar,
+        segments: Some(&ACCOUNTS_BAR_OPTIONS),
+        selected: accounts_bar_index,
     },
     EssentialRow {
         label: "reading pane",
@@ -77,6 +101,18 @@ pub(super) const ESSENTIAL_ROWS: [EssentialRow; 7] = [
         daemon: false,
         render: render_reading_pane,
         cycle: cycle_reading_pane,
+        segments: Some(&READING_PANE_OPTIONS),
+        selected: reading_pane_index,
+    },
+    EssentialRow {
+        label: "composer",
+        table: "ui",
+        key: "composer",
+        daemon: false,
+        render: render_composer,
+        cycle: cycle_composer,
+        segments: Some(&COMPOSER_OPTIONS),
+        selected: composer_index,
     },
     EssentialRow {
         label: "list rows",
@@ -85,6 +121,8 @@ pub(super) const ESSENTIAL_ROWS: [EssentialRow; 7] = [
         daemon: false,
         render: render_list_rows,
         cycle: cycle_list_rows,
+        segments: None,
+        selected: |_| 0,
     },
     EssentialRow {
         label: "sidebar width",
@@ -93,6 +131,8 @@ pub(super) const ESSENTIAL_ROWS: [EssentialRow; 7] = [
         daemon: false,
         render: render_sidebar_width,
         cycle: cycle_sidebar_width,
+        segments: None,
+        selected: |_| 0,
     },
 ];
 
@@ -175,6 +215,13 @@ fn render_accounts_bar(app: &App) -> String {
     accounts_bar_name(app.accounts_bar).to_string()
 }
 
+fn accounts_bar_index(app: &App) -> usize {
+    ACCOUNTS_BARS
+        .iter()
+        .position(|(bar, _)| *bar == app.accounts_bar)
+        .unwrap_or(0)
+}
+
 fn accounts_bar_name(bar: AccountsBar) -> &'static str {
     ACCOUNTS_BARS
         .iter()
@@ -200,6 +247,13 @@ fn render_reading_pane(app: &App) -> String {
     reading_pane_name(app.reading_pane).to_string()
 }
 
+fn reading_pane_index(app: &App) -> usize {
+    READING_PANES
+        .iter()
+        .position(|(pane, _)| *pane == app.reading_pane)
+        .unwrap_or(0)
+}
+
 fn reading_pane_name(pane: ReadingPane) -> &'static str {
     READING_PANES
         .iter()
@@ -215,6 +269,32 @@ fn cycle_reading_pane(app: &mut App, step: i32) -> String {
     let next = wrapped(current, READING_PANES.len(), step);
     let (pane, name) = READING_PANES[next];
     app.reading_pane = pane;
+    format!("\"{name}\"")
+}
+
+fn render_composer(app: &App) -> String {
+    composer_name(app.composer).to_string()
+}
+
+fn composer_name(composer: Composer) -> &'static str {
+    COMPOSERS
+        .iter()
+        .find(|(candidate, _)| *candidate == composer)
+        .map_or("embedded", |(_, name)| name)
+}
+
+fn composer_index(app: &App) -> usize {
+    COMPOSERS
+        .iter()
+        .position(|(composer, _)| *composer == app.composer)
+        .unwrap_or(0)
+}
+
+fn cycle_composer(app: &mut App, step: i32) -> String {
+    let current = composer_index(app);
+    let next = wrapped(current, COMPOSERS.len(), step);
+    let (composer, name) = COMPOSERS[next];
+    app.composer = composer;
     format!("\"{name}\"")
 }
 
@@ -305,8 +385,12 @@ mod tests {
         app.config_path = dir.path.join("config.toml");
         app.settings.as_mut().unwrap().tab = SettingsTab::Essentials;
 
+        let target = ESSENTIAL_ROWS
+            .iter()
+            .position(|row| row.label == "list rows")
+            .expect("a list rows row");
         let before = app.list_rows;
-        for _ in 0..5 {
+        for _ in 0..target {
             feed(&mut app, key(KeyCode::Char('j')));
         }
         feed(&mut app, key(KeyCode::Char('l')));

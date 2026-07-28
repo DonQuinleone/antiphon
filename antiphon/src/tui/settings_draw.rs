@@ -6,10 +6,11 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::app::App;
+use super::draw::segmented::{self, SegmentStyle};
 use super::folders::FolderRow;
 use super::headers::with_cursor;
 use super::settings::{SettingsState, SettingsTab};
-use super::settingscmd;
+use super::settingscmd::{self, EssentialRow};
 
 const SELECTED_MARK: &str = "\u{25b8} ";
 const UNSELECTED_MARK: &str = "  ";
@@ -169,16 +170,7 @@ fn draw_essentials(
     let mut lines = Vec::new();
     for (index, row) in settingscmd::ESSENTIAL_ROWS.iter().enumerate() {
         let selected = index == state.essentials_selected;
-        let marker = mark(selected);
-        let mut style = Style::new().fg(theme.text_primary);
-        if selected {
-            style = style.bg(theme.selection_bg).fg(theme.selection_fg);
-        }
-        let value = (row.render)(app);
-        lines.push(Line::from(Span::styled(
-            format!("{marker}{:<LABEL_WIDTH$}{value}", row.label),
-            style,
-        )));
+        lines.push(essential_line(app, row, selected));
     }
     if let Some(hint) = &state.daemon_hint {
         lines.push(Line::default());
@@ -188,6 +180,42 @@ fn draw_essentials(
         )));
     }
     frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// A small-set row draws its value as a segmented toggle; the
+/// rest keep the plain rendered string. Either way the marker
+/// and label carry the row's selection highlight.
+fn essential_line(
+    app: &App,
+    row: &EssentialRow,
+    selected: bool,
+) -> Line<'static> {
+    let theme = app.theme;
+    let mut label_style = Style::new().fg(theme.text_primary);
+    if selected {
+        label_style =
+            label_style.bg(theme.selection_bg).fg(theme.selection_fg);
+    }
+    let label =
+        format!("{}{:<LABEL_WIDTH$}", mark(selected), row.label);
+    let Some(options) = row.segments else {
+        let value = (row.render)(app);
+        return Line::from(Span::styled(
+            format!("{label}{value}"),
+            label_style,
+        ));
+    };
+    let mut spans = vec![Span::styled(label, label_style)];
+    spans.extend(segmented::segments(
+        options,
+        (row.selected)(app),
+        SegmentStyle {
+            selected_bg: theme.accent,
+            selected_fg: theme.background,
+            unselected_fg: theme.text_muted,
+        },
+    ));
+    Line::from(spans)
 }
 
 fn draw_folders(

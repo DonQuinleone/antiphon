@@ -20,6 +20,9 @@ use super::settings_draw::draw_settings;
 use super::sidebar::SidebarEntry;
 use super::status::draw_status;
 
+#[path = "segmented.rs"]
+pub(in crate::tui) mod segmented;
+
 const STATUS_HEIGHT: u16 = 1;
 const FIELD_SUMMARY_ROWS: u16 = headers::FIELD_COUNT as u16;
 const READING_PANE_SHARE: u16 = 40;
