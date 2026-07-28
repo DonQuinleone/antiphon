@@ -3,6 +3,8 @@ packages:
   - rust
   - notmuch
   - gnupg
+  - cryptsetup
+  - e2fsprogs
 sources:
   - https://git.sr.ht/~donquinleone/antiphon
 tasks:
@@ -18,6 +20,10 @@ tasks:
   - build: |
       cd antiphon
       cargo build --workspace --locked --release
+  - luks-cycle: |
+      cd antiphon
+      cargo build --workspace --locked
+      ./scripts/ci-luks-test.sh
   - perf-smoke: |
       cd antiphon
       cargo build --release -p antiphon-store --example mailgen --example querybench
