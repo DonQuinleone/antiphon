@@ -66,6 +66,9 @@ pub fn draw(frame: &mut Frame, app: &App) {
         super::settings_draw::draw_alias_modal(frame, app, content);
         draw_status(frame, app, status);
         super::account_form_draw::draw_form(frame, app, area);
+        super::account_form_identity_draw::draw_overlay(
+            frame, app, area,
+        );
         return;
     }
     if app.view == View::Editor {

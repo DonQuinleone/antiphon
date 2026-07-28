@@ -75,10 +75,12 @@ drawer alone, opened through the system viewer.
 *oauth login* _account_
 	Run the configured provider's sign-in flow for _account_
 	(an account name from *accounts/\*.toml*) and store the
-	resulting grants. Requires an *[oauth]* table with a
-	*client_id* on that account, unless the matching
-	environment variable overrides it:
-	*ANTIPHON_MS_CLIENT_ID* for Microsoft accounts,
+	resulting grants. Requires an *[oauth]* table on that
+	account; Google also needs a *client_id* there, while a
+	Microsoft account with none borrows Thunderbird's public
+	app so it works out of the box. A per-account *client_id*
+	or the matching environment variable still takes
+	precedence: *ANTIPHON_MS_CLIENT_ID* for Microsoft accounts,
 	*ANTIPHON_GOOGLE_CLIENT_ID* for Google accounts. The same
 	sign-in runs from inside the client: *o* on an account in
 	the settings Accounts tab opens the browser consent
@@ -179,9 +181,15 @@ _$XDG_CONFIG_HOME/antiphon/accounts/\*.toml_
 	*client_id* (overridable per run with
 	*ANTIPHON_MS_CLIENT_ID* or *ANTIPHON_GOOGLE_CLIENT_ID*),
 	and Microsoft 365 adds the Graph send and auth toggles,
-	a *tenant* and, for app-only, a *secret_cmd*. Editing an
-	existing account infers its type from the *[oauth]* and
-	*[graph]* config. The form edits files surgically, so
+	a *tenant* and, for app-only, a *secret_cmd*. An
+	*identities* row opens a sub-editor to add, edit and remove
+	the account's *[[identity]]* blocks, each with its own from
+	name and address, signature, PGP key, an auto-sign toggle
+	and comma-separated match patterns; a fresh account starts
+	with one identity defaulting to the account address. Editing
+	an existing account infers its type from the *[oauth]* and
+	*[graph]* config and reads back every identity. The form
+	edits files surgically, so
 	hand-written keys and comments survive a type change. An
 	account with an *[oauth]* provider needs no *password_cmd*.
 	A *[graph]* table with *send = true* routes outgoing mail
