@@ -4,18 +4,16 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph};
 
-use super::account_form::{FIELD_COUNT, PASSWORD_HINT};
+use super::account_form::{Field, PASSWORD_HINT};
 use super::app::App;
 use super::headers::with_cursor;
 
 const MODAL_WIDTH: u16 = 86;
 const LABEL_COLS: usize = 24;
 const BORDER_ROWS: u16 = 2;
-const HINT: &str = " tab move \u{b7} enter/^s save \u{b7} esc cancel ";
+const HINT: &str = " tab move \u{b7} \u{2190}/\u{2192} cycle \u{b7} \
+     enter/^s save \u{b7} esc cancel ";
 const BULLET: char = '\u{2022}';
-/// `password command` always sits here: after it, macOS alone
-/// adds the masked Keychain field.
-const PASSWORD_FIELD: usize = 5;
 
 pub(super) fn draw_form(frame: &mut Frame, app: &App, area: Rect) {
     let Some(form) = &app.account_form else {
@@ -35,7 +33,7 @@ pub(super) fn draw_form(frame: &mut Frame, app: &App, area: Rect) {
         .map(|error| wrapped(error, inner_width))
         .unwrap_or_default();
     let extra_rows = 1 + error_lines.len() as u16;
-    let height = (FIELD_COUNT as u16 + BORDER_ROWS + extra_rows)
+    let height = (form.field_count() as u16 + BORDER_ROWS + extra_rows)
         .min(area.height.saturating_sub(2));
     let modal = Rect {
         x: area.x + (area.width.saturating_sub(width)) / 2,
@@ -52,7 +50,7 @@ pub(super) fn draw_form(frame: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(modal);
     frame.render_widget(block, modal);
 
-    let mut lines: Vec<Line<'static>> = (0..FIELD_COUNT)
+    let mut lines: Vec<Line<'static>> = (0..form.field_count())
         .map(|index| field_line(app, form, index))
         .collect();
     if !error_lines.is_empty() {
@@ -92,7 +90,7 @@ fn field_line(
         Span::styled(value, Style::new().fg(theme.text_primary)),
     ];
     let show_hint = cfg!(target_os = "macos")
-        && index == PASSWORD_FIELD
+        && form.field_id(index) == Field::PasswordCmd
         && form.field_value(index).is_empty();
     if show_hint {
         spans.push(Span::styled(

@@ -168,6 +168,47 @@ fn array_key_value_reads_the_first_entry_or_nothing() {
 }
 
 #[test]
+fn without_table_drops_the_table_and_its_body() {
+    let before = "[account]\nname = \"work\"\n\n\
+                  [oauth]\nprovider = \"google\"\n# note\n\
+                  client_id = \"app\"\n\n\
+                  [smtp]\nhost = \"h\"\n";
+    let after = without_table(before, "oauth");
+    assert_eq!(
+        after,
+        "[account]\nname = \"work\"\n\n[smtp]\nhost = \"h\"\n"
+    );
+}
+
+#[test]
+fn without_table_at_the_end_leaves_no_trailing_blanks() {
+    let before = "[account]\nname = \"work\"\n\n\
+                  [oauth]\nprovider = \"google\"\n";
+    let after = without_table(before, "oauth");
+    assert_eq!(after, "[account]\nname = \"work\"\n");
+}
+
+#[test]
+fn without_table_is_a_no_op_when_the_table_is_missing() {
+    let before = "[account]\nname = \"work\"\n";
+    assert_eq!(without_table(before, "oauth"), before);
+    assert_eq!(without_table("", "oauth"), "");
+}
+
+#[test]
+fn removing_the_only_table_empties_the_file() {
+    let before = "[oauth]\nprovider = \"google\"\n";
+    assert_eq!(without_table(before, "oauth"), "");
+}
+
+#[test]
+fn has_table_sees_only_real_headers() {
+    let text = "[account]\nname = \"[oauth]\"\n";
+    assert!(has_table(text, "account"));
+    assert!(!has_table(text, "oauth"));
+}
+
+#[test]
 fn remove_key_on_a_missing_file_is_a_no_op() {
     let dir = TempDir::new();
     let path = dir.path.join("missing.toml");

@@ -192,6 +192,35 @@ pub(super) fn without_key(
     rewritten
 }
 
+/// Drops `[table]` and its whole body; a missing table is a
+/// no-op. Reserved for tables the caller fully owns (the
+/// account form's [oauth], say), since hand-written keys
+/// inside go with it.
+pub(super) fn without_table(contents: &str, table: &str) -> String {
+    let mut lines: Vec<String> =
+        contents.lines().map(str::to_owned).collect();
+    let header = format!("[{table}]");
+    let Some((start, end)) = table_range(&lines, &header) else {
+        return contents.to_string();
+    };
+    lines.drain(start..end);
+    while lines.last().is_some_and(|line| line.is_empty()) {
+        lines.pop();
+    }
+    if lines.is_empty() {
+        return String::new();
+    }
+    let mut rewritten = lines.join("\n");
+    rewritten.push('\n');
+    rewritten
+}
+
+pub(super) fn has_table(contents: &str, table: &str) -> bool {
+    let lines: Vec<String> =
+        contents.lines().map(str::to_owned).collect();
+    table_range(&lines, &format!("[{table}]")).is_some()
+}
+
 fn key_line(key: &str, value: &str) -> String {
     format!("{} = {value}", toml_key(key))
 }

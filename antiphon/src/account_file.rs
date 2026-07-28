@@ -92,6 +92,11 @@ fn edited_account_toml(
     ];
     let mut text = existing.to_string();
     for (table, key, value) in edits {
+        // An OAuth account carries no password command; an
+        // existing one is left as the user wrote it.
+        if value.is_empty() {
+            continue;
+        }
         text = with_key(&text, table, key, &quoted(value));
     }
     with_identity_address(&text, &answers.address)
@@ -150,13 +155,17 @@ fn account_toml(answers: &AccountAnswers) -> String {
         smtp_host,
         password_cmd,
     } = answers;
+    let password_line = match password_cmd.is_empty() {
+        true => String::new(),
+        false => format!("password_cmd = \"{password_cmd}\"\n"),
+    };
     format!(
         "[account]\n\
          name = \"{name}\"\n\n\
          [imap]\n\
          host = \"{imap_host}\"\n\
          user = \"{imap_user}\"\n\
-         password_cmd = \"{password_cmd}\"\n\n\
+         {password_line}\n\
          [smtp]\n\
          host = \"{smtp_host}\"\n\n\
          [[identity]]\n\
@@ -198,6 +207,24 @@ mod tests {
         assert!(text.contains("address = \"quin@example.com\""));
         assert!(
             text.contains("password_cmd = \"pass show mail/work\"")
+        );
+    }
+
+    #[test]
+    fn an_empty_password_command_is_left_out_entirely() {
+        let mut oauth_answers = answers();
+        oauth_answers.password_cmd = String::new();
+        let text = account_toml(&oauth_answers);
+        assert!(!text.contains("password_cmd"), "{text}");
+        assert!(text.contains("[smtp]"));
+
+        let edited =
+            edited_account_toml(hand_written_toml(), &oauth_answers);
+        assert!(
+            edited.contains(
+                "password_cmd = \"pass show mail/work\"  # rotate soon"
+            ),
+            "an existing command is not blanked: {edited}"
         );
     }
 
