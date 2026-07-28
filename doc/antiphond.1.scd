@@ -34,9 +34,10 @@ no daemon reachable it starts one itself, in its own process
 group, and that daemon outlives the terminal. Disable this with
 *[daemon] autostart = false*. A supervisor is still the better
 home for a daemon you want running before the first client
-launch, restarted on failure, and stopped at logout; see
-*DAEMON.md* for launchd, systemd, dinit, runit and desktop
-autostart units, all provided under *dist/* in the source tree.
+launch, restarted on failure, and stopped at logout; the sync
+guide at https://docs.antiphon.net covers launchd, systemd,
+dinit, runit and desktop autostart units, all provided under
+*dist/* in the source tree.
 
 # OPTIONS
 
