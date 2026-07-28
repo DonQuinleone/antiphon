@@ -104,6 +104,9 @@ pub struct App {
     pub sync_idle: bool,
     pub settings: Option<super::settings::SettingsState>,
     pub oauth_flow: Option<super::oauthflow::OauthFlow>,
+    /// Accounts the daemon last reported as needing a fresh
+    /// OAuth sign-in; feeds the status line and settings rows.
+    pub auth_failures: Vec<String>,
     pub date_format: String,
     pub notice: Option<String>,
     pub prompt: Option<Prompt>,
@@ -219,6 +222,7 @@ impl App {
             sync_idle: loaded.config.sync.idle,
             settings: None,
             oauth_flow: None,
+            auth_failures: Vec::new(),
             date_format: loaded.config.ui.date_format.clone(),
             notice: None,
             prompt: None,

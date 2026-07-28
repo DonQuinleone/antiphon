@@ -49,6 +49,10 @@ pub(super) fn feed_accounts(
             }
             SettingsOutcome::Stay
         }
+        KeyCode::Char('x') => {
+            super::oauth_status::arm_revoke(app);
+            SettingsOutcome::Stay
+        }
         _ => SettingsOutcome::Stay,
     }
 }
@@ -166,16 +170,33 @@ fn remove_account(app: &mut App, name: &str) {
     app.refresh_settings_accounts();
 }
 
-pub(super) fn account_summaries(dirs: &Dirs) -> Vec<AccountSummary> {
+pub(super) fn account_summaries(
+    dirs: &Dirs,
+    auth_failures: &[String],
+) -> Vec<AccountSummary> {
     let Ok(loaded) = antiphon_config::load(dirs) else {
         return Vec::new();
     };
-    loaded.accounts.iter().map(summary_of).collect()
+    let store = super::oauth_status::open_store_if_present(dirs);
+    let now = now_unix();
+    loaded
+        .accounts
+        .iter()
+        .map(|entry| {
+            summary_of(entry, store.as_ref(), auth_failures, now)
+        })
+        .collect()
 }
 
-fn summary_of(entry: &NamedAccount) -> AccountSummary {
+fn summary_of(
+    entry: &NamedAccount,
+    store: Option<&antiphon_oauth::TokenStore>,
+    auth_failures: &[String],
+    now: u64,
+) -> AccountSummary {
     AccountSummary {
         name: entry.file_stem.clone(),
+        account_name: entry.account.account.name.clone(),
         address: entry
             .account
             .identities
@@ -183,7 +204,20 @@ fn summary_of(entry: &NamedAccount) -> AccountSummary {
             .map(|identity| identity.address.clone())
             .unwrap_or_default(),
         host: entry.account.imap.host.clone(),
+        oauth: super::oauth_status::info_for(
+            entry,
+            store,
+            auth_failures,
+            now,
+        ),
     }
+}
+
+fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]

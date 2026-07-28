@@ -96,6 +96,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         sync_idle: false,
         settings: None,
         oauth_flow: None,
+        auth_failures: Vec::new(),
         date_format: String::new(),
         notice: None,
         prompt: None,
@@ -162,12 +163,15 @@ pub(super) fn app_with_settings(accounts: &[&str]) -> App {
             .iter()
             .map(|name| AccountSummary {
                 name: (*name).to_string(),
+                account_name: (*name).to_string(),
                 address: format!("{name}@example.com"),
                 host: format!("imap.{name}.example.com"),
+                oauth: None,
             })
             .collect(),
         account_selected: 0,
         pending_delete: None,
+        pending_revoke: None,
         essentials_selected: 0,
         daemon_hint: None,
         folders: Vec::new(),

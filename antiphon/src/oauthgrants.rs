@@ -5,7 +5,7 @@
 use antiphon_config::{Dirs, Graph, GraphAuth, Oauth, OauthProvider};
 use antiphon_oauth::{
     GOOGLE_MAIL_SCOPES, Grant, MICROSOFT_GRAPH_SEND_SCOPES,
-    MICROSOFT_IMAP_SCOPES, Provider, TokenStore, graph_grant,
+    MICROSOFT_IMAP_SCOPES, Provider, TokenSet, TokenStore, graph_grant,
     imap_grant,
 };
 use antiphon_store::StoreLayout;
@@ -107,6 +107,19 @@ fn microsoft_grants(
             wanted: delegated.is_some(),
         },
     ]
+}
+
+const SECONDS_PER_MINUTE: u64 = 60;
+
+/// One grant's expiry, phrased for a status line.
+pub(crate) fn expiry(tokens: &TokenSet, now: u64) -> String {
+    if tokens.expires_at_unix <= now {
+        return String::from(
+            "access token expired (refreshes on the next sync)",
+        );
+    }
+    let minutes = (tokens.expires_at_unix - now) / SECONDS_PER_MINUTE;
+    format!("access token valid for {minutes} min")
 }
 
 /// The token store lives inside the vault, so the daemon must

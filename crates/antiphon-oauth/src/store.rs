@@ -85,6 +85,23 @@ impl TokenStore {
         })
     }
 
+    /// Deletes the named grant (and any half-written temp
+    /// file); an absent grant is fine, so revoking twice is a
+    /// no-op.
+    pub fn remove(&self, name: &str) -> Result<(), OauthError> {
+        validate_name(name)?;
+        for path in [self.temp_path(name), self.token_path(name)] {
+            match fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == ErrorKind::NotFound => {}
+                Err(error) => return Err(store_error(error)),
+            }
+        }
+        File::open(&self.dir)
+            .and_then(|dir| dir.sync_all())
+            .map_err(store_error)
+    }
+
     fn token_path(&self, name: &str) -> PathBuf {
         self.dir.join(format!("{name}.json"))
     }
@@ -218,6 +235,50 @@ mod tests {
             error,
             OauthError::NoStoredToken(name) if name == "absent"
         ));
+    }
+
+    #[test]
+    fn remove_deletes_only_the_named_grant() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = TokenStore::open(dir.path()).expect("open");
+        store.save("work-imap", &sample()).expect("save imap");
+        store.save("work-graph", &sample()).expect("save graph");
+
+        store.remove("work-imap").expect("remove");
+        assert!(matches!(
+            store.load("work-imap"),
+            Err(OauthError::NoStoredToken(_))
+        ));
+        assert!(store.load("work-graph").is_ok());
+    }
+
+    #[test]
+    fn removing_an_absent_grant_is_a_no_op() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = TokenStore::open(dir.path()).expect("open");
+        store.remove("never-stored").expect("absent is fine");
+        store.remove("never-stored").expect("and idempotent");
+    }
+
+    #[test]
+    fn remove_clears_a_stale_temp_file_too() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = TokenStore::open(dir.path()).expect("open");
+        store.save("acct", &sample()).expect("save");
+        let temp = dir.path().join("acct.json.tmp");
+        fs::write(&temp, b"half-written").expect("stale temp");
+
+        store.remove("acct").expect("remove");
+        assert!(!temp.exists());
+        assert!(!dir.path().join("acct.json").exists());
+    }
+
+    #[test]
+    fn remove_rejects_path_like_grant_names() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = TokenStore::open(dir.path()).expect("open");
+        let error = store.remove("../escape").expect_err("rejected");
+        assert!(matches!(error, OauthError::BadGrantName(_)));
     }
 
     #[test]

@@ -31,6 +31,7 @@ mod lists;
 mod mailops;
 mod mark_all_read;
 mod message_list;
+mod oauth_status;
 mod oauthflow;
 mod pager;
 mod pager_actions;
@@ -87,6 +88,9 @@ const EDITOR_POLL: Duration = Duration::from_millis(20);
 /// never hang on it. Queued work is durable either way.
 const IPC_WAIT: Duration = Duration::from_secs(2);
 const REFRESH_EVERY: Duration = Duration::from_secs(2);
+/// The auth-failure report changes rarely, so its Status
+/// request rides the refresh tick at a much lower cadence.
+const AUTH_POLL_EVERY: Duration = Duration::from_secs(30);
 /// A notice that nothing replaces fades on its own, so
 /// "sending: ..." cannot outlive the send it described.
 const NOTICE_TTL: Duration = Duration::from_secs(8);
@@ -211,6 +215,7 @@ fn event_loop(
 ) -> std::io::Result<()> {
     let mut last_refresh = Instant::now();
     let mut last_unread: Option<u32> = None;
+    let mut last_auth_poll: Option<Instant> = None;
     let mut notice_seen: Option<(String, Instant)> = None;
     while !app.quit {
         expire_notice(app, &mut notice_seen);
@@ -228,6 +233,7 @@ fn event_loop(
                 &mut last_refresh,
                 &mut last_unread,
             );
+            maybe_poll_auth(app, &mut last_auth_poll);
             continue;
         }
         let event = event::read()?;
@@ -391,6 +397,22 @@ fn maybe_refresh(
     let selected = app.selected;
     app.set_results(messages, fresh_total, query);
     app.selected = selected.min(app.messages.len().saturating_sub(1));
+}
+
+/// Refreshes the daemon's auth-failure report for the status
+/// line; silent when the daemon is down, so the last answer
+/// stands rather than flapping.
+fn maybe_poll_auth(app: &mut App, last: &mut Option<Instant>) {
+    if app.read_only {
+        return;
+    }
+    if last.is_some_and(|at| at.elapsed() < AUTH_POLL_EVERY) {
+        return;
+    }
+    *last = Some(Instant::now());
+    if let Some(failures) = daemon::auth_failures() {
+        app.auth_failures = failures;
+    }
 }
 
 fn run_search(app: &mut App, layout: &StoreLayout, raw: String) {

@@ -32,8 +32,12 @@ impl SettingsTab {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct AccountSummary {
     pub(super) name: String,
+    /// The `[account] name`, which keys the stored grants;
+    /// usually the file stem, but not necessarily.
+    pub(super) account_name: String,
     pub(super) address: String,
     pub(super) host: String,
+    pub(super) oauth: Option<super::oauth_status::OauthInfo>,
 }
 
 pub(super) struct SettingsState {
@@ -41,6 +45,7 @@ pub(super) struct SettingsState {
     pub(super) accounts: Vec<AccountSummary>,
     pub(super) account_selected: usize,
     pub(super) pending_delete: Option<String>,
+    pub(super) pending_revoke: Option<String>,
     pub(super) essentials_selected: usize,
     pub(super) daemon_hint: Option<String>,
     pub(super) folders: Vec<super::folders::FolderRow>,
@@ -58,12 +63,19 @@ pub(super) enum SettingsOutcome {
 
 impl App {
     pub(super) fn open_settings(&mut self) {
+        // One status poll per settings open keeps the daemon's
+        // auth-failure report current without chatter.
+        super::oauth_status::refresh_auth_failures(self);
         let folders = self.folder_rows();
         self.settings = Some(SettingsState {
             tab: SettingsTab::Accounts,
-            accounts: settings_accounts::account_summaries(&self.dirs),
+            accounts: settings_accounts::account_summaries(
+                &self.dirs,
+                &self.auth_failures,
+            ),
             account_selected: 0,
             pending_delete: None,
+            pending_revoke: None,
             essentials_selected: 0,
             daemon_hint: None,
             folders,
@@ -76,7 +88,10 @@ impl App {
     /// listing kept in memory, so add, edit and remove all
     /// settle here rather than each patching their own copy.
     pub(super) fn refresh_settings_accounts(&mut self) {
-        let accounts = settings_accounts::account_summaries(&self.dirs);
+        let accounts = settings_accounts::account_summaries(
+            &self.dirs,
+            &self.auth_failures,
+        );
         let Some(state) = self.settings.as_mut() else {
             return;
         };
@@ -91,6 +106,7 @@ pub(super) fn feed(app: &mut App, key: KeyEvent) -> SettingsOutcome {
         return SettingsOutcome::Close;
     };
     let pending_delete = state.pending_delete.clone();
+    let pending_revoke = state.pending_revoke.clone();
     let tab = state.tab;
     if app.oauth_flow.is_some() && key.code == KeyCode::Esc {
         super::oauthflow::cancel(app);
@@ -98,6 +114,11 @@ pub(super) fn feed(app: &mut App, key: KeyEvent) -> SettingsOutcome {
     }
     if let Some(name) = pending_delete {
         return settings_accounts::feed_confirm_delete(app, key, &name);
+    }
+    if let Some(name) = pending_revoke {
+        return super::oauth_status::feed_confirm_revoke(
+            app, key, &name,
+        );
     }
     match key.code {
         KeyCode::Esc => SettingsOutcome::Close,

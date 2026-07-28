@@ -329,6 +329,7 @@ mod tests {
             accounts: Vec::new(),
             account_selected: 0,
             pending_delete: None,
+            pending_revoke: None,
             essentials_selected: 0,
             daemon_hint: None,
             folders: app.folder_rows(),

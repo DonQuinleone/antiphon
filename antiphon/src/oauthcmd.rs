@@ -10,10 +10,8 @@ use antiphon_oauth::{
 };
 
 use crate::oauthgrants::{
-    account_grants, open_store, resolve_client_id,
+    account_grants, expiry, open_store, resolve_client_id,
 };
-
-const SECONDS_PER_MINUTE: u64 = 60;
 
 pub fn login(account: &str) -> ExitCode {
     report(run_login(account))
@@ -151,16 +149,6 @@ fn describe(label: &str, tokens: &TokenSet, now: u64) -> String {
         tokens.provider,
         expiry(tokens, now)
     )
-}
-
-fn expiry(tokens: &TokenSet, now: u64) -> String {
-    if tokens.expires_at_unix <= now {
-        return String::from(
-            "access token expired (refreshes on the next sync)",
-        );
-    }
-    let minutes = (tokens.expires_at_unix - now) / SECONDS_PER_MINUTE;
-    format!("access token valid for {minutes} min")
 }
 
 fn load_config() -> Result<(Dirs, Loaded), String> {

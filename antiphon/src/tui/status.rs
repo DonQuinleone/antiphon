@@ -94,6 +94,7 @@ fn status_line(app: &App) -> Line<'static> {
                 app.theme.name,
                 queued_suffix(app.pending_ops.len()),
             ) + &sync_suffix(app)
+                + &auth_suffix(app)
         }
     };
     Line::from(vec![
@@ -113,24 +114,25 @@ fn settings_status(app: &App, theme: &Theme) -> Line<'static> {
 }
 
 fn settings_hint(app: &App) -> String {
-    let Some(state) = &app.settings else {
-        return String::new();
-    };
     if let Some(flow) = &app.oauth_flow {
         return flow.status.clone();
     }
+    let Some(state) = &app.settings else {
+        return String::new();
+    };
     if app.folder_alias_edit.is_some() {
         return "type the alias \u{b7} enter saves \u{b7} \
              esc cancels"
             .to_string();
     }
-    if state.pending_delete.is_some() {
+    if state.pending_delete.is_some() || state.pending_revoke.is_some()
+    {
         return "y confirm \u{b7} any other key cancels".to_string();
     }
     match state.tab {
         SettingsTab::Accounts => "j/k select \u{b7} a add \u{b7} \
-             e edit \u{b7} o sign in \u{b7} d delete \u{b7} \
-             tab essentials \u{b7} esc back"
+             e edit \u{b7} o sign in \u{b7} x revoke \u{b7} \
+             d delete \u{b7} tab essentials \u{b7} esc back"
             .to_string(),
         SettingsTab::Essentials => "j/k select \u{b7} h/l change \
              \u{b7} tab folders \u{b7} esc back"
@@ -213,6 +215,23 @@ fn queued_suffix(pending: usize) -> String {
     format!(" \u{b7} {pending} queued for antiphond")
 }
 
+/// Accounts the daemon reports as needing a fresh OAuth
+/// sign-in surface here too, so the problem is visible
+/// without opening settings.
+fn auth_suffix(app: &App) -> String {
+    if app.auth_failures.is_empty() {
+        return String::new();
+    }
+    let verb = match app.auth_failures.len() {
+        1 => "needs",
+        _ => "need",
+    };
+    format!(
+        " \u{b7} auth: {} {verb} sign-in",
+        app.auth_failures.join(", ")
+    )
+}
+
 fn sync_suffix(app: &App) -> String {
     use antiphon_sync::SyncState;
 
@@ -229,4 +248,55 @@ fn sync_suffix(app: &App) -> String {
         progress.fetched,
         progress.total,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::testkit::app_with_messages;
+    use super::*;
+
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.clone().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn auth_failures_surface_in_the_status_line() {
+        let mut app = app_with_messages(1);
+        assert!(
+            !line_text(&status_line(&app)).contains("auth:"),
+            "quiet while every account is signed in"
+        );
+        app.auth_failures = vec!["work".to_string()];
+        let text = line_text(&status_line(&app));
+        assert!(text.contains("auth: work needs sign-in"), "{text}");
+        app.auth_failures.push("personal".to_string());
+        let text = line_text(&status_line(&app));
+        assert!(
+            text.contains("auth: work, personal need sign-in"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_notice_still_wins_over_the_auth_segment() {
+        let mut app = app_with_messages(1);
+        app.auth_failures = vec!["work".to_string()];
+        app.notice = Some("saved".to_string());
+        let text = line_text(&status_line(&app));
+        assert!(text.contains("saved"));
+        assert!(!text.contains("auth:"), "{text}");
+    }
+
+    #[test]
+    fn a_running_sign_in_owns_the_settings_hint() {
+        let mut app = app_with_messages(1);
+        app.view = View::Settings;
+        app.oauth_flow =
+            Some(super::super::oauthflow::test_flow("work"));
+        let text = line_text(&status_line(&app));
+        assert!(text.contains("waiting for work"), "{text}");
+    }
 }

@@ -91,6 +91,7 @@ fn draw_accounts(
             index == state.account_selected,
         ));
     }
+    push_oauth_detail(&mut lines, theme, state);
     if let Some(name) = &state.pending_delete {
         lines.push(Line::default());
         lines.push(Line::from(Span::styled(
@@ -98,7 +99,37 @@ fn draw_accounts(
             Style::new().fg(theme.accent_strong),
         )));
     }
+    if let Some(name) = &state.pending_revoke {
+        lines.push(Line::default());
+        lines.push(Line::from(Span::styled(
+            format!("revoke the sign-in for {name}? y/n"),
+            Style::new().fg(theme.accent_strong),
+        )));
+    }
     frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// The selected account's grant scopes and expiries, under
+/// the list, so the row itself stays one line.
+fn push_oauth_detail(
+    lines: &mut Vec<Line<'static>>,
+    theme: &Theme,
+    state: &SettingsState,
+) {
+    let detail = state
+        .accounts
+        .get(state.account_selected)
+        .and_then(|account| account.oauth.as_ref())
+        .map(|info| info.detail.clone())
+        .unwrap_or_default();
+    if detail.is_empty() {
+        return;
+    }
+    lines.push(Line::default());
+    lines.push(Line::from(Span::styled(
+        detail,
+        Style::new().fg(theme.text_muted),
+    )));
 }
 
 fn account_line(
@@ -113,10 +144,15 @@ fn account_line(
         style = style.bg(theme.selection_bg).fg(theme.selection_fg);
     }
     let position = index + 1;
+    let oauth = account
+        .oauth
+        .as_ref()
+        .map(|info| format!("  {}", info.label()))
+        .unwrap_or_default();
     Line::from(Span::styled(
         format!(
             "{marker}{position:>2} {:<NAME_WIDTH$}\
-             {:<ADDRESS_WIDTH$}{}",
+             {:<ADDRESS_WIDTH$}{}{oauth}",
             account.name, account.address, account.host
         ),
         style,
@@ -276,7 +312,9 @@ mod tests {
     use super::*;
 
     fn rendered(app: &App) -> ratatui::buffer::Buffer {
-        let backend = TestBackend::new(70, 12);
+        // Wide enough for a full account row with its OAuth
+        // state column.
+        let backend = TestBackend::new(100, 12);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|frame| draw_settings(frame, app, frame.area()))
@@ -297,11 +335,14 @@ mod tests {
             tab: SettingsTab::Accounts,
             accounts: vec![AccountSummary {
                 name: "work".to_string(),
+                account_name: "work".to_string(),
                 address: "quin@example.com".to_string(),
                 host: "imap.example.com".to_string(),
+                oauth: None,
             }],
             account_selected: 0,
             pending_delete: None,
+            pending_revoke: None,
             essentials_selected: 0,
             daemon_hint: None,
             folders: Vec::new(),
@@ -319,17 +360,60 @@ mod tests {
     }
 
     #[test]
+    fn an_oauth_account_row_wears_its_state_and_detail() {
+        use super::super::oauth_status::{OauthInfo, OauthState};
+
+        let mut app = app_with_messages(1);
+        app.settings = Some(SettingsState {
+            tab: SettingsTab::Accounts,
+            accounts: vec![AccountSummary {
+                name: "work".to_string(),
+                account_name: "work".to_string(),
+                address: "quin@example.com".to_string(),
+                host: "imap.example.com".to_string(),
+                oauth: Some(OauthInfo {
+                    state: OauthState::Ok { minutes_left: 42 },
+                    app_only: false,
+                    detail: "imap: scope \u{b7} valid".to_string(),
+                }),
+            }],
+            account_selected: 0,
+            pending_delete: None,
+            pending_revoke: Some("work".to_string()),
+            essentials_selected: 0,
+            daemon_hint: None,
+            folders: Vec::new(),
+            folder_selected: 0,
+        });
+        let buffer = rendered(&app);
+        let text: String =
+            (0..buffer.area.height).map(|y| row(&buffer, y)).collect();
+        assert!(
+            text.contains("oauth: ok (42 min)"),
+            "the row carries the state: {text}"
+        );
+        assert!(
+            text.contains("imap: scope"),
+            "the detail line follows the selection: {text}"
+        );
+        assert!(text.contains("revoke the sign-in for work? y/n"));
+    }
+
+    #[test]
     fn a_pending_delete_shows_the_confirmation() {
         let mut app = app_with_messages(1);
         app.settings = Some(SettingsState {
             tab: SettingsTab::Accounts,
             accounts: vec![AccountSummary {
                 name: "work".to_string(),
+                account_name: "work".to_string(),
                 address: String::new(),
                 host: String::new(),
+                oauth: None,
             }],
             account_selected: 0,
             pending_delete: Some("work".to_string()),
+            pending_revoke: None,
             essentials_selected: 0,
             daemon_hint: None,
             folders: Vec::new(),
@@ -349,6 +433,7 @@ mod tests {
             accounts: Vec::new(),
             account_selected: 0,
             pending_delete: None,
+            pending_revoke: None,
             essentials_selected: 0,
             daemon_hint: Some(
                 "takes effect when antiphond restarts".to_string(),
@@ -373,6 +458,7 @@ mod tests {
             accounts: Vec::new(),
             account_selected: 0,
             pending_delete: None,
+            pending_revoke: None,
             essentials_selected: 0,
             daemon_hint: None,
             folders: vec![

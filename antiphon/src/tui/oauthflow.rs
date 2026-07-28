@@ -242,6 +242,7 @@ fn finish(app: &mut App, result: Result<String, String>) {
             format!("sign-in for {} failed: {error}", flow.account)
         }
     });
+    super::oauth_status::refresh_auth_failures(app);
     app.refresh_settings_accounts();
 }
 

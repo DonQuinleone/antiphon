@@ -43,6 +43,17 @@ pub(super) fn nudge_daemon() {
     let _ = client.request(&Request::DrainOutbox);
 }
 
+/// The accounts the daemon reports as needing a fresh OAuth
+/// sign-in; `None` when it cannot be asked, so callers can
+/// degrade silently rather than flap.
+pub(super) fn auth_failures() -> Option<Vec<String>> {
+    let mut client = connect()?;
+    match client.request(&Request::Status) {
+        Ok(Response::Status(status)) => Some(status.auth_failures),
+        _ => None,
+    }
+}
+
 fn connect() -> Option<IpcClient> {
     let path = socket_path(|var| std::env::var_os(var));
     let client = IpcClient::connect(&path).ok()?;
