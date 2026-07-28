@@ -16,10 +16,7 @@ pub mod stub;
 
 #[cfg(any(test, feature = "stub"))]
 pub use app_only::app_only_token_at;
-pub use app_only::{
-    MICROSOFT_GRAPH_APP_SCOPES, app_only_token,
-    microsoft_tenant_token_url,
-};
+pub use app_only::{MICROSOFT_GRAPH_APP_SCOPES, app_only_token};
 pub use device::device_code_flow;
 pub use error::OauthError;
 pub use pkce::pkce_loopback_flow;
@@ -33,12 +30,30 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-pub const MICROSOFT_DEVICE_AUTH_URL: &str =
-    "https://login.microsoftonline.com/common/oauth2/v2.0/devicecode";
-pub const MICROSOFT_AUTH_URL: &str =
-    "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
-pub const MICROSOFT_TOKEN_URL: &str =
-    "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+const MICROSOFT_AUTHORITY: &str = "https://login.microsoftonline.com";
+/// The multi-tenant endpoint; tenant-restricted app
+/// registrations refuse it and need their tenant named.
+const COMMON_TENANT: &str = "common";
+
+pub fn microsoft_auth_url(tenant: Option<&str>) -> String {
+    microsoft_endpoint(tenant, "authorize")
+}
+
+pub fn microsoft_token_url(tenant: Option<&str>) -> String {
+    microsoft_endpoint(tenant, "token")
+}
+
+pub fn microsoft_device_auth_url(tenant: Option<&str>) -> String {
+    microsoft_endpoint(tenant, "devicecode")
+}
+
+fn microsoft_endpoint(tenant: Option<&str>, leaf: &str) -> String {
+    format!(
+        "{MICROSOFT_AUTHORITY}/{}/oauth2/v2.0/{leaf}",
+        tenant.unwrap_or(COMMON_TENANT)
+    )
+}
+
 pub const GOOGLE_AUTH_URL: &str =
     "https://accounts.google.com/o/oauth2/v2/auth";
 pub const GOOGLE_TOKEN_URL: &str =
@@ -57,15 +72,6 @@ pub enum Provider {
     Google,
 }
 
-impl Provider {
-    pub const fn token_url(self) -> &'static str {
-        match self {
-            Provider::Microsoft => MICROSOFT_TOKEN_URL,
-            Provider::Google => GOOGLE_TOKEN_URL,
-        }
-    }
-}
-
 impl fmt::Display for Provider {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -80,6 +86,20 @@ pub struct Grant {
     pub provider: Provider,
     pub scopes: String,
     pub client_id: String,
+    /// Microsoft only; `None` uses the multi-tenant /common/
+    /// endpoints. Google ignores it.
+    pub tenant: Option<String>,
+}
+
+impl Grant {
+    pub(crate) fn token_url(&self) -> String {
+        match self.provider {
+            Provider::Microsoft => {
+                microsoft_token_url(self.tenant.as_deref())
+            }
+            Provider::Google => GOOGLE_TOKEN_URL.to_string(),
+        }
+    }
 }
 
 pub struct VerificationPrompt {

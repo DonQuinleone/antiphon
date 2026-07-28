@@ -4,29 +4,25 @@ use secrecy::SecretString;
 
 use crate::client::{bad_endpoint, http_client, scope_list};
 use crate::error::map_token_error;
-use crate::{OauthError, Provider, TokenSet, token};
+use crate::{
+    OauthError, Provider, TokenSet, microsoft_token_url, token,
+};
 
 pub const MICROSOFT_GRAPH_APP_SCOPES: &str =
     "https://graph.microsoft.com/.default";
 
-/// App-only (client_credentials) tokens require a concrete
-/// tenant; the /common/ endpoint refuses the grant.
-pub fn microsoft_tenant_token_url(tenant: &str) -> String {
-    format!(
-        "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
-    )
-}
-
 /// Fetches an app-only Graph token: no user, no consent screen
 /// and no refresh token, so callers request a fresh one
-/// whenever the last goes stale instead of refreshing.
+/// whenever the last goes stale instead of refreshing. The
+/// tenant must be concrete; /common/ refuses this grant.
 pub fn app_only_token(
     tenant: &str,
     client_id: &str,
     client_secret: &SecretString,
 ) -> Result<TokenSet, OauthError> {
     app_only_token_at(
-        &microsoft_tenant_token_url(tenant),
+        &microsoft_token_url(Some(tenant)),
+        Some(tenant),
         client_id,
         client_secret,
     )
@@ -34,6 +30,7 @@ pub fn app_only_token(
 
 pub fn app_only_token_at(
     token_url: &str,
+    tenant: Option<&str>,
     client_id: &str,
     client_secret: &SecretString,
 ) -> Result<TokenSet, OauthError> {
@@ -69,5 +66,6 @@ pub fn app_only_token_at(
         scope: MICROSOFT_GRAPH_APP_SCOPES.to_owned(),
         client_id: client_id.to_owned(),
         provider: Provider::Microsoft,
+        tenant: tenant.map(str::to_owned),
     })
 }

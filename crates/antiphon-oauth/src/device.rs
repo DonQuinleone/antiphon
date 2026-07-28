@@ -10,8 +10,8 @@ use oauth2::{
 use crate::client::{bad_endpoint, http_client, scope_list};
 use crate::error::{map_device_error, map_token_error};
 use crate::{
-    Grant, MICROSOFT_DEVICE_AUTH_URL, MICROSOFT_TOKEN_URL, OauthError,
-    Provider, TokenSet, VerificationPrompt, token,
+    Grant, OauthError, Provider, TokenSet, VerificationPrompt,
+    microsoft_device_auth_url, token,
 };
 
 pub fn device_code_flow(
@@ -26,8 +26,8 @@ pub fn device_code_flow(
         )));
     }
     flow_at(
-        MICROSOFT_DEVICE_AUTH_URL,
-        MICROSOFT_TOKEN_URL,
+        &microsoft_device_auth_url(grant.tenant.as_deref()),
+        &grant.token_url(),
         grant,
         on_prompt,
         thread::sleep,

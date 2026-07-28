@@ -15,6 +15,11 @@ pub struct TokenSet {
     pub scope: String,
     pub client_id: String,
     pub provider: Provider,
+    /// The Microsoft tenant the grant was issued against, so a
+    /// refresh reaches the same authority; absent in stores
+    /// written before tenants existed.
+    #[serde(default)]
+    pub tenant: Option<String>,
 }
 
 impl TokenSet {
@@ -55,6 +60,7 @@ pub(crate) fn from_response(
         scope,
         client_id: grant.client_id.clone(),
         provider: grant.provider,
+        tenant: grant.tenant.clone(),
     })
 }
 

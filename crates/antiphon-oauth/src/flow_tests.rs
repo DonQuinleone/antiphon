@@ -20,6 +20,7 @@ fn microsoft_grant() -> Grant {
         provider: Provider::Microsoft,
         scopes: MICROSOFT_IMAP_SCOPES.to_string(),
         client_id: "client-app".to_string(),
+        tenant: None,
     }
 }
 
@@ -28,6 +29,7 @@ fn google_grant() -> Grant {
         provider: Provider::Google,
         scopes: GOOGLE_MAIL_SCOPES.to_string(),
         client_id: "client-app".to_string(),
+        tenant: None,
     }
 }
 
@@ -61,6 +63,7 @@ fn stored_set(refresh_token: &str) -> TokenSet {
         scope: MICROSOFT_IMAP_SCOPES.to_string(),
         client_id: "client-app".to_string(),
         provider: Provider::Microsoft,
+        tenant: None,
     }
 }
 
@@ -242,6 +245,7 @@ fn app_only_exchanges_client_credentials() {
     let secret = SecretString::from("s3cret");
     let tokens = crate::app_only::app_only_token_at(
         &format!("{}/token", stub.base_url),
+        Some("11111111-2222-3333-4444-555555555555"),
         "client-app",
         &secret,
     )
@@ -258,9 +262,9 @@ fn app_only_exchanges_client_credentials() {
 
 #[test]
 fn the_tenant_token_url_names_the_tenant() {
-    let url = crate::microsoft_tenant_token_url(
+    let url = crate::microsoft_token_url(Some(
         "11111111-2222-3333-4444-555555555555",
-    );
+    ));
     assert_eq!(
         url,
         "https://login.microsoftonline.com/\

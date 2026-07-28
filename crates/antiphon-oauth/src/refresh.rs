@@ -10,7 +10,7 @@ pub fn refresh(
     tokens: &TokenSet,
     grant: &Grant,
 ) -> Result<TokenSet, OauthError> {
-    refresh_at(grant.provider.token_url(), tokens, grant)
+    refresh_at(&grant.token_url(), tokens, grant)
 }
 
 pub fn refresh_at(

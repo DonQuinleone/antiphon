@@ -23,6 +23,8 @@ struct StoredTokenSet<'a> {
     scope: &'a str,
     client_id: &'a str,
     provider: Provider,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tenant: Option<&'a str>,
 }
 
 impl TokenStore {
@@ -52,6 +54,7 @@ impl TokenStore {
             scope: &tokens.scope,
             client_id: &tokens.client_id,
             provider: tokens.provider,
+            tenant: tokens.tenant.as_deref(),
         };
         let json = serde_json::to_vec_pretty(&stored)
             .map_err(|error| OauthError::Store(error.to_string()))?;
@@ -140,6 +143,7 @@ mod tests {
             scope: "https://mail.google.com/".to_string(),
             client_id: "client-1".to_string(),
             provider: Provider::Google,
+            tenant: None,
         }
     }
 

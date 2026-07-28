@@ -102,6 +102,7 @@ fn login_microsoft(
                 provider: Provider::Microsoft,
                 scopes: (*scopes).to_string(),
                 client_id: client_id.to_string(),
+                tenant: None,
             },
             &|prompt| {
                 println!(
@@ -127,6 +128,7 @@ fn login_google(
             provider: Provider::Google,
             scopes: GOOGLE_MAIL_SCOPES.to_string(),
             client_id: client_id.to_string(),
+            tenant: None,
         },
         &|prompt| {
             println!(
@@ -253,6 +255,7 @@ mod tests {
             scope: "https://mail.google.com/".to_string(),
             client_id: "client-app".to_string(),
             provider: Provider::Google,
+            tenant: None,
         }
     }
 

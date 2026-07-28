@@ -9,41 +9,33 @@ use oauth2::{
 use crate::client::{bad_endpoint, http_client, scope_list};
 use crate::error::map_token_error;
 use crate::{
-    BrowserPrompt, GOOGLE_AUTH_URL, GOOGLE_TOKEN_URL, Grant,
-    MICROSOFT_AUTH_URL, MICROSOFT_TOKEN_URL, OauthError, Provider,
-    TokenSet, loopback, token,
+    BrowserPrompt, GOOGLE_AUTH_URL, Grant, OauthError, Provider,
+    TokenSet, loopback, microsoft_auth_url, token,
 };
 
 struct Consent {
-    auth_url: &'static str,
-    token_url: &'static str,
+    auth_url: String,
     /// Google only issues a refresh token when asked for
     /// offline access with forced consent; Microsoft carries
     /// that in the offline_access scope instead.
     extra_params: &'static [(&'static str, &'static str)],
 }
 
-const CONSENTS: [(Provider, Consent); 2] = [
-    (
-        Provider::Google,
-        Consent {
-            auth_url: GOOGLE_AUTH_URL,
-            token_url: GOOGLE_TOKEN_URL,
+fn consent_for(grant: &Grant) -> Consent {
+    match grant.provider {
+        Provider::Google => Consent {
+            auth_url: GOOGLE_AUTH_URL.to_string(),
             extra_params: &[
                 ("access_type", "offline"),
                 ("prompt", "consent"),
             ],
         },
-    ),
-    (
-        Provider::Microsoft,
-        Consent {
-            auth_url: MICROSOFT_AUTH_URL,
-            token_url: MICROSOFT_TOKEN_URL,
+        Provider::Microsoft => Consent {
+            auth_url: microsoft_auth_url(grant.tenant.as_deref()),
             extra_params: &[],
         },
-    ),
-];
+    }
+}
 
 /// Microsoft app registrations need a Mobile and desktop
 /// platform redirect of http://127.0.0.1 for this flow; the
@@ -52,14 +44,10 @@ pub fn pkce_loopback_flow(
     grant: &Grant,
     on_prompt: &dyn Fn(&BrowserPrompt),
 ) -> Result<TokenSet, OauthError> {
-    let consent = CONSENTS
-        .iter()
-        .find(|(provider, _)| *provider == grant.provider)
-        .map(|(_, consent)| consent)
-        .expect("every provider has a consent entry");
+    let consent = consent_for(grant);
     flow_at(
-        consent.auth_url,
-        consent.token_url,
+        &consent.auth_url,
+        &grant.token_url(),
         consent.extra_params,
         grant,
         on_prompt,

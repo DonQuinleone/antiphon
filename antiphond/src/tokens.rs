@@ -95,6 +95,7 @@ fn renew(
         provider: stored.provider,
         scopes: stored.scope.clone(),
         client_id: stored.client_id.clone(),
+        tenant: stored.tenant.clone(),
     };
     let renewed = refresh(stored, &grant).map_err(|error| {
         format!("{account}: refreshing the OAuth token: {error}")
@@ -124,6 +125,7 @@ mod tests {
             scope: "https://mail.google.com/".to_string(),
             client_id: "client-app".to_string(),
             provider: Provider::Google,
+            tenant: None,
         }
     }
 
