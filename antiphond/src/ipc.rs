@@ -84,6 +84,11 @@ impl Daemon {
             vault: self.vault,
             last_sync_unix: state.last_sync_unix,
             pending_ops: state.log.unsynced().len() as u64,
+            auth_failures: state
+                .auth_failures
+                .iter()
+                .cloned()
+                .collect(),
         }
     }
 }
@@ -188,6 +193,7 @@ mod tests {
         let state = Arc::new(Mutex::new(MailState {
             log,
             last_sync_unix: Some(LAST_SYNC),
+            auth_failures: Default::default(),
         }));
         let (plan_tx, plans) = channel();
         let (release, release_rx) = channel::<()>();

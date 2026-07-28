@@ -73,6 +73,11 @@ pub struct DaemonStatus {
     pub vault: VaultState,
     pub last_sync_unix: Option<u64>,
     pub pending_ops: u64,
+    /// Accounts whose OAuth grant could not produce a usable
+    /// access token; each needs a fresh sign-in. Defaults keep
+    /// older daemons readable.
+    #[serde(default)]
+    pub auth_failures: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,7 +126,17 @@ mod tests {
             vault: VaultState::Open,
             last_sync_unix: Some(1_700_000_000),
             pending_ops: 3,
+            auth_failures: vec!["work".into()],
         }
+    }
+
+    #[test]
+    fn a_status_without_auth_failures_still_parses() {
+        let legacy = r#"{"version":"0.0.0","vault":"open",
+            "last_sync_unix":null,"pending_ops":0}"#;
+        let status: DaemonStatus =
+            serde_json::from_str(legacy).unwrap();
+        assert!(status.auth_failures.is_empty());
     }
 
     #[test]

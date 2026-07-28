@@ -112,10 +112,12 @@ impl Mailflow {
         let token = match self.oauth_token(spec, false) {
             Ok(token) => token,
             Err(message) => {
+                self.mark_auth_failure(&spec.name);
                 eprintln!("{message}");
                 return;
             }
         };
+        self.clear_auth_failure(&spec.name);
         let mut outcome = sync(&spec.sync_account(token), &self.layout);
         if matches!(outcome, Err(SyncError::Login { .. })) {
             eprintln!(
@@ -129,10 +131,14 @@ impl Mailflow {
                         sync(&spec.sync_account(token), &self.layout);
                 }
                 Err(message) => {
+                    self.mark_auth_failure(&spec.name);
                     eprintln!("{message}");
                     return;
                 }
             }
+        }
+        if matches!(outcome, Err(SyncError::Login { .. })) {
+            self.mark_auth_failure(&spec.name);
         }
         match outcome {
             Ok(report) => {
@@ -146,6 +152,16 @@ impl Mailflow {
                 );
             }
         }
+    }
+
+    fn mark_auth_failure(&self, account: &str) {
+        lock_state(&self.state)
+            .auth_failures
+            .insert(account.to_string());
+    }
+
+    fn clear_auth_failure(&self, account: &str) {
+        lock_state(&self.state).auth_failures.remove(account);
     }
 
     pub(crate) fn oauth_token(

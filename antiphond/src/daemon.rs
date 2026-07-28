@@ -27,6 +27,10 @@ const CLIENT_READ_TIMEOUT: Duration = Duration::from_secs(5);
 pub(crate) struct MailState {
     pub(crate) log: OpLog,
     pub(crate) last_sync_unix: Option<u64>,
+    /// Accounts whose OAuth tokens failed beyond refresh this
+    /// epoch; cleared per account the moment a sync gets a
+    /// token again, and surfaced through Status.
+    pub(crate) auth_failures: std::collections::BTreeSet<String>,
 }
 
 pub(crate) type SharedState = Arc<Mutex<MailState>>;
@@ -167,6 +171,7 @@ pub fn run() -> ExitCode {
     let state: SharedState = Arc::new(Mutex::new(MailState {
         log,
         last_sync_unix: None,
+        auth_failures: Default::default(),
     }));
     let set: SharedAccounts =
         Arc::new(Mutex::new(AccountSet::from_loaded(&loaded)));
