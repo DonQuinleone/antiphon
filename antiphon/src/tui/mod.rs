@@ -10,6 +10,7 @@ mod cells;
 mod commands;
 mod complete;
 mod compose;
+mod compose_assembly;
 pub(crate) mod configedit;
 mod crypto;
 mod daemon;
