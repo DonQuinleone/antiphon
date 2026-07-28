@@ -30,6 +30,7 @@ mod lists;
 mod mailops;
 mod mark_all_read;
 mod message_list;
+mod oauthflow;
 mod pager;
 mod pager_actions;
 mod pager_body;
@@ -214,6 +215,7 @@ fn event_loop(
     let mut notice_seen: Option<(String, Instant)> = None;
     while !app.quit {
         expire_notice(app, &mut notice_seen);
+        oauthflow::poll(app);
         tick_editor(terminal, app)?;
         preview::refresh(app);
         let drawing = Instant::now();

@@ -5,6 +5,7 @@ mod doctor;
 mod export;
 mod exportcmd;
 mod oauthcmd;
+mod oauthgrants;
 mod sendmail;
 mod setup;
 mod tui;

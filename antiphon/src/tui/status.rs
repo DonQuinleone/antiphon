@@ -116,6 +116,9 @@ fn settings_hint(app: &App) -> String {
     let Some(state) = &app.settings else {
         return String::new();
     };
+    if let Some(flow) = &app.oauth_flow {
+        return flow.status.clone();
+    }
     if app.folder_alias_edit.is_some() {
         return "type the alias \u{b7} enter saves \u{b7} \
              esc cancels"
@@ -126,8 +129,8 @@ fn settings_hint(app: &App) -> String {
     }
     match state.tab {
         SettingsTab::Accounts => "j/k select \u{b7} a add \u{b7} \
-             e edit \u{b7} d delete \u{b7} tab essentials \u{b7} \
-             esc back"
+             e edit \u{b7} o sign in \u{b7} d delete \u{b7} \
+             tab essentials \u{b7} esc back"
             .to_string(),
         SettingsTab::Essentials => "j/k select \u{b7} h/l change \
              \u{b7} tab folders \u{b7} esc back"

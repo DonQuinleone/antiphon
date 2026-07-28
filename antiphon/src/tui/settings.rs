@@ -92,6 +92,10 @@ pub(super) fn feed(app: &mut App, key: KeyEvent) -> SettingsOutcome {
     };
     let pending_delete = state.pending_delete.clone();
     let tab = state.tab;
+    if app.oauth_flow.is_some() && key.code == KeyCode::Esc {
+        super::oauthflow::cancel(app);
+        return SettingsOutcome::Stay;
+    }
     if let Some(name) = pending_delete {
         return feed_confirm_delete(app, key, &name);
     }
@@ -149,6 +153,12 @@ fn feed_accounts(app: &mut App, key: KeyEvent) -> SettingsOutcome {
         }
         KeyCode::Char('d') => {
             arm_delete(app);
+            SettingsOutcome::Stay
+        }
+        KeyCode::Char('o') => {
+            if let Some(name) = selected_account_name(app) {
+                super::oauthflow::authorise(app, &name);
+            }
             SettingsOutcome::Stay
         }
         _ => SettingsOutcome::Stay,
@@ -412,6 +422,24 @@ mod tests {
         let form =
             app.account_form.as_ref().expect("edit opens a form");
         assert_eq!(form.editing.as_deref(), Some("work"));
+    }
+
+    #[test]
+    fn esc_cancels_a_running_sign_in_instead_of_closing() {
+        let mut app = app_with_settings(&["work"]);
+        app.oauth_flow =
+            Some(super::super::oauthflow::test_flow("work"));
+        assert_eq!(
+            feed(&mut app, key(KeyCode::Esc)),
+            SettingsOutcome::Stay
+        );
+        assert!(app.oauth_flow.is_none());
+        assert!(app.settings.is_some(), "settings stay open");
+        assert_eq!(
+            feed(&mut app, key(KeyCode::Esc)),
+            SettingsOutcome::Close,
+            "the next esc closes as usual"
+        );
     }
 
     #[test]

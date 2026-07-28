@@ -95,6 +95,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
             .interval_minutes,
         sync_idle: false,
         settings: None,
+        oauth_flow: None,
         date_format: String::new(),
         notice: None,
         prompt: None,
