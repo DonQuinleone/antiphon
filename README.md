@@ -96,9 +96,23 @@ mystery.
 - **A daemon that behaves.** antiphond syncs on a timer, sends
   from a crash-safe outbox, files your sent mail, uploads
   drafts, applies your filing rules and posts desktop
-  notifications. It answers instantly even mid-sync, and it
-  runs under launchd, systemd, dinit, runit or plain
-  `antiphon` launch.
+  notifications. It answers instantly even mid-sync, picks up
+  account changes over IPC without a restart, and runs under
+  launchd, systemd, dinit, runit or plain `antiphon` launch.
+- **Modern auth, all three flavours.** Microsoft 365 and
+  Google sign in over OAuth (browser or device code, tokens in
+  the vault, silent refresh), and Exchange tenants that block
+  SMTP can send through Microsoft Graph with a delegated grant
+  or app-only client credentials, tenants included.
+- **Accounts your way.** Order accounts explicitly, pick the
+  primary, and browse them combined in one sidebar or as tabs
+  (`g1`..`g9`, `gu` for unified). Folders reorder, hide from
+  the sidebar, or drop out of sync entirely, each with its own
+  per-account list.
+- **Leaving is not losing.** `antiphon export` writes any
+  account's Maildir as an age-encrypted archive fit for a NAS,
+  and `antiphon view` opens one read-only years later, search
+  and all, with no account and no server.
 - **OpenPGP without ceremony.** Verification against a keyring
   you curate; signing and decryption through gpg-agent, so
   pinentry and your smartcard work exactly as they do
