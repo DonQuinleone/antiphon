@@ -148,11 +148,18 @@ _$XDG_CONFIG_HOME/antiphon/accounts/\*.toml_
 	One file per mail account: IMAP, SMTP, identities, filing
 	rules and, optionally, OAuth and Microsoft Graph settings.
 	The settings Accounts tab's add/edit form covers the
-	common keys, including the OAuth provider, *client_id*
-	and the Graph send toggle with its *tenant*; it edits
-	files surgically, so hand-written keys and comments
-	survive. An account with an *[oauth]* provider needs no
-	*password_cmd*.
+	common keys. A segmented *account type* toggle (IMAP,
+	Microsoft 365 or Google) leads the form and drives the
+	rest: IMAP takes a *password_cmd* (or, on macOS, a
+	Keychain secret), the OAuth types take an optional
+	*client_id* (overridable per run with
+	*ANTIPHON_MS_CLIENT_ID* or *ANTIPHON_GOOGLE_CLIENT_ID*),
+	and Microsoft 365 adds the Graph send and auth toggles,
+	a *tenant* and, for app-only, a *secret_cmd*. Editing an
+	existing account infers its type from the *[oauth]* and
+	*[graph]* config. The form edits files surgically, so
+	hand-written keys and comments survive a type change. An
+	account with an *[oauth]* provider needs no *password_cmd*.
 	A *[graph]* table with *send = true* routes outgoing mail
 	through Microsoft Graph: *auth = "delegated"* (the default)
 	uses a signed-in grant from *oauth login*, honouring an
