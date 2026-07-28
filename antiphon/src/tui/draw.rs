@@ -80,11 +80,6 @@ pub fn draw(frame: &mut Frame, app: &App) {
         super::folder_picker::draw_picker(frame, app, area);
         return;
     }
-    let (tab_bar, content) =
-        super::tabs::split_tab_bar(content, app.accounts_bar);
-    if let Some(tab_bar) = tab_bar {
-        super::tabs::draw_tab_bar(frame, app, tab_bar);
-    }
     let (sidebar, main) =
         split_sidebar(content, app.sidebar, app.sidebar_width);
     if let Some(sidebar) = sidebar {
@@ -452,6 +447,28 @@ mod tests {
         app.reading_pane = ReadingPane::Right;
         let split_right = rendered(&app, 80, 30);
         assert_eq!(subject_rows(&split_right), expected);
+    }
+
+    #[test]
+    fn tabs_mode_reserves_no_bar_row_so_the_list_reclaims_it() {
+        let mut app = crowded_app(40);
+        app.list_rows = 7;
+        app.reading_pane = ReadingPane::Off;
+        let sidebar_mode = subject_rows(&rendered(&app, 80, 30));
+
+        app.accounts_bar = antiphon_config::AccountsBar::Tabs;
+        let expected =
+            30 - STATUS_HEIGHT as usize - LIST_HEADER_ROWS as usize;
+        assert_eq!(
+            subject_rows(&rendered(&app, 80, 30)),
+            expected,
+            "no tab-bar row is reserved above the list"
+        );
+        assert_eq!(
+            subject_rows(&rendered(&app, 80, 30)),
+            sidebar_mode,
+            "tabs mode fits the same rows as sidebar mode"
+        );
     }
 
     #[test]

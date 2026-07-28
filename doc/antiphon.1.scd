@@ -24,10 +24,11 @@ setup* for a guided first run.
 
 Once open, the interface is a sidebar, a message list and a
 reading pane, entirely keyboard driven and fully rebindable.
-With *ui.accounts_bar = "tabs"* a one-line tab bar above the
-panes names *unified* and every account, and the sidebar shows
-only the active account's folders plus the searches. In either
-mode *g1*..*g9* jump to account 1..9, *gu* to unified, and
+With *ui.accounts_bar = "tabs"* the sidebar shows only the
+active account's folders plus the searches, and the status bar
+names the active account (or *unified*); there is no separate
+tab bar, so the reclaimed row goes to the message list. In
+either mode *g1*..*g9* jump to account 1..9, *gu* to unified, and
 *gt*/*gT* cycle (actions *account-1*..*account-9* and
 *account-unified*). Press *?* at any time for the live
 keybinding cheatsheet. The full key reference, theme gallery

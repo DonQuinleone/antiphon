@@ -1,7 +1,7 @@
 use antiphon_ui::Theme;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
@@ -81,25 +81,35 @@ fn status_line(app: &App) -> Line<'static> {
     if let Some(state) = &app.compose {
         return compose_status(app, theme, state);
     }
-    let text = match &app.notice {
-        Some(notice) => notice.clone(),
-        None => {
-            format!(
-                "{}{} of {} messages \u{b7} {} unread shown \u{b7} \
-             theme {}{}",
-                context_prefix(app),
-                app.messages.len(),
-                app.total_messages,
-                app.unread_count(),
-                app.theme.name,
-                queued_suffix(app.pending_ops.len()),
-            ) + &sync_suffix(app)
-                + &auth_suffix(app)
-        }
-    };
+    if let Some(notice) = &app.notice {
+        return Line::from(vec![
+            Span::styled(UNREAD_MARK, Style::new().fg(theme.accent)),
+            Span::styled(
+                notice.clone(),
+                Style::new().fg(theme.text_muted),
+            ),
+        ]);
+    }
+    let detail = format!(
+        "{}{} of {} messages \u{b7} {} unread shown \u{b7} \
+         theme {}{}",
+        context_detail(app),
+        app.messages.len(),
+        app.total_messages,
+        app.unread_count(),
+        app.theme.name,
+        queued_suffix(app.pending_ops.len()),
+    ) + &sync_suffix(app)
+        + &auth_suffix(app);
     Line::from(vec![
         Span::styled(UNREAD_MARK, Style::new().fg(theme.accent)),
-        Span::styled(text, Style::new().fg(theme.text_muted)),
+        Span::styled(
+            app.scope.label().to_string(),
+            Style::new()
+                .fg(theme.accent_strong)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(detail, Style::new().fg(theme.text_muted)),
     ])
 }
 
@@ -188,15 +198,14 @@ fn compose_hint(
     }
 }
 
-fn context_prefix(app: &App) -> String {
-    let scope = app.scope.label();
+/// The scope name is its own span so it reads as the active
+/// account indicator; this is what trails it: the active saved
+/// search or a non-default query, otherwise just the separator.
+fn context_detail(app: &App) -> String {
     match &app.active_search {
-        Some(name) => format!("{scope} \u{b7} {name} \u{b7} "),
+        Some(name) => format!(" \u{b7} {name} \u{b7} "),
         None => {
-            format!(
-                "{scope} \u{b7} {}",
-                query_prefix(&app.current_query)
-            )
+            format!(" \u{b7} {}", query_prefix(&app.current_query))
         }
     }
 }
@@ -252,6 +261,7 @@ fn sync_suffix(app: &App) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::scope::ViewScope;
     use super::super::testkit::app_with_messages;
     use super::*;
 
@@ -288,6 +298,22 @@ mod tests {
         let text = line_text(&status_line(&app));
         assert!(text.contains("saved"));
         assert!(!text.contains("auth:"), "{text}");
+    }
+
+    #[test]
+    fn the_scope_names_the_active_account_as_its_own_span() {
+        let mut app = app_with_messages(1);
+        app.scope = ViewScope::Account("work".into());
+        let line = status_line(&app);
+        let scope = &line.spans[1];
+        assert_eq!(scope.content, "work");
+        assert!(
+            scope.style.add_modifier.contains(Modifier::BOLD),
+            "the sole indicator stands out from the muted detail"
+        );
+
+        app.scope = ViewScope::Unified;
+        assert_eq!(status_line(&app).spans[1].content, "unified");
     }
 
     #[test]

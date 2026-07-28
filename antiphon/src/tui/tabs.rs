@@ -1,20 +1,12 @@
-//! The tabbed accounts mode (`ui.accounts_bar = "tabs"`): a
-//! one-line bar above the sidebar and list naming unified and
-//! every account, plus the g1..g9/gu jumps that also work in
-//! sidebar mode.
+//! The tabbed accounts mode (`ui.accounts_bar = "tabs"`): the
+//! sidebar shows only the active account's folders and the
+//! status bar names it, driven by the g1..g9/gu jumps that also
+//! work in sidebar mode.
 
 use antiphon_config::AccountsBar;
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
 
 use super::app::App;
 use super::scope::ViewScope;
-
-const UNIFIED_LABEL: &str = "unified";
-const TAB_BAR_HEIGHT: u16 = 1;
 
 impl App {
     /// g1..g9 jump straight to that account's scope; a number
@@ -50,56 +42,6 @@ impl App {
             self.rebuild_sidebar();
         }
     }
-}
-
-/// Reserves the bar's line above the given area in tabs mode;
-/// sidebar mode passes the area through untouched.
-pub(super) fn split_tab_bar(
-    area: Rect,
-    mode: AccountsBar,
-) -> (Option<Rect>, Rect) {
-    if mode == AccountsBar::Sidebar {
-        return (None, area);
-    }
-    let [bar, rest] = Layout::vertical([
-        Constraint::Length(TAB_BAR_HEIGHT),
-        Constraint::Min(0),
-    ])
-    .areas(area);
-    (Some(bar), rest)
-}
-
-pub(super) fn draw_tab_bar(frame: &mut Frame, app: &App, area: Rect) {
-    frame.render_widget(Paragraph::new(tab_line(app)), area);
-}
-
-fn tab_line(app: &App) -> Line<'static> {
-    let mut spans = vec![tab_span(
-        app,
-        UNIFIED_LABEL.to_string(),
-        app.scope == ViewScope::Unified,
-    )];
-    for (index, account) in app.accounts.iter().enumerate() {
-        let active = matches!(
-            &app.scope,
-            ViewScope::Account(current) if current == account
-        );
-        let label = format!("{}:{account}", index + 1);
-        spans.push(tab_span(app, label, active));
-    }
-    Line::from(spans)
-}
-
-fn tab_span(app: &App, label: String, active: bool) -> Span<'static> {
-    let theme = app.theme;
-    let style = if active {
-        Style::new()
-            .fg(theme.accent_strong)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::new().fg(theme.text_muted)
-    };
-    Span::styled(format!(" {label} "), style)
 }
 
 #[cfg(test)]
@@ -185,29 +127,5 @@ mod tests {
             labels(&app),
             ["inbox", "archive", "all", "inbox", "unread", "flagged"],
         );
-    }
-
-    #[test]
-    fn the_bar_reserves_one_line_only_in_tabs_mode() {
-        let area = Rect::new(0, 0, 40, 10);
-        let (bar, rest) = split_tab_bar(area, AccountsBar::Sidebar);
-        assert!(bar.is_none());
-        assert_eq!(rest, area);
-        let (bar, rest) = split_tab_bar(area, AccountsBar::Tabs);
-        assert_eq!(bar.unwrap().height, 1);
-        assert_eq!(rest.height, 9);
-    }
-
-    #[test]
-    fn the_tab_line_numbers_accounts_and_marks_the_active_one() {
-        let mut app = tabbed_app();
-        app.scope = ViewScope::Account("b".into());
-        let line = tab_line(&app);
-        let text: String = line
-            .spans
-            .iter()
-            .map(|span| span.content.clone().into_owned())
-            .collect();
-        assert_eq!(text, " unified  1:a  2:b ");
     }
 }
