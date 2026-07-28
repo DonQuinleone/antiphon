@@ -169,6 +169,7 @@ pub(super) fn app_with_settings(accounts: &[&str]) -> App {
                 account_name: (*name).to_string(),
                 address: format!("{name}@example.com"),
                 host: format!("imap.{name}.example.com"),
+                kind: super::settings::ServerKind::Imap,
                 oauth: None,
             })
             .collect(),

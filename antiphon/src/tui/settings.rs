@@ -29,6 +29,17 @@ impl SettingsTab {
     }
 }
 
+/// What the row shows in the server column. OAuth providers
+/// name themselves; an IMAP account shows its host. The
+/// auto-filled provider hosts are long and read-together with
+/// the address, so a short provider label stands in their place.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ServerKind {
+    Imap,
+    Microsoft,
+    Google,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct AccountSummary {
     pub(super) name: String,
@@ -37,7 +48,18 @@ pub(super) struct AccountSummary {
     pub(super) account_name: String,
     pub(super) address: String,
     pub(super) host: String,
+    pub(super) kind: ServerKind,
     pub(super) oauth: Option<super::oauth_status::OauthInfo>,
+}
+
+impl AccountSummary {
+    pub(super) fn server_label(&self) -> &str {
+        match self.kind {
+            ServerKind::Microsoft => "MS365",
+            ServerKind::Google => "Google",
+            ServerKind::Imap => &self.host,
+        }
+    }
 }
 
 pub(super) struct SettingsState {

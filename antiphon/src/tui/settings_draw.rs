@@ -9,6 +9,7 @@ use super::app::App;
 use super::draw::segmented::{self, SegmentStyle};
 use super::folders::FolderRow;
 use super::headers::with_cursor;
+use super::oauth_status::OauthState;
 use super::settings::{SettingsState, SettingsTab};
 use super::settingscmd::{self, EssentialRow};
 
@@ -148,19 +149,37 @@ fn account_line(
         style = style.bg(theme.selection_bg).fg(theme.selection_fg);
     }
     let position = index + 1;
-    let oauth = account
-        .oauth
-        .as_ref()
-        .map(|info| format!("  {}", info.label()))
-        .unwrap_or_default();
-    Line::from(Span::styled(
+    let mut spans = vec![Span::styled(
         format!(
             "{marker}{position:>2} {:<NAME_WIDTH$}\
-             {:<ADDRESS_WIDTH$}{}{oauth}",
-            account.name, account.address, account.host
+             {:<ADDRESS_WIDTH$} {}",
+            account.name,
+            account.address,
+            account.server_label(),
         ),
         style,
-    ))
+    )];
+    if let Some(info) = &account.oauth {
+        spans.push(Span::styled(
+            format!("  {}", info.label()),
+            oauth_style(theme, info, style),
+        ));
+    }
+    Line::from(spans)
+}
+
+/// The needs-sign-in state is the one the user must act on, so
+/// it wears the warning colour; every other state keeps the
+/// row's own styling.
+fn oauth_style(
+    theme: &Theme,
+    info: &super::oauth_status::OauthInfo,
+    row_style: Style,
+) -> Style {
+    if matches!(info.state, OauthState::NeedsSignIn) {
+        return row_style.fg(theme.status_error);
+    }
+    row_style
 }
 
 fn draw_essentials(

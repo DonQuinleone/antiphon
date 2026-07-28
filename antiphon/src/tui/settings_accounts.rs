@@ -1,11 +1,13 @@
 //! The settings Accounts tab: selection, ordering, add/edit,
 //! delete and the OAuth sign-in entry point.
 
-use antiphon_config::{Dirs, NamedAccount};
+use antiphon_config::{Dirs, NamedAccount, OauthProvider};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use super::app::App;
-use super::settings::{AccountSummary, SettingsOutcome, wrapped};
+use super::settings::{
+    AccountSummary, ServerKind, SettingsOutcome, wrapped,
+};
 use super::settingscmd;
 
 pub(super) fn feed_accounts(
@@ -204,12 +206,21 @@ fn summary_of(
             .map(|identity| identity.address.clone())
             .unwrap_or_default(),
         host: entry.account.imap.host.clone(),
+        kind: server_kind(entry),
         oauth: super::oauth_status::info_for(
             entry,
             store,
             auth_failures,
             now,
         ),
+    }
+}
+
+fn server_kind(entry: &NamedAccount) -> ServerKind {
+    match entry.account.oauth.as_ref().map(|oauth| oauth.provider) {
+        Some(OauthProvider::Microsoft) => ServerKind::Microsoft,
+        Some(OauthProvider::Google) => ServerKind::Google,
+        None => ServerKind::Imap,
     }
 }
 
@@ -231,6 +242,47 @@ mod tests {
             code,
             ratatui::crossterm::event::KeyModifiers::NONE,
         )
+    }
+
+    #[test]
+    fn summaries_carry_the_provider_kind_and_the_imap_host() {
+        let dir = TempDir::new();
+        let accounts_dir = dir.path.join("accounts");
+        std::fs::create_dir_all(&accounts_dir).unwrap();
+        std::fs::write(
+            accounts_dir.join("gg.toml"),
+            "[account]\nname = \"gg\"\n\n\
+             [imap]\nhost = \"imap.gmail.com\"\nuser = \"u\"\n\n\
+             [oauth]\nprovider = \"google\"\n\n\
+             [[identity]]\naddress = \"u@example.com\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            accounts_dir.join("plain.toml"),
+            "[account]\nname = \"plain\"\n\n\
+             [imap]\nhost = \"imap.example.com\"\nuser = \"u\"\n",
+        )
+        .unwrap();
+
+        let dirs = Dirs {
+            config: dir.path.clone(),
+            state: dir.path.join("state"),
+            cache: dir.path.join("cache"),
+            data: dir.path.join("data"),
+        };
+        let summaries = account_summaries(&dirs, &[]);
+        let google = summaries
+            .iter()
+            .find(|summary| summary.name == "gg")
+            .expect("the google account");
+        assert_eq!(google.kind, ServerKind::Google);
+        assert_eq!(google.server_label(), "Google");
+        let plain = summaries
+            .iter()
+            .find(|summary| summary.name == "plain")
+            .expect("the imap account");
+        assert_eq!(plain.kind, ServerKind::Imap);
+        assert_eq!(plain.server_label(), "imap.example.com");
     }
 
     #[test]

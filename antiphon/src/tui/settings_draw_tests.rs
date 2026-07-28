@@ -3,7 +3,7 @@ use ratatui::backend::TestBackend;
 
 use antiphon_config::ReadingPane;
 
-use super::super::settings::AccountSummary;
+use super::super::settings::{AccountSummary, ServerKind};
 use super::super::testkit::app_with_messages;
 use super::*;
 
@@ -34,6 +34,7 @@ fn accounts_tab_lists_name_address_and_host() {
             account_name: "work".to_string(),
             address: "quin@example.com".to_string(),
             host: "imap.example.com".to_string(),
+            kind: ServerKind::Imap,
             oauth: None,
         }],
         account_selected: 0,
@@ -67,6 +68,7 @@ fn an_oauth_account_row_wears_its_state_and_detail() {
             account_name: "work".to_string(),
             address: "quin@example.com".to_string(),
             host: "imap.example.com".to_string(),
+            kind: ServerKind::Imap,
             oauth: Some(OauthInfo {
                 state: OauthState::Ok { minutes_left: 42 },
                 app_only: false,
@@ -96,6 +98,100 @@ fn an_oauth_account_row_wears_its_state_and_detail() {
 }
 
 #[test]
+fn oauth_rows_name_the_provider_not_the_host() {
+    use super::super::oauth_status::{OauthInfo, OauthState};
+
+    let mut app = app_with_messages(1);
+    app.settings = Some(SettingsState {
+        tab: SettingsTab::Accounts,
+        accounts: vec![
+            AccountSummary {
+                name: "ms".to_string(),
+                account_name: "ms".to_string(),
+                address: "josh@example.org".to_string(),
+                host: "outlook.office365.com".to_string(),
+                kind: ServerKind::Microsoft,
+                oauth: Some(OauthInfo {
+                    state: OauthState::Ok { minutes_left: 5 },
+                    app_only: false,
+                    detail: String::new(),
+                }),
+            },
+            AccountSummary {
+                name: "gg".to_string(),
+                account_name: "gg".to_string(),
+                address: "josh@example.com".to_string(),
+                host: "imap.gmail.com".to_string(),
+                kind: ServerKind::Google,
+                oauth: Some(OauthInfo {
+                    state: OauthState::Ok { minutes_left: 5 },
+                    app_only: false,
+                    detail: String::new(),
+                }),
+            },
+        ],
+        account_selected: 0,
+        pending_delete: None,
+        pending_revoke: None,
+        essentials_selected: 0,
+        daemon_hint: None,
+        folders: Vec::new(),
+        folder_selected: 0,
+    });
+    let buffer = rendered(&app);
+    let text: String =
+        (0..buffer.area.height).map(|y| row(&buffer, y)).collect();
+    assert!(
+        text.contains("MS365"),
+        "microsoft rows read MS365: {text}"
+    );
+    assert!(text.contains("Google"), "google rows read Google: {text}");
+    assert!(
+        !text.contains("office365") && !text.contains("gmail"),
+        "the provider host never abuts the address: {text}"
+    );
+}
+
+#[test]
+fn a_needs_sign_in_row_wears_the_warning_colour() {
+    use super::super::oauth_status::{OauthInfo, OauthState};
+
+    let mut app = app_with_messages(1);
+    app.settings = Some(SettingsState {
+        tab: SettingsTab::Accounts,
+        accounts: vec![AccountSummary {
+            name: "ms".to_string(),
+            account_name: "ms".to_string(),
+            address: "josh@example.org".to_string(),
+            host: "outlook.office365.com".to_string(),
+            kind: ServerKind::Microsoft,
+            oauth: Some(OauthInfo {
+                state: OauthState::NeedsSignIn,
+                app_only: false,
+                detail: String::new(),
+            }),
+        }],
+        account_selected: 0,
+        pending_delete: None,
+        pending_revoke: None,
+        essentials_selected: 0,
+        daemon_hint: None,
+        folders: Vec::new(),
+        folder_selected: 0,
+    });
+    let buffer = rendered(&app);
+    let warned = (0..buffer.area.height).any(|y| {
+        (0..buffer.area.width).any(|x| {
+            buffer.cell((x, y)).unwrap().fg == app.theme.status_error
+        })
+    });
+    assert!(
+        warned,
+        "the needs-sign-in state stands out in the warning colour"
+    );
+}
+
+#[test]
 fn a_pending_delete_shows_the_confirmation() {
     let mut app = app_with_messages(1);
     app.settings = Some(SettingsState {
@@ -105,6 +201,7 @@ fn a_pending_delete_shows_the_confirmation() {
             account_name: "work".to_string(),
             address: String::new(),
             host: String::new(),
+            kind: ServerKind::Imap,
             oauth: None,
         }],
         account_selected: 0,
