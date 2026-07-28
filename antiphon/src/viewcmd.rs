@@ -53,7 +53,7 @@ fn run_view(args: &ViewArgs) -> Result<ExitCode, String> {
     }
     let layout = StoreLayout::new(&store_root);
     let loaded = synthetic_loaded(&account);
-    let code = crate::tui::run(&loaded, &layout, &dirs, true);
+    let code = crate::tui::run(&loaded, &layout, &dirs, true, None);
     println!(
         "the unpacked archive stays at {}\n\
          remove it with: rm -r {}",

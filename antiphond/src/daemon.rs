@@ -55,6 +55,7 @@ pub(crate) struct Daemon {
     pub(crate) state: SharedState,
     pub(crate) jobs: JobQueue,
     pub(crate) vault: VaultState,
+    pub(crate) shutdown: Arc<AtomicBool>,
     pub(crate) watchers: Option<idle::IdleWatchers>,
     pub(crate) dirs: Dirs,
     pub(crate) loaded: Loaded,
@@ -181,11 +182,13 @@ pub fn run() -> ExitCode {
         state: state.clone(),
     };
     let (jobs, worker) = worker::spawn(flow);
+    let shutdown = install_shutdown();
     let mut daemon = Daemon {
         layout: layout.clone(),
         state,
         jobs: jobs.clone(),
         vault,
+        shutdown: shutdown.clone(),
         watchers: None,
         dirs,
         loaded,
@@ -193,7 +196,6 @@ pub fn run() -> ExitCode {
     };
     jobs.request(Job::Pass { announce: false });
     daemon.start_watchers();
-    let shutdown = install_shutdown();
     let outcome = serve_with_timer(&server, &mut daemon, &shutdown);
     daemon.stop_watchers();
     // The worker must finish its pass before the seal below

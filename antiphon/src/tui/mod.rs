@@ -106,6 +106,7 @@ pub fn run(
     layout: &StoreLayout,
     dirs: &Dirs,
     read_only: bool,
+    startup_notice: Option<String>,
 ) -> ExitCode {
     if let Err(error) =
         antiphon_ui::load_themes(&dirs.config.join(THEMES_DIR))
@@ -157,6 +158,7 @@ pub fn run(
     // inbox), so the list shows it rather than highlighting
     // it over an unrelated query.
     app.read_only = read_only;
+    app.notice = startup_notice;
     app.key_bindings = keymap
         .bindings()
         .iter()

@@ -37,6 +37,14 @@ impl Daemon {
                 Response::Ack
             }
             Request::Reload => self.reload(),
+            Request::Shutdown => {
+                // Ack first, then ask the serve loop to stop;
+                // the reply reaches the client before the
+                // socket closes on the way out.
+                self.shutdown
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+                Response::Ack
+            }
             Request::DrainOutbox => {
                 self.jobs.request(Job::DrainOutbox);
                 Response::Ack
@@ -218,6 +226,7 @@ mod tests {
             state,
             jobs,
             vault: VaultState::Absent,
+            shutdown: Default::default(),
             watchers: None,
             dirs,
             loaded,
@@ -346,6 +355,19 @@ mod tests {
 
     fn worker_queue(fixture: &Fixture) -> JobQueue {
         fixture.daemon.jobs.clone()
+    }
+
+    #[test]
+    fn shutdown_acks_and_raises_the_stop_flag() {
+        use std::sync::atomic::Ordering;
+        let mut fixture = fixture();
+        assert!(!fixture.daemon.shutdown.load(Ordering::Relaxed));
+        assert_eq!(
+            fixture.daemon.respond(Request::Shutdown),
+            Response::Ack
+        );
+        assert!(fixture.daemon.shutdown.load(Ordering::Relaxed));
+        finish(fixture);
     }
 
     #[test]

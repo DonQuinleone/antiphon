@@ -151,12 +151,19 @@ fn open_client() -> ExitCode {
     };
     // The daemon may hold the only key to the store: behind a
     // sealed vault it mounts it, so start it before the
-    // existence check.
-    if let Err(error) =
-        autostart::ensure_daemon(loaded.config.daemon.autostart, &dirs)
-    {
-        eprintln!("{error}");
-    }
+    // existence check. A daemon left over from an older build
+    // is restarted here so the client never drives a mismatched
+    // one.
+    let daemon_notice = match autostart::ensure_matching_daemon(
+        loaded.config.daemon.autostart,
+        &dirs,
+    ) {
+        Ok(notice) => notice,
+        Err(error) => {
+            eprintln!("{error}");
+            None
+        }
+    };
     let layout = StoreLayout::new(dirs.store_root());
     if !layout.exists() {
         eprintln!(
@@ -166,5 +173,5 @@ fn open_client() -> ExitCode {
         );
         return ExitCode::FAILURE;
     }
-    tui::run(&loaded, &layout, &dirs, false)
+    tui::run(&loaded, &layout, &dirs, false, daemon_notice)
 }
