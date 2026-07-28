@@ -132,11 +132,10 @@ impl Default for Vault {
         Vault {
             backend: VaultBackend::Auto,
             idle_lock_minutes: 0,
-            unlock: vec![
-                Unlock::Touchid,
-                Unlock::Yubikey,
-                Unlock::Passphrase,
-            ],
+            // Touchid and Yubikey parse for forward
+            // compatibility, but no backend implements them
+            // yet, so the default promises only what works.
+            unlock: vec![Unlock::Passphrase],
             passphrase_cmd: None,
         }
     }
