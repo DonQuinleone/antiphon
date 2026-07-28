@@ -9,6 +9,7 @@ pub struct Config {
     pub vault: Vault,
     pub sync: Sync,
     pub daemon: DaemonConfig,
+    pub accounts: Accounts,
     pub notifications: Notifications,
     pub keys: BTreeMap<String, String>,
     pub saved_searches: Vec<SavedSearch>,
@@ -19,6 +20,12 @@ pub struct Config {
 #[serde(deny_unknown_fields, default)]
 pub struct Export {
     pub recipients: Vec<String>,
+}
+
+#[derive(Debug, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct Accounts {
+    pub order: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]

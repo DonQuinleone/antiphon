@@ -87,6 +87,7 @@ fn draw_accounts(
         lines.push(account_line(
             theme,
             account,
+            index,
             index == state.account_selected,
         ));
     }
@@ -103,6 +104,7 @@ fn draw_accounts(
 fn account_line(
     theme: &Theme,
     account: &super::settings::AccountSummary,
+    index: usize,
     selected: bool,
 ) -> Line<'static> {
     let marker = mark(selected);
@@ -110,9 +112,11 @@ fn account_line(
     if selected {
         style = style.bg(theme.selection_bg).fg(theme.selection_fg);
     }
+    let position = index + 1;
     Line::from(Span::styled(
         format!(
-            "{marker}{:<NAME_WIDTH$}{:<ADDRESS_WIDTH$}{}",
+            "{marker}{position:>2} {:<NAME_WIDTH$}\
+             {:<ADDRESS_WIDTH$}{}",
             account.name, account.address, account.host
         ),
         style,
@@ -300,7 +304,10 @@ mod tests {
         let buffer = rendered(&app);
         assert!(row(&buffer, 0).contains("Accounts"));
         let account_row = row(&buffer, 1);
-        assert!(account_row.contains("work"));
+        assert!(
+            account_row.contains(" 1 work"),
+            "the order position leads the row: {account_row:?}"
+        );
         assert!(account_row.contains("quin@example.com"));
         assert!(account_row.contains("imap.example.com"));
     }

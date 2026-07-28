@@ -24,8 +24,29 @@ pub struct NamedAccount {
 
 pub fn load(dirs: &Dirs) -> Result<Loaded, ConfigError> {
     let config = load_config(&dirs.config)?;
-    let accounts = load_accounts(&dirs.config.join("accounts"))?;
+    let mut accounts = load_accounts(&dirs.config.join("accounts"))?;
+    apply_order(&mut accounts, &config.accounts.order);
     Ok(Loaded { config, accounts })
+}
+
+/// Accounts named in `[accounts] order` come first, in that
+/// order; the rest keep their filename order behind them, and
+/// names matching no account are ignored. Every consumer of
+/// `Loaded.accounts` inherits this: the first account is the
+/// primary (startup selection, unified compose From).
+fn apply_order(accounts: &mut [NamedAccount], order: &[String]) {
+    if order.is_empty() {
+        return;
+    }
+    accounts.sort_by_key(|entry| {
+        order
+            .iter()
+            .position(|name| {
+                *name == entry.account.account.name
+                    || *name == entry.file_stem
+            })
+            .unwrap_or(order.len())
+    });
 }
 
 fn load_config(dir: &Path) -> Result<Config, ConfigError> {
@@ -196,6 +217,58 @@ mod tests {
         );
         assert!(config.notifications.enabled);
         assert!(!config.sync.idle);
+    }
+
+    #[test]
+    fn accounts_order_parses_and_defaults_empty() {
+        let config: Config =
+            parse("", Path::new("config.toml")).unwrap();
+        assert!(config.accounts.order.is_empty());
+        let config: Config = parse(
+            "[accounts]\norder = [\"work\", \"personal\"]\n",
+            Path::new("config.toml"),
+        )
+        .unwrap();
+        assert_eq!(config.accounts.order, ["work", "personal"]);
+    }
+
+    fn named(stem: &str, name: &str) -> NamedAccount {
+        let text = format!(
+            "[account]\nname = \"{name}\"\n\
+             [imap]\nhost = \"h\"\nuser = \"u\"\n"
+        );
+        NamedAccount {
+            file_stem: stem.to_string(),
+            account: parse(&text, Path::new("test.toml")).unwrap(),
+        }
+    }
+
+    fn stems(accounts: &[NamedAccount]) -> Vec<&str> {
+        accounts
+            .iter()
+            .map(|entry| entry.file_stem.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn listed_accounts_lead_and_the_rest_keep_filename_order() {
+        let mut accounts =
+            vec![named("a", "a"), named("b", "b"), named("c", "c")];
+        apply_order(
+            &mut accounts,
+            &["c".to_string(), "ghost".to_string(), "a".to_string()],
+        );
+        assert_eq!(stems(&accounts), ["c", "a", "b"]);
+    }
+
+    #[test]
+    fn order_matches_the_account_name_or_the_file_stem() {
+        let mut accounts =
+            vec![named("01-work", "work"), named("02-home", "home")];
+        apply_order(&mut accounts, &["home".to_string()]);
+        assert_eq!(stems(&accounts), ["02-home", "01-work"]);
+        apply_order(&mut accounts, &["01-work".to_string()]);
+        assert_eq!(stems(&accounts), ["01-work", "02-home"]);
     }
 
     #[test]

@@ -115,7 +115,12 @@ FILES).
 _$XDG_CONFIG_HOME/antiphon/config.toml_
 	Global settings: UI, vault, sync, daemon, notifications and
 	key bindings. Defaults to _~/.config/antiphon_ when
-	*XDG_CONFIG_HOME* is unset.
+	*XDG_CONFIG_HOME* is unset. *accounts.order* lists account
+	names to place first, in that order; unlisted accounts
+	follow alphabetically by file name, and the first account
+	is the primary: selected on startup and the unified view's
+	compose From. Shift-J/K in the settings Accounts tab edit
+	the same list.
 
 _$XDG_CONFIG_HOME/antiphon/local.toml_
 	Per-machine overrides, loaded after *config.toml* and

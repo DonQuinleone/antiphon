@@ -129,6 +129,14 @@ fn feed_accounts(app: &mut App, key: KeyEvent) -> SettingsOutcome {
             move_account_selection(app, -1);
             SettingsOutcome::Stay
         }
+        KeyCode::Char('J') => {
+            shift_account_order(app, 1);
+            SettingsOutcome::Stay
+        }
+        KeyCode::Char('K') => {
+            shift_account_order(app, -1);
+            SettingsOutcome::Stay
+        }
         KeyCode::Char('a') => {
             app.open_account_form_add();
             SettingsOutcome::Stay
@@ -186,6 +194,53 @@ fn move_account_selection(app: &mut App, step: i32) {
     }
     state.account_selected =
         wrapped(state.account_selected, state.accounts.len(), step);
+}
+
+const ACCOUNTS_TABLE: &str = "accounts";
+const ORDER_KEY: &str = "order";
+
+/// Shift+J/K move the selected account through the list and
+/// persist the whole order to `[accounts] order`, so the new
+/// order survives a restart and the first account becomes the
+/// primary. The running session follows at once.
+fn shift_account_order(app: &mut App, step: i32) {
+    let Some(state) = app.settings.as_mut() else {
+        return;
+    };
+    let from = state.account_selected;
+    let last = state.accounts.len().saturating_sub(1) as i32;
+    let to = (from as i32 + step).clamp(0, last) as usize;
+    if state.accounts.is_empty() || to == from {
+        return;
+    }
+    state.accounts.swap(from, to);
+    state.account_selected = to;
+    let order: Vec<String> = state
+        .accounts
+        .iter()
+        .map(|account| account.name.clone())
+        .collect();
+    let value = super::themecmd::toml_string_array(&order);
+    let result =
+        settingscmd::persist(app, ACCOUNTS_TABLE, ORDER_KEY, &value);
+    reorder_live_accounts(app, &order);
+    app.notice = Some(match result {
+        Ok(()) => format!("account order: {}", order.join(", ")),
+        Err(error) => format!("account order not saved: {error}"),
+    });
+}
+
+/// Mirrors the persisted order onto the running session's
+/// account list, which every scope cycle, unified query and
+/// sidebar refresh reads.
+fn reorder_live_accounts(app: &mut App, order: &[String]) {
+    let position = |name: &String| {
+        order
+            .iter()
+            .position(|entry| entry == name)
+            .unwrap_or(order.len())
+    };
+    app.accounts.sort_by_key(position);
 }
 
 fn move_essentials_selection(app: &mut App, step: i32) {
@@ -360,6 +415,42 @@ mod tests {
         assert_eq!(app.settings.as_ref().unwrap().account_selected, 0);
         feed(&mut app, key(KeyCode::Char('k')));
         assert_eq!(app.settings.as_ref().unwrap().account_selected, 2);
+    }
+
+    #[test]
+    fn shift_j_and_k_reorder_accounts_and_persist_the_order() {
+        use super::super::testkit::TempDir;
+
+        let dir = TempDir::new();
+        let mut app = app_with_settings(&["a", "b", "c"]);
+        app.accounts = vec!["a".into(), "b".into(), "c".into()];
+        app.config_path = dir.path.join("config.toml");
+
+        feed(&mut app, key(KeyCode::Char('J')));
+        let state = app.settings.as_ref().unwrap();
+        let names: Vec<&str> = state
+            .accounts
+            .iter()
+            .map(|account| account.name.as_str())
+            .collect();
+        assert_eq!(names, ["b", "a", "c"]);
+        assert_eq!(state.account_selected, 1);
+        assert_eq!(app.accounts, ["b", "a", "c"]);
+        let text = std::fs::read_to_string(&app.config_path).unwrap();
+        assert!(text.contains("[accounts]"), "{text}");
+        assert!(
+            text.contains("order = [\"b\", \"a\", \"c\"]"),
+            "{text}"
+        );
+
+        app.settings.as_mut().unwrap().account_selected = 0;
+        feed(&mut app, key(KeyCode::Char('K')));
+        assert_eq!(
+            app.settings.as_ref().unwrap().account_selected,
+            0,
+            "moving up from the top clamps"
+        );
+        assert_eq!(app.accounts, ["b", "a", "c"]);
     }
 
     #[test]

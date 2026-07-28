@@ -45,6 +45,13 @@ fn quoted(value: &str) -> String {
     format!("\"{value}\"")
 }
 
+/// A TOML array of strings, ready to hand to `persist_key`.
+pub(super) fn toml_string_array(values: &[String]) -> String {
+    let quoted: Vec<String> =
+        values.iter().map(|value| format!("\"{value}\"")).collect();
+    format!("[{}]", quoted.join(", "))
+}
+
 /// Rewrites the `key` under `[table]` in the config file at
 /// `path` to `value` (already TOML-formatted: quoted for a
 /// string, bare for a number or bool), leaving every other
@@ -254,6 +261,15 @@ mod tests {
 
     fn with_theme(contents: &str, name: &str) -> String {
         with_key(contents, UI_TABLE, THEME_KEY, &quoted(name))
+    }
+
+    #[test]
+    fn toml_string_array_quotes_and_joins() {
+        assert_eq!(toml_string_array(&[]), "[]");
+        assert_eq!(
+            toml_string_array(&["a".to_string(), "b".to_string()]),
+            "[\"a\", \"b\"]"
+        );
     }
 
     #[test]
