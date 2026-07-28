@@ -6,7 +6,8 @@ use std::process::ExitCode;
 use antiphon_config::{Dirs, load};
 use antiphon_store::StoreLayout;
 
-use crate::account_wizard::{self, prompt_account};
+use crate::account_file;
+use crate::account_wizard::prompt_account;
 use crate::autostart;
 use crate::vaultcmd;
 
@@ -41,7 +42,7 @@ fn wizard(dirs: &Dirs) -> Result<(), String> {
     let passphrase_cmd = vault_secret()?;
 
     write_config(dirs, &passphrase_cmd)?;
-    account_wizard::write_account(dirs, &answers)?;
+    account_file::write_account(dirs, &answers)?;
     let loaded = load(dirs).map_err(|error| error.to_string())?;
     println!("\nconfiguration written and valid");
 

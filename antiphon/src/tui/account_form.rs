@@ -3,6 +3,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::app::App;
 use super::headers::byte_index;
+use crate::account_file;
 use crate::account_wizard::{self, AccountAnswers};
 use crate::setup::validate_address;
 
@@ -277,7 +278,7 @@ fn build_and_write(
     if adding && account_path(dirs, &answers.name).exists() {
         return Err(format!("{} already exists", answers.name));
     }
-    account_wizard::write_account_file(
+    account_file::write_account_file(
         dirs,
         &answers,
         form.editing.as_deref(),
@@ -419,7 +420,7 @@ mod tests {
     fn saving_an_edit_overwrites_only_the_one_file() {
         let root = TempDir::new();
         let dirs = dirs_at(&root.path);
-        account_wizard::write_account_file(
+        account_file::write_account_file(
             &dirs,
             &filled_answers(),
             None,
@@ -444,7 +445,7 @@ mod tests {
     fn renaming_on_save_removes_the_old_file() {
         let root = TempDir::new();
         let dirs = dirs_at(&root.path);
-        account_wizard::write_account_file(
+        account_file::write_account_file(
             &dirs,
             &filled_answers(),
             None,
@@ -466,7 +467,7 @@ mod tests {
     fn adding_over_an_existing_name_is_refused() {
         let root = TempDir::new();
         let dirs = dirs_at(&root.path);
-        account_wizard::write_account_file(
+        account_file::write_account_file(
             &dirs,
             &filled_answers(),
             None,
