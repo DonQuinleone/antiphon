@@ -51,6 +51,7 @@ mod settings;
 mod settings_accounts;
 mod settings_draw;
 mod settingscmd;
+mod settingscmd_rows;
 mod sidebar;
 mod status;
 mod tabs;
