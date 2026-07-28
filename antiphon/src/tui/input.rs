@@ -5,7 +5,7 @@ use ratatui::crossterm::event::{
     MouseEventKind,
 };
 
-use antiphon_core::{Keymap, Resolution};
+use antiphon_core::{Action, Keymap, Resolution};
 
 use super::app::{App, View};
 use super::commands::PromptKind;
@@ -19,6 +19,30 @@ use super::{
 };
 
 const MOUSE_WHEEL_ROWS: usize = 3;
+
+const READ_ONLY_NOTICE: &str = "read-only archive view";
+const MUTATING_ACTIONS: [Action; 12] = [
+    Action::Compose,
+    Action::Reply,
+    Action::ReplyAll,
+    Action::ReplyList,
+    Action::Forward,
+    Action::ToggleRead,
+    Action::ToggleFlagged,
+    Action::MarkAllRead,
+    Action::DeleteMessage,
+    Action::Archive,
+    Action::MoveTo,
+    Action::Sync,
+];
+
+fn read_only_blocks(app: &mut App, action: Action) -> bool {
+    if !app.read_only || !MUTATING_ACTIONS.contains(&action) {
+        return false;
+    }
+    app.notice = Some(READ_ONLY_NOTICE.to_string());
+    true
+}
 
 pub(super) fn editor_key(app: &mut App, key: KeyEvent) {
     // ctrl-e (and ctrl-h) lift focus back to the header
@@ -189,6 +213,9 @@ pub(super) fn keymap_key(
     let Resolution::Match(action) = keymap.feed(key) else {
         return;
     };
+    if read_only_blocks(app, action) {
+        return;
+    }
     let count = if action.repeatable() {
         keymap.take_count()
     } else {
@@ -419,5 +446,30 @@ fn post_one_click(url: String) -> String {
         Ok(Response::Error(error)) => format!("unsubscribe: {error}"),
         Ok(_) => "unsubscribe: unexpected daemon reply".to_string(),
         Err(error) => format!("unsubscribe: {error}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::testkit::app_with_messages;
+    use super::*;
+
+    #[test]
+    fn read_only_blocks_mutations_with_a_notice() {
+        let mut app = app_with_messages(1);
+        assert!(!read_only_blocks(&mut app, Action::DeleteMessage));
+        app.read_only = true;
+        for action in MUTATING_ACTIONS {
+            app.notice = None;
+            assert!(read_only_blocks(&mut app, action), "{action:?}");
+            assert_eq!(
+                app.notice.as_deref(),
+                Some(READ_ONLY_NOTICE),
+                "{action:?}"
+            );
+        }
+        assert!(app.pending_ops.is_empty(), "nothing was queued");
+        assert!(!read_only_blocks(&mut app, Action::MoveDown));
+        assert!(!read_only_blocks(&mut app, Action::Open));
     }
 }

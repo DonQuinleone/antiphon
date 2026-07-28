@@ -113,6 +113,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         editor: None,
         editor_return: View::List,
         requery: false,
+        read_only: false,
         quit: false,
     }
 }

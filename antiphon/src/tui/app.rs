@@ -121,6 +121,7 @@ pub struct App {
     pub(super) editor_return: View,
     pub(super) thread_return: Option<(String, Option<String>)>,
     pub(super) requery: bool,
+    pub read_only: bool,
     pub quit: bool,
 }
 
@@ -217,6 +218,7 @@ impl App {
             editor_return: View::List,
             thread_return: None,
             requery: false,
+            read_only: false,
             quit: false,
         }
     }

@@ -95,6 +95,7 @@ pub fn run(
     loaded: &Loaded,
     layout: &StoreLayout,
     dirs: &Dirs,
+    read_only: bool,
 ) -> ExitCode {
     if let Err(error) =
         antiphon_ui::load_themes(&dirs.config.join(THEMES_DIR))
@@ -144,6 +145,7 @@ pub fn run(
     // Startup opens the default sidebar entry (the first
     // inbox), so the list shows it rather than highlighting
     // it over an unrelated query.
+    app.read_only = read_only;
     app.key_bindings = keymap
         .bindings()
         .iter()
@@ -392,6 +394,12 @@ fn maybe_refresh(
 }
 
 fn drain_ops(app: &mut App) {
+    // A read-only session must never hand ops to a daemon
+    // that may be serving the real accounts.
+    if app.read_only {
+        app.pending_ops.clear();
+        return;
+    }
     if app.pending_ops.is_empty() {
         return;
     }
