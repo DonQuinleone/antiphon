@@ -71,14 +71,14 @@ fn prefill_infers_imap_and_focuses_the_type_toggle() {
     assert_eq!(form.focus, 0);
     assert_eq!(form.field_id(0), Field::AccountType);
     assert_eq!(form.address, answers.address);
-    assert_eq!(form.from_name, answers.from_name);
+    assert_eq!(form.identities[0].from_name, answers.from_name);
     assert_eq!(form.password_cmd, answers.password_cmd);
     assert!(form.keychain_secret.is_empty());
     assert_eq!(form.account_type, AccountType::Imap);
 }
 
 #[test]
-fn the_from_name_row_shows_for_every_type() {
+fn the_identities_row_shows_for_every_type() {
     let mut form = filled_form();
     for account_type in [
         AccountType::Imap,
@@ -87,8 +87,8 @@ fn the_from_name_row_shows_for_every_type() {
     ] {
         form.account_type = account_type;
         assert!(
-            labels(&form).contains(&"from name"),
-            "from name is shown for {account_type:?}"
+            labels(&form).contains(&"identities"),
+            "identities is shown for {account_type:?}"
         );
     }
 }

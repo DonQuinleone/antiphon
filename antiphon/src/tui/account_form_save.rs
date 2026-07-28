@@ -46,8 +46,8 @@ fn build_and_write(
     let (imap_host, imap_user, smtp_host) = servers(form, &address);
     let answers = AccountAnswers {
         name: form.name.trim().to_string(),
-        address,
-        from_name: form.from_name.trim().to_string(),
+        address: address.clone(),
+        from_name: first_identity_name(form),
         imap_host,
         imap_user,
         smtp_host,
@@ -57,13 +57,42 @@ fn build_and_write(
     if adding && account_path(dirs, &answers.name).exists() {
         return Err(format!("{} already exists", answers.name));
     }
+    let path = account_path(dirs, &answers.name);
     account_file::write_account_file(
         dirs,
         &answers,
         form.editing.as_deref(),
     )?;
-    patch_oauth(&account_path(dirs, &answers.name), form)?;
+    write_identities(&path, form, &address)?;
+    patch_oauth(&path, form)?;
     Ok(answers.name)
+}
+
+fn first_identity_name(form: &AccountFormState) -> String {
+    form.identities
+        .first()
+        .map(|identity| identity.from_name.trim().to_string())
+        .unwrap_or_default()
+}
+
+/// Rewrites the file's `[[identity]]` blocks to match the form's
+/// identity list, each from address falling back to the account
+/// address. A form always carries at least one identity, so an
+/// empty list is left untouched rather than clearing the file.
+fn write_identities(
+    path: &Path,
+    form: &AccountFormState,
+    account_address: &str,
+) -> Result<(), String> {
+    if form.identities.is_empty() {
+        return Ok(());
+    }
+    let identities: Vec<antiphon_config::Identity> = form
+        .identities
+        .iter()
+        .map(|identity| identity.to_config(account_address))
+        .collect();
+    account_file::write_account_identities(path, &identities)
 }
 
 fn account_path(dirs: &Dirs, name: &str) -> std::path::PathBuf {

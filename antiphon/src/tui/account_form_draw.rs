@@ -5,9 +5,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph};
 
 use super::account_form::AccountFormState;
-use super::account_form_fields::{
-    Field, PASSWORD_HINT, client_id_env_hint,
-};
+use super::account_form_fields::{Field, PASSWORD_HINT};
+use super::account_form_identity;
 use super::app::App;
 use super::draw::segmented::{self, SegmentStyle};
 use super::headers::with_cursor;
@@ -88,6 +87,17 @@ fn field_line(
         spans.extend(segment_spans(app, form, index, options));
         return Line::from(spans);
     }
+    if form.field_id(index) == Field::Identities {
+        spans.push(Span::styled(
+            account_form_identity::summary(&form.identities),
+            Style::new().fg(theme.text_primary),
+        ));
+        spans.push(Span::styled(
+            " (enter to manage)",
+            Style::new().fg(theme.text_muted),
+        ));
+        return Line::from(spans);
+    }
     let displayed = shown_value(form, index);
     let value = if active {
         with_cursor(&displayed, form.cursor)
@@ -138,9 +148,6 @@ fn field_hint(form: &AccountFormState, index: usize) -> Option<String> {
                 && form.field_value(index).is_empty() =>
         {
             Some(PASSWORD_HINT.to_string())
-        }
-        Field::ClientId => {
-            client_id_env_hint(form.account_type).map(str::to_string)
         }
         _ => None,
     }
@@ -277,19 +284,19 @@ mod tests {
         assert!(shown.contains("password command"));
         assert!(shown.contains("imap host"));
         assert!(shown.contains("smtp host"));
-        assert!(shown.contains("from name"));
+        assert!(shown.contains("identities"));
         assert!(!shown.contains("oauth client id"));
         assert!(!shown.contains("graph send"));
     }
 
     #[test]
-    fn a_google_form_shows_the_client_id_and_env_hint() {
+    fn a_google_form_shows_the_client_id_without_an_env_hint() {
         let mut app = app_with_messages(1);
         app.account_form = Some(form_of(AccountType::Google));
         let shown = text(&rendered(&app));
         assert!(shown.contains("oauth client id"));
-        assert!(shown.contains("ANTIPHON_GOOGLE_CLIENT_ID"));
-        assert!(shown.contains("from name"));
+        assert!(!shown.contains("ANTIPHON_GOOGLE_CLIENT_ID"));
+        assert!(shown.contains("identities"));
         assert!(!shown.contains("password command"));
         assert!(!shown.contains("imap host"));
         assert!(!shown.contains("smtp host"));

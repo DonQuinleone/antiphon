@@ -1,3 +1,9 @@
+//! The account form's field table: every row the modal can
+//! show, in display order, as data rather than a draw-time
+//! branch. The identity row is a launcher into the identity
+//! sub-editor (see `account_form_identity`); every other row is
+//! a text field or a segmented toggle.
+
 use antiphon_config::{GraphAuth, OauthProvider};
 use antiphon_ui::AccountAccent;
 
@@ -25,6 +31,8 @@ pub(super) const TYPE_OPTIONS: [&str; 3] =
     ["IMAP", "Microsoft 365", "Google"];
 const GRAPH_SEND_OPTIONS: [&str; 2] = ["off", "on"];
 const GRAPH_AUTH_OPTIONS: [&str; 2] = ["delegated", "app-only"];
+
+pub(super) const ON_OFF_OPTIONS: [&str; 2] = ["off", "on"];
 
 impl AccountType {
     pub(super) fn provider(self) -> Option<OauthProvider> {
@@ -61,7 +69,7 @@ pub(super) enum Field {
     AccountType,
     Address,
     Name,
-    FromName,
+    Identities,
     ImapHost,
     ImapUser,
     SmtpHost,
@@ -76,10 +84,12 @@ pub(super) enum Field {
 
 /// How a field reacts to keys: text fields edit a string in
 /// place, cycling fields step through fixed choices with
-/// left/right (and space) and draw as a segmented toggle.
+/// left/right (and space) and draw as a segmented toggle. The
+/// identity row edits nothing here; enter opens its sub-editor.
 pub(super) enum Access {
     Edit(fn(&mut AccountFormState) -> &mut String),
     Cycle(fn(&mut AccountFormState, i32)),
+    Launch,
 }
 
 pub(super) struct FieldSpec {
@@ -120,7 +130,15 @@ pub(super) const FIELDS: &[FieldSpec] = &[
     },
     field!(Field::Address, "e-mail address", address),
     field!(Field::Name, "account name", name),
-    field!(Field::FromName, "from name", from_name),
+    FieldSpec {
+        field: Field::Identities,
+        label: "identities",
+        masked: false,
+        get: |_| "",
+        access: Access::Launch,
+        segments: None,
+        selected: |_| 0,
+    },
     field!(Field::ImapHost, "imap host", imap_host),
     field!(Field::ImapUser, "imap user", imap_user),
     field!(Field::SmtpHost, "smtp host", smtp_host),
@@ -208,7 +226,7 @@ fn graph_auth_index(state: &AccountFormState) -> usize {
     usize::from(state.graph_auth == GraphAuth::AppOnly)
 }
 
-fn on_off(value: bool) -> &'static str {
+pub(super) fn on_off(value: bool) -> &'static str {
     if value { "on" } else { "off" }
 }
 
@@ -227,15 +245,3 @@ fn cycle_graph_auth(state: &mut AccountFormState, _step: i32) {
 
 pub(super) const PASSWORD_HINT: &str =
     "empty = use the Keychain field below";
-
-/// The env var overriding the account file's client id, per
-/// provider, surfaced as the client-id field's hint.
-pub(super) fn client_id_env_hint(
-    account_type: AccountType,
-) -> Option<&'static str> {
-    match account_type {
-        AccountType::Microsoft => Some("or set ANTIPHON_MS_CLIENT_ID"),
-        AccountType::Google => Some("or set ANTIPHON_GOOGLE_CLIENT_ID"),
-        AccountType::Imap => None,
-    }
-}

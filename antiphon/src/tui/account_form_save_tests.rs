@@ -31,11 +31,10 @@ fn an_oauth_account_needs_no_password_at_all() {
 }
 
 #[test]
-fn the_from_name_is_written_to_the_identity() {
+fn the_first_identity_is_written_from_the_form() {
     let root = TempDir::new();
     let dirs = dirs_at(&root.path);
-    let mut form = filled_form();
-    form.from_name = "Quin at Work".to_string();
+    let form = filled_form();
     build_and_write(&dirs, &form).expect("save");
 
     let loaded = antiphon_config::load(&dirs).expect("parse");

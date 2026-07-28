@@ -5,6 +5,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use super::account_form_fields::{
     Access, AccountType, FIELDS, Field, FieldSpec,
 };
+use super::account_form_identity::{FormIdentity, IdentityUi};
 use super::app::App;
 use super::headers::byte_index;
 use super::settings::wrapped;
@@ -13,12 +14,14 @@ use crate::account_wizard::AccountAnswers;
 /// The in-TUI replacement for the setup wizard's terminal Q&A:
 /// one field per row, `editing` naming the account file an
 /// edit overwrites (and possibly renames) rather than an add.
+/// The from addresses and names live in `identities`, managed
+/// through the identity sub-editor (`identity_ui`, when open).
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(super) struct AccountFormState {
     pub(super) account_type: AccountType,
     pub(super) address: String,
     pub(super) name: String,
-    pub(super) from_name: String,
+    pub(super) identities: Vec<FormIdentity>,
     pub(super) imap_host: String,
     pub(super) imap_user: String,
     pub(super) smtp_host: String,
@@ -33,6 +36,7 @@ pub(super) struct AccountFormState {
     pub(super) cursor: usize,
     pub(super) editing: Option<String>,
     pub(super) error: Option<String>,
+    pub(super) identity_ui: Option<IdentityUi>,
 }
 
 impl AccountFormState {
@@ -43,7 +47,10 @@ impl AccountFormState {
         AccountFormState {
             address: answers.address.clone(),
             name: answers.name.clone(),
-            from_name: answers.from_name.clone(),
+            identities: vec![FormIdentity::seed(
+                &answers.from_name,
+                &answers.address,
+            )],
             imap_host: answers.imap_host.clone(),
             imap_user: answers.imap_user.clone(),
             smtp_host: answers.smtp_host.clone(),
@@ -70,6 +77,23 @@ impl AccountFormState {
             self.graph_secret_cmd =
                 graph.secret_cmd.clone().unwrap_or_default();
         }
+    }
+
+    /// Reads every `[[identity]]` block back into the form so
+    /// editing an account round-trips its identities rather than
+    /// collapsing them to the first.
+    fn load_identities(
+        &mut self,
+        account: &antiphon_config::AccountFile,
+    ) {
+        if account.identities.is_empty() {
+            return;
+        }
+        self.identities = account
+            .identities
+            .iter()
+            .map(FormIdentity::from_config)
+            .collect();
     }
 
     pub(super) fn provider(&self) -> Option<OauthProvider> {
@@ -158,14 +182,17 @@ impl AccountFormState {
     fn field_mut(&mut self) -> Option<&mut String> {
         match self.spec(self.focus).access {
             Access::Edit(get_mut) => Some(get_mut(self)),
-            Access::Cycle(_) => None,
+            Access::Cycle(_) | Access::Launch => None,
         }
     }
 }
 
 impl App {
     pub(super) fn open_account_form_add(&mut self) {
-        self.account_form = Some(AccountFormState::default());
+        self.account_form = Some(AccountFormState {
+            identities: vec![FormIdentity::default()],
+            ..AccountFormState::default()
+        });
     }
 
     pub(super) fn open_account_form_edit(&mut self, file_stem: &str) {
@@ -189,14 +216,21 @@ impl App {
             Some(file_stem.to_string()),
         );
         form.infer_type(&named.account);
+        form.load_identities(&named.account);
         self.account_form = Some(form);
     }
 }
 
-/// Keys while the modal is open; everything but esc, tab
-/// stepping and ctrl-s edits the focused field in place.
+/// Keys while the modal is open. When the identity sub-editor is
+/// up, every key goes to it; otherwise esc, tab stepping and
+/// ctrl-s are handled here and everything else edits the focused
+/// field in place.
 pub(super) fn feed(app: &mut App, key: KeyEvent) {
-    if app.account_form.is_none() {
+    let Some(form) = app.account_form.as_ref() else {
+        return;
+    };
+    if form.identity_ui.is_some() {
+        super::account_form_identity::feed(app, key);
         return;
     }
     if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -218,6 +252,10 @@ fn enter(app: &mut App) {
     let Some(form) = app.account_form.as_ref() else {
         return;
     };
+    if form.field_id(form.focus) == Field::Identities {
+        super::account_form_identity::open_list(app);
+        return;
+    }
     if form.focus == form.field_count() - 1 {
         super::account_form_save::save(app);
     } else {
@@ -241,19 +279,12 @@ fn field_key(app: &mut App, code: KeyCode) {
         cycle_key(form, code, cycle);
         return;
     }
-    match code {
-        KeyCode::Char(ch) => insert(form, ch),
-        KeyCode::Backspace => backspace(form),
-        KeyCode::Delete => delete(form),
-        KeyCode::Left => form.cursor = form.cursor.saturating_sub(1),
-        KeyCode::Right => {
-            form.cursor =
-                (form.cursor + 1).min(form.field().chars().count())
-        }
-        KeyCode::Home => form.cursor = 0,
-        KeyCode::End => form.cursor = form.field().chars().count(),
-        _ => {}
-    }
+    let cursor = form.cursor;
+    let new_cursor = match form.field_mut() {
+        Some(field) => edit_text(field, cursor, code),
+        None => return,
+    };
+    form.cursor = new_cursor;
 }
 
 /// A cycle may hide fields after the focus (the password rows,
@@ -273,34 +304,36 @@ fn cycle_key(
     form.cursor = 0;
 }
 
-fn insert(form: &mut AccountFormState, ch: char) {
-    let cursor = form.cursor;
-    let Some(field) = form.field_mut() else {
-        return;
-    };
-    let at = byte_index(field, cursor);
-    field.insert(at, ch);
-    form.cursor += 1;
-}
-
-fn backspace(form: &mut AccountFormState) {
-    if form.cursor == 0 {
-        return;
+/// Applies one editing key to a text field with its own cursor,
+/// returning the new cursor. Shared by the account form and the
+/// identity sub-editor so both edit text the same way.
+pub(super) fn edit_text(
+    field: &mut String,
+    cursor: usize,
+    code: KeyCode,
+) -> usize {
+    match code {
+        KeyCode::Char(ch) => {
+            let at = byte_index(field, cursor);
+            field.insert(at, ch);
+            cursor + 1
+        }
+        KeyCode::Backspace if cursor > 0 => {
+            let at = byte_index(field, cursor - 1);
+            field.remove(at);
+            cursor - 1
+        }
+        KeyCode::Delete if cursor < field.chars().count() => {
+            let at = byte_index(field, cursor);
+            field.remove(at);
+            cursor
+        }
+        KeyCode::Left => cursor.saturating_sub(1),
+        KeyCode::Right => (cursor + 1).min(field.chars().count()),
+        KeyCode::Home => 0,
+        KeyCode::End => field.chars().count(),
+        _ => cursor,
     }
-    form.cursor -= 1;
-    delete(form);
-}
-
-fn delete(form: &mut AccountFormState) {
-    let cursor = form.cursor;
-    let Some(field) = form.field_mut() else {
-        return;
-    };
-    if cursor >= field.chars().count() {
-        return;
-    }
-    let at = byte_index(field, cursor);
-    field.remove(at);
 }
 
 #[cfg(test)]

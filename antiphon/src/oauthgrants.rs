@@ -19,9 +19,17 @@ pub(crate) struct GrantSpec {
     pub(crate) wanted: bool,
 }
 
+/// Thunderbird's public Microsoft app registration. A Microsoft
+/// account with no client_id of its own falls back to it, so
+/// sign-in works out of the box rather than erroring; a user-set
+/// client_id or the env override still takes precedence.
+const THUNDERBIRD_MS_CLIENT_ID: &str =
+    "9e5f94bc-e8a4-4e73-b8be-63364c29d753";
+
 /// The environment overrides the account file, so a private
 /// client_id can be swapped in without editing shared config;
-/// with neither set the account keeps bring-your-own.
+/// with neither set a Microsoft account borrows Thunderbird's
+/// public app while Google keeps bring-your-own.
 pub(crate) fn resolve_client_id(
     oauth: &Oauth,
     name: &str,
@@ -34,7 +42,15 @@ pub(crate) fn resolve_client_id(
     if let Some(id) = env(var).filter(|id| !id.is_empty()) {
         return Ok(id);
     }
-    oauth.client_id.clone().ok_or(format!(
+    if let Some(id) =
+        oauth.client_id.clone().filter(|id| !id.is_empty())
+    {
+        return Ok(id);
+    }
+    if oauth.provider == OauthProvider::Microsoft {
+        return Ok(THUNDERBIRD_MS_CLIENT_ID.to_string());
+    }
+    Err(format!(
         "account {name}: set client_id in [oauth] (or {var}); \
          register your own app with the provider first"
     ))
@@ -172,11 +188,37 @@ mod tests {
     }
 
     #[test]
-    fn neither_source_set_names_the_variable_in_the_error() {
-        let oauth = oauth_config(OauthProvider::Microsoft, None);
+    fn a_google_account_with_no_source_names_the_variable() {
+        let oauth = oauth_config(OauthProvider::Google, None);
         let error =
             resolve_client_id(&oauth, "work", |_| None).unwrap_err();
-        assert!(error.contains("ANTIPHON_MS_CLIENT_ID"));
+        assert!(error.contains("ANTIPHON_GOOGLE_CLIENT_ID"));
+    }
+
+    #[test]
+    fn microsoft_without_a_client_id_falls_back_to_thunderbird() {
+        let oauth = oauth_config(OauthProvider::Microsoft, None);
+        let id = resolve_client_id(&oauth, "work", |_| None).unwrap();
+        assert_eq!(id, THUNDERBIRD_MS_CLIENT_ID);
+    }
+
+    #[test]
+    fn a_set_microsoft_client_id_beats_the_thunderbird_fallback() {
+        let oauth =
+            oauth_config(OauthProvider::Microsoft, Some("from-config"));
+        let id = resolve_client_id(&oauth, "work", |_| None).unwrap();
+        assert_eq!(id, "from-config");
+    }
+
+    #[test]
+    fn the_env_override_beats_the_thunderbird_fallback() {
+        let oauth = oauth_config(OauthProvider::Microsoft, None);
+        let id = resolve_client_id(&oauth, "work", |var| {
+            (var == "ANTIPHON_MS_CLIENT_ID")
+                .then(|| "from-env".to_string())
+        })
+        .unwrap();
+        assert_eq!(id, "from-env");
     }
 
     #[test]

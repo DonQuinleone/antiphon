@@ -120,51 +120,75 @@ fn without_key_is_a_no_op_when_nothing_matches() {
     assert_eq!(without_key("", "folder_names", "archive"), "");
 }
 
-#[test]
-fn an_array_table_key_is_edited_in_the_first_entry_only() {
-    let before = "[[identity]]\naddress = \"a@example.com\"\n\n\
-                  [[identity]]\naddress = \"b@example.com\"\n";
-    let after = with_array_key(
-        before,
-        "identity",
-        "address",
-        "\"c@example.com\"",
-    );
-    assert!(after.contains("address = \"c@example.com\""));
-    assert!(after.contains("address = \"b@example.com\""));
-    assert!(!after.contains("a@example.com"));
+fn identity_block(address: &str) -> Vec<String> {
+    vec![
+        "[[identity]]".to_string(),
+        format!("address = \"{address}\""),
+    ]
 }
 
 #[test]
-fn a_missing_array_table_gets_a_fresh_entry() {
-    let before = "[account]\nname = \"work\"\n";
-    let after = with_array_key(
+fn set_array_tables_replaces_every_existing_block_in_place() {
+    let before = "[account]\nname = \"work\"\n\n\
+                  [[identity]]\naddress = \"a@example.com\"\n\n\
+                  [[identity]]\naddress = \"b@example.com\"\n\n\
+                  [[rules]]\nfrom = \"ci@example.com\"\n";
+    let after = set_array_tables(
         before,
         "identity",
-        "address",
-        "\"a@example.com\"",
+        &[identity_block("c@example.com")],
+    );
+    assert!(after.contains("address = \"c@example.com\""));
+    assert!(!after.contains("a@example.com"));
+    assert!(!after.contains("b@example.com"));
+    assert!(
+        after.contains("[[rules]]\nfrom = \"ci@example.com\""),
+        "other tables survive: {after}"
+    );
+    assert!(
+        after.contains(
+            "[[identity]]\naddress = \"c@example.com\"\n\n[[rules]]"
+        ),
+        "the block keeps its place before the rules: {after}"
+    );
+}
+
+#[test]
+fn set_array_tables_adds_more_blocks_than_were_there() {
+    let before = "[account]\nname = \"work\"\n\n\
+                  [[identity]]\naddress = \"a@example.com\"\n";
+    let after = set_array_tables(
+        before,
+        "identity",
+        &[
+            identity_block("a@example.com"),
+            identity_block("b@example.com"),
+        ],
+    );
+    assert!(after.contains("address = \"a@example.com\""));
+    assert!(after.contains("address = \"b@example.com\""));
+    assert!(
+        after.contains(
+            "[[identity]]\naddress = \"a@example.com\"\n\n\
+             [[identity]]\naddress = \"b@example.com\""
+        ),
+        "blocks are blank-line separated: {after}"
+    );
+}
+
+#[test]
+fn set_array_tables_appends_when_the_file_has_none() {
+    let before = "[account]\nname = \"work\"\n";
+    let after = set_array_tables(
+        before,
+        "identity",
+        &[identity_block("a@example.com")],
     );
     assert_eq!(
         after,
         "[account]\nname = \"work\"\n\n\
          [[identity]]\naddress = \"a@example.com\"\n"
     );
-}
-
-#[test]
-fn array_key_value_reads_the_first_entry_or_nothing() {
-    let text = "[[identity]]\naddress = \"a@example.com\"\n\
-                match = [\"a@example.com\", \"b@example.com\"]\n";
-    assert_eq!(
-        array_key_value(text, "identity", "address").as_deref(),
-        Some("\"a@example.com\"")
-    );
-    assert_eq!(
-        array_key_value(text, "identity", "match").as_deref(),
-        Some("[\"a@example.com\", \"b@example.com\"]")
-    );
-    assert_eq!(array_key_value(text, "identity", "name"), None);
-    assert_eq!(array_key_value(text, "rules", "from"), None);
 }
 
 #[test]

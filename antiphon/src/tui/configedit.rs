@@ -93,33 +93,85 @@ pub(crate) fn with_key(
     edited(contents, &format!("[{table}]"), key, value)
 }
 
-/// The `with_key` sibling for an array of tables: edits `key`
-/// in the first `[[table]]` entry, appending a fresh entry
-/// when none exists yet.
-pub(crate) fn with_array_key(
+/// Rewrites every `[[table]]` block to `blocks`: the existing
+/// ones are removed and the rendered replacements spliced in
+/// where the first sat (or, when there were none, at the end of
+/// the file), separated by single blank lines. Reserved for an
+/// array of tables the caller fully owns (an account's
+/// identities), since each block is regenerated wholesale.
+pub(crate) fn set_array_tables(
     contents: &str,
     table: &str,
-    key: &str,
-    value: &str,
+    blocks: &[Vec<String>],
 ) -> String {
-    edited(contents, &format!("[[{table}]]"), key, value)
+    let mut lines: Vec<String> =
+        contents.lines().map(str::to_owned).collect();
+    let ranges = array_table_ranges(&lines, table);
+    let anchor = ranges.first().map(|(start, _)| *start);
+    for (start, end) in ranges.iter().rev() {
+        lines.drain(*start..*end);
+    }
+    let at = anchor.unwrap_or(lines.len());
+    splice_blocks(&mut lines, at, blocks);
+    if lines.is_empty() {
+        return String::new();
+    }
+    let mut rewritten = lines.join("\n");
+    rewritten.push('\n');
+    rewritten
 }
 
-/// The raw TOML value of `key` in the first `[[table]]`
-/// entry, when both exist.
-pub(crate) fn array_key_value(
-    contents: &str,
+/// Every `[[table]]` block as a half-open line range: the header
+/// through the line before the next table header.
+fn array_table_ranges(
+    lines: &[String],
     table: &str,
-    key: &str,
-) -> Option<String> {
-    let lines: Vec<String> =
-        contents.lines().map(str::to_owned).collect();
+) -> Vec<(usize, usize)> {
     let header = format!("[[{table}]]");
-    let (start, end) = table_range(&lines, &header)?;
-    let index = key_line_in(&lines, key, start, end)?;
-    let line = &lines[index];
-    let (from, to) = value_span(line)?;
-    Some(line[from..to].to_string())
+    let mut ranges = Vec::new();
+    let mut index = 0;
+    while index < lines.len() {
+        if lines[index].trim() != header {
+            index += 1;
+            continue;
+        }
+        let end = array_table_end(lines, index);
+        ranges.push((index, end));
+        index = end;
+    }
+    ranges
+}
+
+fn array_table_end(lines: &[String], start: usize) -> usize {
+    lines[start + 1..]
+        .iter()
+        .position(|line| is_table_header(line))
+        .map(|offset| start + 1 + offset)
+        .unwrap_or(lines.len())
+}
+
+fn splice_blocks(
+    lines: &mut Vec<String>,
+    at: usize,
+    blocks: &[Vec<String>],
+) {
+    let mut rendered: Vec<String> = Vec::new();
+    for block in blocks {
+        if !rendered.is_empty() {
+            rendered.push(String::new());
+        }
+        rendered.extend(block.iter().cloned());
+    }
+    if rendered.is_empty() {
+        return;
+    }
+    if at < lines.len() && !lines[at].is_empty() {
+        rendered.push(String::new());
+    }
+    if at > 0 && !lines[at - 1].is_empty() {
+        rendered.insert(0, String::new());
+    }
+    lines.splice(at..at, rendered);
 }
 
 fn edited(
