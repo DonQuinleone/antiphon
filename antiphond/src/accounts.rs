@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use antiphon_config::{Loaded, Rule};
+use antiphon_config::{GraphAuth, Loaded, Rule};
 use antiphon_oauth::imap_grant;
 use antiphon_sync::{Auth, DeliveryRule, SmtpAccount, SyncAccount};
 
@@ -40,7 +40,7 @@ impl AccountSet {
     ) -> Option<&OauthAccount> {
         self.oauth
             .iter()
-            .find(|spec| spec.name == account && spec.graph_send)
+            .find(|spec| spec.name == account && spec.graph.is_some())
     }
 
     pub(crate) fn rules_for(&self, account: &str) -> &[DeliveryRule] {
@@ -59,8 +59,22 @@ pub struct OauthAccount {
     pub imap_host: String,
     pub imap_port: u16,
     pub smtp: Option<SmtpEndpoint>,
-    pub graph_send: bool,
+    /// Present when outgoing mail leaves through Graph.
+    pub graph: Option<GraphSend>,
     pub excluded_folders: Vec<String>,
+}
+
+/// How the Graph send path authenticates: a delegated grant
+/// stored in the vault, or app-only client credentials fetched
+/// fresh at send time.
+#[derive(Clone, Debug)]
+pub struct GraphSend {
+    pub auth: GraphAuth,
+    pub tenant: Option<String>,
+    /// Resolved at load: [graph] client_id, else the [oauth]
+    /// one.
+    pub client_id: Option<String>,
+    pub secret_cmd: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -150,14 +164,29 @@ pub fn oauth_accounts(loaded: &Loaded) -> Vec<OauthAccount> {
                         .clone()
                         .unwrap_or_else(|| user.clone()),
                 }),
-                graph_send: account
-                    .graph
-                    .as_ref()
-                    .is_some_and(|graph| graph.send),
+                graph: graph_send(account),
                 excluded_folders: account.folders_unsynced.clone(),
             })
         })
         .collect()
+}
+
+fn graph_send(
+    account: &antiphon_config::AccountFile,
+) -> Option<GraphSend> {
+    let graph = account.graph.as_ref().filter(|graph| graph.send)?;
+    let client_id = graph.client_id.clone().or_else(|| {
+        account
+            .oauth
+            .as_ref()
+            .and_then(|oauth| oauth.client_id.clone())
+    });
+    Some(GraphSend {
+        auth: graph.auth,
+        tenant: graph.tenant.clone(),
+        client_id,
+        secret_cmd: graph.secret_cmd.clone(),
+    })
 }
 
 pub fn smtp_accounts(loaded: &Loaded) -> Vec<(String, SmtpAccount)> {
@@ -220,7 +249,7 @@ fn to_delivery_rule(rule: &Rule) -> DeliveryRule {
     }
 }
 
-fn resolve_password(command: &str) -> Option<String> {
+pub(crate) fn resolve_password(command: &str) -> Option<String> {
     let output =
         Command::new("sh").args(["-c", command]).output().ok()?;
     if !output.status.success() {

@@ -137,6 +137,14 @@ _$XDG_CONFIG_HOME/antiphon/local.toml_
 _$XDG_CONFIG_HOME/antiphon/accounts/\*.toml_
 	One file per mail account: IMAP, SMTP, identities, filing
 	rules and, optionally, OAuth and Microsoft Graph settings.
+	A *[graph]* table with *send = true* routes outgoing mail
+	through Microsoft Graph: *auth = "delegated"* (the default)
+	uses a signed-in grant from *oauth login*, honouring an
+	optional *tenant* and Graph-specific *client_id*, while
+	*auth = "app_only"* fetches client-credential tokens at
+	send time and requires *tenant*, a *client_id* (in
+	*[graph]* or *[oauth]*) and *secret_cmd*, a command that
+	prints the app registration's client secret.
 	*folder_order* lists sidebar folder names (as the sidebar
 	shows them, *inbox* included) to place first, in that
 	order; the rest stay alphabetical. *folders_hidden* lists

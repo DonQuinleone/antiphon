@@ -7,8 +7,8 @@ mod schema;
 mod xdg;
 
 pub use account::{
-    Account, AccountFile, Graph, Identity, Imap, Oauth, OauthProvider,
-    Rule, Smtp,
+    Account, AccountFile, Graph, GraphAuth, Identity, Imap, Oauth,
+    OauthProvider, Rule, Smtp,
 };
 pub use error::ConfigError;
 pub use load::{

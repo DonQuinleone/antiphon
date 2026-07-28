@@ -3,10 +3,20 @@ use std::time::Duration;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 
-const SENDMAIL_URL: &str =
-    "https://graph.microsoft.com/v1.0/me/sendMail";
+const GRAPH_BASE: &str = "https://graph.microsoft.com/v1.0";
 const MIME_CONTENT_TYPE: &str = "text/plain";
 const SEND_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Delegated tokens send as the signed-in user; app-only
+/// tokens have no user and must name the sending mailbox.
+pub(crate) fn sendmail_url(app_only_sender: Option<&str>) -> String {
+    match app_only_sender {
+        None => format!("{GRAPH_BASE}/me/sendMail"),
+        Some(sender) => {
+            format!("{GRAPH_BASE}/users/{sender}/sendMail")
+        }
+    }
+}
 
 use crate::mailflow::ShipError;
 
@@ -17,6 +27,7 @@ use crate::mailflow::ShipError;
 /// permanent; auth and transport failures retry.
 pub(crate) fn send_raw(
     token: &str,
+    url: &str,
     raw: &[u8],
 ) -> Result<(), ShipError> {
     let client = reqwest::blocking::Client::builder()
@@ -24,7 +35,7 @@ pub(crate) fn send_raw(
         .build()
         .map_err(ShipError::transient)?;
     let response = client
-        .post(SENDMAIL_URL)
+        .post(url)
         .bearer_auth(token)
         .header("Content-Type", MIME_CONTENT_TYPE)
         .body(mime_body(raw))

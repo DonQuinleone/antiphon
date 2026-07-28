@@ -10,7 +10,10 @@ use antiphon_sync::{
     write_progress,
 };
 
-use crate::accounts::{AccountSet, OauthAccount};
+use antiphon_config::GraphAuth;
+use secrecy::SecretString;
+
+use crate::accounts::{AccountSet, GraphSend, OauthAccount};
 use crate::daemon::{SharedState, lock_set, lock_state};
 use crate::notify;
 use crate::tokens;
@@ -310,13 +313,23 @@ impl Mailflow {
     ) -> Result<(), ShipError> {
         let account = &envelope.account;
         if let Some(spec) = set.graph_spec(account) {
+            let graph = spec
+                .graph
+                .as_ref()
+                .expect("graph_spec only returns graph senders");
             let token =
                 self.graph_token(spec).map_err(ShipError::transient)?;
+            let sender = matches!(graph.auth, GraphAuth::AppOnly)
+                .then_some(envelope.from.as_str());
             let upload = crate::graph::with_envelope_bcc(
                 raw,
                 &envelope.recipients,
             );
-            return crate::graph::send_raw(&token, &upload);
+            return crate::graph::send_raw(
+                &token,
+                &crate::graph::sendmail_url(sender),
+                &upload,
+            );
         }
         let Some(smtp) = self.smtp_for(set, account) else {
             return Err(ShipError {
@@ -387,6 +400,13 @@ impl Mailflow {
         &self,
         spec: &OauthAccount,
     ) -> Result<String, String> {
+        let graph = spec
+            .graph
+            .as_ref()
+            .ok_or(format!("{}: not a graph sender", spec.name))?;
+        if matches!(graph.auth, GraphAuth::AppOnly) {
+            return app_only_graph_token(&spec.name, graph);
+        }
         let store = TokenStore::open(self.layout.tokens_dir())
             .map_err(|error| {
                 format!("{}: token store: {error}", spec.name)
@@ -543,6 +563,39 @@ fn announce_rules(account: &str, outcome: RuleOutcome) {
         "rules {account}: {} tagged, {} moved",
         outcome.tagged, outcome.moved
     );
+}
+
+/// App-only tokens are fetched fresh per send: sends are rare,
+/// the grant has no refresh token, and the secret never rests
+/// anywhere but the command that prints it.
+fn app_only_graph_token(
+    account: &str,
+    graph: &GraphSend,
+) -> Result<String, String> {
+    use secrecy::ExposeSecret;
+
+    let tenant = graph.tenant.as_deref().ok_or(format!(
+        "{account}: [graph] auth = \"app_only\" needs a tenant"
+    ))?;
+    let client_id = graph.client_id.as_deref().ok_or(format!(
+        "{account}: [graph] app_only needs a client_id \
+         (in [graph] or [oauth])"
+    ))?;
+    let command = graph.secret_cmd.as_deref().ok_or(format!(
+        "{account}: [graph] app_only needs secret_cmd"
+    ))?;
+    let secret = crate::accounts::resolve_password(command).ok_or(
+        format!("{account}: secret_cmd produced no client secret"),
+    )?;
+    let tokens = antiphon_oauth::app_only_token(
+        tenant,
+        client_id,
+        &SecretString::from(secret),
+    )
+    .map_err(|error| {
+        format!("{account}: app-only graph token: {error}")
+    })?;
+    Ok(tokens.access_token.expose_secret().to_string())
 }
 
 pub(crate) fn error_chain(error: &dyn std::error::Error) -> String {

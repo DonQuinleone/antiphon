@@ -90,4 +90,24 @@ pub enum OauthProvider {
 pub struct Graph {
     #[serde(default)]
     pub send: bool,
+    /// Entra tenant for the Graph grants. Delegated auth falls
+    /// back to the multi-tenant /common/ endpoint without it;
+    /// app-only refuses to run without a concrete tenant.
+    pub tenant: Option<String>,
+    /// A Graph-specific app registration; the [oauth]
+    /// client_id serves when unset.
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub auth: GraphAuth,
+    /// Command printing the app-only client secret, the same
+    /// contract as password_cmd; the secret is never stored.
+    pub secret_cmd: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GraphAuth {
+    #[default]
+    Delegated,
+    AppOnly,
 }

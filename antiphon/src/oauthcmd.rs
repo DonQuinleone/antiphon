@@ -65,55 +65,97 @@ fn run_login(name: &str) -> Result<(), String> {
         resolve_client_id(oauth, name, |var| std::env::var(var).ok())?;
     let store = open_store(&dirs)?;
     match oauth.provider {
-        OauthProvider::Microsoft => {
-            let graph_send = entry
-                .account
-                .graph
-                .as_ref()
-                .is_some_and(|graph| graph.send);
-            login_microsoft(name, &client_id, graph_send, &store)
-        }
+        OauthProvider::Microsoft => login_microsoft(
+            name,
+            &client_id,
+            entry.account.graph.as_ref(),
+            &store,
+        ),
         OauthProvider::Google => login_google(name, &client_id, &store),
     }
+}
+
+struct MicrosoftGrant {
+    audience: &'static str,
+    grant_name: String,
+    grant: Grant,
+    wanted: bool,
+}
+
+/// The IMAP grant always uses the [oauth] registration on the
+/// common endpoint; a delegated Graph grant may carry its own
+/// registration and tenant, and app-only Graph needs no
+/// interactive grant at all (client credentials at send time).
+fn microsoft_grants(
+    account: &str,
+    client_id: &str,
+    graph: Option<&antiphon_config::Graph>,
+) -> Vec<MicrosoftGrant> {
+    let sending = graph.filter(|graph| graph.send);
+    let delegated = sending.filter(|graph| {
+        graph.auth == antiphon_config::GraphAuth::Delegated
+    });
+    vec![
+        MicrosoftGrant {
+            audience: "IMAP",
+            grant_name: imap_grant(account),
+            grant: Grant {
+                provider: Provider::Microsoft,
+                scopes: MICROSOFT_IMAP_SCOPES.to_string(),
+                client_id: client_id.to_string(),
+                tenant: None,
+            },
+            wanted: true,
+        },
+        MicrosoftGrant {
+            audience: "Graph send",
+            grant_name: graph_grant(account),
+            grant: Grant {
+                provider: Provider::Microsoft,
+                scopes: MICROSOFT_GRAPH_SEND_SCOPES.to_string(),
+                client_id: delegated
+                    .and_then(|graph| graph.client_id.as_deref())
+                    .unwrap_or(client_id)
+                    .to_string(),
+                tenant: delegated
+                    .and_then(|graph| graph.tenant.clone()),
+            },
+            wanted: delegated.is_some(),
+        },
+    ]
 }
 
 fn login_microsoft(
     account: &str,
     client_id: &str,
-    graph_send: bool,
+    graph: Option<&antiphon_config::Graph>,
     store: &TokenStore,
 ) -> Result<(), String> {
-    let grants: &[(&str, &str, String, bool)] = &[
-        ("IMAP", MICROSOFT_IMAP_SCOPES, imap_grant(account), true),
-        (
-            "Graph send",
-            MICROSOFT_GRAPH_SEND_SCOPES,
-            graph_grant(account),
-            graph_send,
-        ),
-    ];
-    for (audience, scopes, grant_name, wanted) in grants {
-        if !wanted {
+    if graph.is_some_and(|graph| {
+        graph.send && graph.auth == antiphon_config::GraphAuth::AppOnly
+    }) {
+        println!(
+            "graph send is app-only: tokens come from \
+             client_credentials at send time, no sign-in needed"
+        );
+    }
+    for spec in microsoft_grants(account, client_id, graph) {
+        if !spec.wanted {
             continue;
         }
-        println!("authorising the {audience} grant for {account}");
-        let tokens = device_code_flow(
-            &Grant {
-                provider: Provider::Microsoft,
-                scopes: (*scopes).to_string(),
-                client_id: client_id.to_string(),
-                tenant: None,
-            },
-            &|prompt| {
-                println!(
-                    "open {} and enter code {}",
-                    prompt.verification_url, prompt.user_code
-                );
-            },
-        )
+        println!(
+            "authorising the {} grant for {account}",
+            spec.audience
+        );
+        let tokens = device_code_flow(&spec.grant, &|prompt| {
+            println!(
+                "open {} and enter code {}",
+                prompt.verification_url, prompt.user_code
+            );
+        })
         .map_err(|error| error.to_string())?;
-        save(store, grant_name, &tokens)?;
-        println!("stored the {audience} grant for {account}");
+        save(store, &spec.grant_name, &tokens)?;
+        println!("stored the {} grant for {account}", spec.audience);
     }
     Ok(())
 }
@@ -308,6 +350,66 @@ mod tests {
             resolve_client_id(&oauth, "work", |_| Some(String::new()))
                 .unwrap();
         assert_eq!(id, "from-config");
+    }
+
+    fn graph_config(
+        auth: antiphon_config::GraphAuth,
+        tenant: Option<&str>,
+        client_id: Option<&str>,
+    ) -> antiphon_config::Graph {
+        antiphon_config::Graph {
+            send: true,
+            tenant: tenant.map(str::to_string),
+            client_id: client_id.map(str::to_string),
+            auth,
+            secret_cmd: None,
+        }
+    }
+
+    #[test]
+    fn a_delegated_graph_grant_carries_tenant_and_client_id() {
+        let graph = graph_config(
+            antiphon_config::GraphAuth::Delegated,
+            Some("tenant-1"),
+            Some("graph-app"),
+        );
+        let grants = microsoft_grants("work", "imap-app", Some(&graph));
+        let send = &grants[1];
+        assert!(send.wanted);
+        assert_eq!(send.grant.client_id, "graph-app");
+        assert_eq!(send.grant.tenant.as_deref(), Some("tenant-1"));
+        assert_eq!(grants[0].grant.client_id, "imap-app");
+        assert_eq!(grants[0].grant.tenant, None);
+    }
+
+    #[test]
+    fn a_delegated_grant_falls_back_to_the_imap_client_id() {
+        let graph = graph_config(
+            antiphon_config::GraphAuth::Delegated,
+            None,
+            None,
+        );
+        let grants = microsoft_grants("work", "imap-app", Some(&graph));
+        assert_eq!(grants[1].grant.client_id, "imap-app");
+    }
+
+    #[test]
+    fn app_only_graph_wants_no_interactive_grant() {
+        let graph = graph_config(
+            antiphon_config::GraphAuth::AppOnly,
+            Some("tenant-1"),
+            Some("graph-app"),
+        );
+        let grants = microsoft_grants("work", "imap-app", Some(&graph));
+        assert!(!grants[1].wanted);
+        assert!(grants[0].wanted);
+    }
+
+    #[test]
+    fn no_graph_table_wants_only_the_imap_grant() {
+        let grants = microsoft_grants("work", "imap-app", None);
+        assert!(grants[0].wanted);
+        assert!(!grants[1].wanted);
     }
 
     #[test]
