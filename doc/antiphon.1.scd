@@ -30,10 +30,9 @@ only the active account's folders plus the searches. In either
 mode *g1*..*g9* jump to account 1..9, *gu* to unified, and
 *gt*/*gT* cycle (actions *account-1*..*account-9* and
 *account-unified*). Press *?* at any time for the live
-keybinding cheatsheet. The
-full key reference, theme gallery and every configuration key
-live in the *CONFIG.md* guide bundled with the project (see
-FILES).
+keybinding cheatsheet. The full key reference, theme gallery
+and every configuration key live in the guides at
+https://docs.antiphon.net.
 
 # COMMANDS
 
@@ -158,7 +157,8 @@ _$XDG_CONFIG_HOME/antiphon/accounts/\*.toml_
 _$XDG_CONFIG_HOME/antiphon/signatures/_, _templates/_, _pgp/_
 	Signature files, compose templates and the trusted OpenPGP
 	certificate directory, each referenced by name from the
-	configuration; see *PGP.md* for the last of these.
+	configuration; the security guide at
+	https://docs.antiphon.net covers the last of these.
 
 _$XDG_DATA_HOME/antiphon/store_
 	The Maildir, notmuch index, operation log, outbox and sync
