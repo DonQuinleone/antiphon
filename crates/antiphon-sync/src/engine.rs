@@ -425,6 +425,20 @@ fn ensure_dir(dir: &Path) -> Result<(), SyncError> {
     fs::create_dir_all(dir).map_err(SyncError::io(dir))
 }
 
+pub(crate) fn run_notmuch_new(config: &Path) -> Result<(), SyncError> {
+    let output = Command::new("notmuch")
+        .arg("new")
+        .env("NOTMUCH_CONFIG", config)
+        .output()
+        .map_err(|source| SyncError::NotmuchSpawn { source })?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(SyncError::Notmuch {
+        detail: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
+}
+
 #[cfg(test)]
 mod state_path_tests {
     use super::*;
@@ -448,18 +462,4 @@ mod state_path_tests {
         assert!(dotted.ends_with("work.gmail.state"));
         assert_ne!(plain, dotted);
     }
-}
-
-pub(crate) fn run_notmuch_new(config: &Path) -> Result<(), SyncError> {
-    let output = Command::new("notmuch")
-        .arg("new")
-        .env("NOTMUCH_CONFIG", config)
-        .output()
-        .map_err(|source| SyncError::NotmuchSpawn { source })?;
-    if output.status.success() {
-        return Ok(());
-    }
-    Err(SyncError::Notmuch {
-        detail: String::from_utf8_lossy(&output.stderr).into_owned(),
-    })
 }

@@ -223,7 +223,12 @@ fn remove_account(app: &mut App, name: &str) {
         .join("accounts")
         .join(format!("{name}.toml"));
     app.notice = Some(match std::fs::remove_file(&path) {
-        Ok(()) => format!("removed account {name}"),
+        Ok(()) => match super::request_reload() {
+            None => format!("removed account {name}"),
+            Some(notice) => {
+                format!("removed account {name} ({notice})")
+            }
+        },
         Err(error) => format!("remove {name}: {error}"),
     });
     if let Some(state) = app.settings.as_mut() {
@@ -246,9 +251,10 @@ fn cycle_essential(app: &mut App, step: i32) {
         Ok(()) => base,
         Err(error) => format!("{base} (not saved: {error})"),
     });
-    let hint = row
-        .daemon
-        .then(|| "takes effect when antiphond restarts".to_string());
+    let hint = row.daemon.then(|| match super::request_reload() {
+        None => "applied to the running daemon".to_string(),
+        Some(notice) => notice,
+    });
     if let Some(state) = app.settings.as_mut() {
         state.daemon_hint = hint;
     }

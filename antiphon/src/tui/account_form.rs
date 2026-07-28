@@ -243,7 +243,12 @@ fn save(app: &mut App) {
     };
     match build_and_write(&app.dirs, form) {
         Ok(name) => {
-            app.notice = Some(format!("account {name} saved"));
+            app.notice = Some(match super::request_reload() {
+                None => format!("account {name} saved; syncing"),
+                Some(notice) => {
+                    format!("account {name} saved ({notice})")
+                }
+            });
             app.account_form = None;
             app.refresh_settings_accounts();
         }

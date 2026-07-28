@@ -59,7 +59,7 @@ use ratatui::crossterm::event::{
 use ratatui::crossterm::execute;
 
 use antiphon_ipc::{
-    IpcClient, OpId, OpKind, Operation, Request, socket_path,
+    IpcClient, OpId, OpKind, Operation, Request, Response, socket_path,
 };
 use antiphon_pgp::Keyring;
 
@@ -414,6 +414,32 @@ fn nudge_daemon() {
     };
     let _ = client.set_read_timeout(IPC_WAIT);
     let _ = client.request(&Request::DrainOutbox);
+}
+
+/// A reload restarts the daemon's IDLE watchers, which can
+/// take a few seconds to wind down; the usual IPC timeout
+/// would misread that as a failure.
+const RELOAD_WAIT: Duration = Duration::from_secs(10);
+
+/// Asks antiphond to re-read configuration after an account
+/// change. `None` means the daemon took it; `Some` carries the
+/// message the caller should show instead.
+pub(super) fn request_reload() -> Option<String> {
+    let path = socket_path(|var| std::env::var_os(var));
+    let Ok(mut client) = IpcClient::connect(&path) else {
+        return Some(
+            "antiphond is not running; it reads the change when \
+             it starts"
+                .to_string(),
+        );
+    };
+    let _ = client.set_read_timeout(RELOAD_WAIT);
+    match client.request(&Request::Reload) {
+        Ok(Response::Ack) => None,
+        Ok(Response::Error(error)) => Some(format!("reload: {error}")),
+        Ok(_) => Some("reload: unexpected daemon reply".to_string()),
+        Err(error) => Some(format!("reload: {error}")),
+    }
 }
 
 fn wire_op(intent: OpIntent) -> Operation {

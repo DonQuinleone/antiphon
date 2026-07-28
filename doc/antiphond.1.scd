@@ -52,6 +52,10 @@ message; antiphond takes no other flags.
 	exits. All three are handled identically; there is no
 	separate reload behaviour on *SIGHUP*. Any of a
 	supervisor's default stop signals is safe to use.
+	Configuration reloads happen over IPC instead:
+	*antiphon*(1) requests one automatically after an
+	account is added, edited or removed, so a running
+	daemon picks up account changes without a restart.
 
 # FILES
 
