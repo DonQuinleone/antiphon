@@ -47,7 +47,10 @@ FILES).
 	Run the configured provider's sign-in flow for _account_
 	(an account name from *accounts/\*.toml*) and store the
 	resulting grants. Requires an *[oauth]* table with a
-	*client_id* on that account.
+	*client_id* on that account, unless the matching
+	environment variable overrides it:
+	*ANTIPHON_MS_CLIENT_ID* for Microsoft accounts,
+	*ANTIPHON_GOOGLE_CLIENT_ID* for Google accounts.
 
 *oauth status* _account_
 	Show the grants stored for _account_ and how long each

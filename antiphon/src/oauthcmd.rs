@@ -33,6 +33,27 @@ fn report(result: Result<(), String>) -> ExitCode {
     }
 }
 
+/// The environment overrides the account file, so a private
+/// client_id can be swapped in without editing shared config;
+/// with neither set the account keeps bring-your-own.
+fn resolve_client_id(
+    oauth: &antiphon_config::Oauth,
+    name: &str,
+    env: impl Fn(&str) -> Option<String>,
+) -> Result<String, String> {
+    let var = match oauth.provider {
+        OauthProvider::Microsoft => "ANTIPHON_MS_CLIENT_ID",
+        OauthProvider::Google => "ANTIPHON_GOOGLE_CLIENT_ID",
+    };
+    if let Some(id) = env(var).filter(|id| !id.is_empty()) {
+        return Ok(id);
+    }
+    oauth.client_id.clone().ok_or(format!(
+        "account {name}: set client_id in [oauth] (or {var}); \
+         register your own app with the provider first"
+    ))
+}
+
 fn run_login(name: &str) -> Result<(), String> {
     let (dirs, loaded) = load_config()?;
     let entry = find_account(&loaded, name)?;
@@ -40,10 +61,8 @@ fn run_login(name: &str) -> Result<(), String> {
         "account {name} has no [oauth] table; add one with \
          provider and client_id"
     ))?;
-    let client_id = oauth.client_id.clone().ok_or(format!(
-        "account {name}: set client_id in [oauth]; register \
-         your own app with the provider first"
-    ))?;
+    let client_id =
+        resolve_client_id(oauth, name, |var| std::env::var(var).ok())?;
     let store = open_store(&dirs)?;
     match oauth.provider {
         OauthProvider::Microsoft => {
@@ -244,6 +263,48 @@ mod tests {
         assert_eq!(expiry(&live, now), "access token valid for 45 min");
         let dead = tokens_expiring_at(now);
         assert!(expiry(&dead, now).contains("expired"));
+    }
+
+    fn oauth_config(client_id: Option<&str>) -> antiphon_config::Oauth {
+        antiphon_config::Oauth {
+            provider: OauthProvider::Microsoft,
+            client_id: client_id.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn the_environment_overrides_the_account_client_id() {
+        let oauth = oauth_config(Some("from-config"));
+        let id = resolve_client_id(&oauth, "work", |var| {
+            (var == "ANTIPHON_MS_CLIENT_ID")
+                .then(|| "from-env".to_string())
+        })
+        .unwrap();
+        assert_eq!(id, "from-env");
+    }
+
+    #[test]
+    fn without_an_override_the_account_client_id_stands() {
+        let oauth = oauth_config(Some("from-config"));
+        let id = resolve_client_id(&oauth, "work", |_| None).unwrap();
+        assert_eq!(id, "from-config");
+    }
+
+    #[test]
+    fn neither_source_set_names_the_variable_in_the_error() {
+        let oauth = oauth_config(None);
+        let error =
+            resolve_client_id(&oauth, "work", |_| None).unwrap_err();
+        assert!(error.contains("ANTIPHON_MS_CLIENT_ID"));
+    }
+
+    #[test]
+    fn an_empty_override_is_ignored() {
+        let oauth = oauth_config(Some("from-config"));
+        let id =
+            resolve_client_id(&oauth, "work", |_| Some(String::new()))
+                .unwrap();
+        assert_eq!(id, "from-config");
     }
 
     #[test]
