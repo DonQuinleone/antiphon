@@ -96,15 +96,28 @@ pub(super) fn open_url(app: &mut App, url: &str) {
 }
 
 pub(super) fn spawn_opener(app: &mut App, target: &str) {
-    let spawned = std::process::Command::new(OPENER)
+    app.notice = Some(match launch(target) {
+        Ok(()) => format!("opening {target}"),
+        Err(error) => format!("{OPENER}: {error}"),
+    });
+}
+
+// The real launch is skipped under test: the suite exercises
+// this path with image and link fixtures, and must never pop a
+// viewer window on the developer's desktop.
+#[cfg(not(test))]
+fn launch(target: &str) -> std::io::Result<()> {
+    std::process::Command::new(OPENER)
         .arg(target)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
-        .spawn();
-    app.notice = Some(match spawned {
-        Ok(_) => format!("opening {target}"),
-        Err(error) => format!("{OPENER}: {error}"),
-    });
+        .spawn()
+        .map(|_| ())
+}
+
+#[cfg(test)]
+fn launch(_target: &str) -> std::io::Result<()> {
+    Ok(())
 }
 
 pub(super) fn draw_picker(frame: &mut Frame, app: &App, area: Rect) {
