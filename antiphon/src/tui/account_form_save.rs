@@ -43,12 +43,14 @@ fn build_and_write(
     form: &AccountFormState,
 ) -> Result<String, String> {
     validate(form)?;
+    let address = form.address.trim().to_string();
+    let (imap_host, imap_user, smtp_host) = servers(form, &address);
     let answers = AccountAnswers {
         name: form.name.trim().to_string(),
-        address: form.address.trim().to_string(),
-        imap_host: form.imap_host.trim().to_string(),
-        imap_user: form.imap_user.trim().to_string(),
-        smtp_host: form.smtp_host.trim().to_string(),
+        address,
+        imap_host,
+        imap_user,
+        smtp_host,
         password_cmd: resolve_password_cmd(form)?,
     };
     let adding = form.editing.is_none();
@@ -73,6 +75,9 @@ fn validate(form: &AccountFormState) -> Result<(), String> {
         return Err("account name is required".to_string());
     }
     validate_address(form.address.trim())?;
+    if form.provider().is_some() {
+        return Ok(());
+    }
     if form.imap_host.trim().is_empty() {
         return Err("imap host is required".to_string());
     }
@@ -83,6 +88,50 @@ fn validate(form: &AccountFormState) -> Result<(), String> {
         return Err("smtp host is required".to_string());
     }
     Ok(())
+}
+
+/// An OAuth account never asks for server details: each
+/// provider's IMAP and SMTP hosts are fixed and the IMAP user
+/// is the e-mail address. The standard 993/587 ports stay
+/// implicit for the daemon to supply.
+struct OauthHosts {
+    imap: &'static str,
+    smtp: &'static str,
+}
+
+fn oauth_hosts(provider: OauthProvider) -> OauthHosts {
+    match provider {
+        OauthProvider::Microsoft => OauthHosts {
+            imap: "outlook.office365.com",
+            smtp: "smtp.office365.com",
+        },
+        OauthProvider::Google => OauthHosts {
+            imap: "imap.gmail.com",
+            smtp: "smtp.gmail.com",
+        },
+    }
+}
+
+/// The IMAP host, IMAP user and SMTP host to write: the form's
+/// own for an IMAP account, or the provider's fixed hosts (with
+/// the address as the user) for an OAuth one.
+fn servers(
+    form: &AccountFormState,
+    address: &str,
+) -> (String, String, String) {
+    let Some(provider) = form.provider() else {
+        return (
+            form.imap_host.trim().to_string(),
+            form.imap_user.trim().to_string(),
+            form.smtp_host.trim().to_string(),
+        );
+    };
+    let hosts = oauth_hosts(provider);
+    (
+        hosts.imap.to_string(),
+        address.to_string(),
+        hosts.smtp.to_string(),
+    )
 }
 
 /// An OAuth account signs in with a grant, so no password is
@@ -318,15 +367,44 @@ mod tests {
         assert!(text.contains("provider = \"google\""));
         assert!(text.contains("client_id = \"app-1\""));
         assert!(!text.contains("password_cmd"), "{text}");
+        assert!(text.contains("host = \"imap.gmail.com\""), "{text}");
+        assert!(text.contains("host = \"smtp.gmail.com\""), "{text}");
+        assert!(text.contains("user = \"quin@example.com\""), "{text}");
 
         let loaded = antiphon_config::load(&dirs).expect("parse");
-        let oauth = loaded.accounts[0]
-            .account
-            .oauth
-            .as_ref()
-            .expect("oauth table");
+        let account = &loaded.accounts[0].account;
+        let oauth = account.oauth.as_ref().expect("oauth table");
         assert_eq!(oauth.provider, OauthProvider::Google);
         assert_eq!(oauth.client_id.as_deref(), Some("app-1"));
+        assert_eq!(account.imap.host, "imap.gmail.com");
+        assert_eq!(account.imap.user, "quin@example.com");
+        assert_eq!(
+            account.smtp.as_ref().map(|smtp| smtp.host.as_str()),
+            Some("smtp.gmail.com")
+        );
+    }
+
+    /// A Google OAuth add ignores whatever the hidden server
+    /// fields hold and writes the provider's fixed hosts.
+    #[test]
+    fn an_oauth_add_fills_the_provider_hosts_over_the_form() {
+        let root = TempDir::new();
+        let dirs = dirs_at(&root.path);
+        let mut form = filled_form();
+        form.password_cmd = String::new();
+        form.account_type = AccountType::Microsoft;
+        form.imap_host = "stale.example.com".to_string();
+        form.smtp_host = "stale.example.com".to_string();
+        build_and_write(&dirs, &form).expect("save");
+
+        let loaded = antiphon_config::load(&dirs).expect("parse");
+        let account = &loaded.accounts[0].account;
+        assert_eq!(account.imap.host, "outlook.office365.com");
+        assert_eq!(account.imap.user, "quin@example.com");
+        assert_eq!(
+            account.smtp.as_ref().map(|smtp| smtp.host.as_str()),
+            Some("smtp.office365.com")
+        );
     }
 
     #[test]

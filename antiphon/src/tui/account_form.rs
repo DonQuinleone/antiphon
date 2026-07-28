@@ -306,9 +306,11 @@ impl AccountFormState {
         self.account_type.accent()
     }
 
-    /// Fields follow the type: an OAuth type swaps the password
-    /// rows for a client id (and, for Microsoft, the graph
-    /// rows); the Keychain field is macOS only.
+    /// Fields follow the type: an OAuth type has fixed servers
+    /// and signs in with a grant, so it hides the imap/smtp
+    /// rows and the password rows and shows a client id (and,
+    /// for Microsoft, the graph rows); the Keychain field is
+    /// macOS only.
     fn shows(&self, field: Field) -> bool {
         let microsoft = self.account_type == AccountType::Microsoft;
         match field {
@@ -322,7 +324,10 @@ impl AccountFormState {
                     && self.graph_send
                     && self.graph_auth == GraphAuth::AppOnly
             }
-            Field::PasswordCmd => {
+            Field::ImapHost
+            | Field::ImapUser
+            | Field::SmtpHost
+            | Field::PasswordCmd => {
                 self.account_type == AccountType::Imap
             }
             Field::KeychainSecret => {

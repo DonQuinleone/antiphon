@@ -77,11 +77,20 @@ fn prefill_infers_imap_and_focuses_the_type_toggle() {
 fn the_type_drives_which_fields_show() {
     let mut form = filled_form();
     assert!(labels(&form).contains(&"password command"));
+    assert!(labels(&form).contains(&"imap host"));
+    assert!(labels(&form).contains(&"imap user"));
+    assert!(labels(&form).contains(&"smtp host"));
     assert!(!labels(&form).contains(&"oauth client id"));
 
     form.account_type = AccountType::Google;
     let shown = labels(&form);
     assert!(!shown.contains(&"password command"));
+    assert!(
+        !shown.contains(&"imap host"),
+        "an OAuth account has fixed servers, so hides them"
+    );
+    assert!(!shown.contains(&"imap user"));
+    assert!(!shown.contains(&"smtp host"));
     assert!(shown.contains(&"oauth client id"));
     assert!(!shown.iter().any(|label| label.contains("graph")));
 
