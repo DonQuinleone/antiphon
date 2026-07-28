@@ -1,6 +1,8 @@
 mod account_wizard;
 mod autostart;
 mod doctor;
+mod export;
+mod exportcmd;
 mod oauthcmd;
 mod sendmail;
 mod setup;
@@ -42,6 +44,20 @@ enum Command {
         #[command(subcommand)]
         action: OauthAction,
     },
+    /// Export account Maildirs as age-encrypted tar.gz archives.
+    Export {
+        /// Account to export; all configured accounts if omitted.
+        account: Option<String>,
+        /// Destination directory, or file for a single account.
+        #[arg(short, long)]
+        output: std::path::PathBuf,
+        /// Encrypt to this age public key; repeatable.
+        #[arg(short, long = "recipient")]
+        recipient: Vec<String>,
+        /// Prompt for a passphrase instead of using recipients.
+        #[arg(short, long)]
+        passphrase: bool,
+    },
     /// Interactive first-time setup: account, secrets, vault,
     /// store, daemon.
     Setup,
@@ -79,6 +95,17 @@ fn main() -> ExitCode {
                 oauthcmd::status(&account)
             }
         },
+        Some(Command::Export {
+            account,
+            output,
+            recipient,
+            passphrase,
+        }) => exportcmd::run(&exportcmd::ExportArgs {
+            account: account.as_deref(),
+            output: &output,
+            recipients: &recipient,
+            passphrase,
+        }),
         Some(Command::Setup) => setup::run(),
         Some(Command::Sendmail { args }) => sendmail::run(&args),
         None => open_client(),

@@ -53,6 +53,20 @@ FILES).
 	Show the grants stored for _account_ and how long each
 	access token has left before it needs a refresh.
 
+*export* [_account_] *-o* _path_ [*-r* _recipient_]... [*-p*]
+	Export _account_'s Maildir, or every configured account's
+	when _account_ is omitted, as a tar.gz archive encrypted
+	with age. Each archive lands under the *-o*/*--output*
+	directory as _name-YYYY-MM-DD.tar.gz.age_ (UTC date); with
+	a single account, an *--output* that is not an existing
+	directory names the archive file itself. Encrypt to one or
+	more age public keys with *-r*/*--recipient*, or to a
+	passphrase prompted on the terminal with
+	*-p*/*--passphrase*; exactly one of the two must be
+	chosen. After writing, each archive is re-opened to
+	confirm its age header parses, and a summary line reports
+	the account, file count, bytes and destination.
+
 *setup*
 	Interactive first-time setup: asks for an address and
 	server details, stores the mail and vault secrets, writes

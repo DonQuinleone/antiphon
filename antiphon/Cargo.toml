@@ -20,10 +20,14 @@ antiphon-store = { path = "../crates/antiphon-store" }
 antiphon-sync = { path = "../crates/antiphon-sync" }
 antiphon-vault = { path = "../crates/antiphon-vault" }
 antiphon-ui = { path = "../crates/antiphon-ui" }
+age = "=0.11.1"
 chrono = "=0.4.45"
+flate2 = "=1.1.9"
 ratatui = "=0.30.2"
 clap = { version = "=4.6.4", features = ["derive"] }
 portable-pty = "=0.9.0"
+rpassword = "=7.5.4"
+tar = "=0.4.46"
 tui-term = "=0.3.4"
 vt100 = "=0.16.2"
 
