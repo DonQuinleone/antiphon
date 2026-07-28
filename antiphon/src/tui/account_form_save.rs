@@ -4,9 +4,11 @@
 
 use std::path::Path;
 
-use antiphon_config::{Dirs, OauthProvider};
+use antiphon_config::{Dirs, GraphAuth, OauthProvider};
 
-use super::account_form::{AccountFormState, provider_name};
+use super::account_form::{
+    AccountFormState, graph_auth_toml, provider_name,
+};
 use super::app::App;
 use super::configedit;
 use crate::account_file;
@@ -91,7 +93,7 @@ fn validate(form: &AccountFormState) -> Result<(), String> {
 fn resolve_password_cmd(
     form: &AccountFormState,
 ) -> Result<String, String> {
-    if form.provider.is_some() {
+    if form.provider().is_some() {
         return Ok(String::new());
     }
     let typed = form.password_cmd.trim();
@@ -132,12 +134,12 @@ fn patch_oauth(
 }
 
 /// Only the keys the form owns are touched: [oauth] provider
-/// and client_id, [graph] send and tenant. Choosing no
-/// provider drops the whole [oauth] table but leaves [graph]
-/// alone, where hand-written keys (auth, secret_cmd) may
-/// still matter.
+/// and client_id, [graph] send, auth, tenant and secret_cmd.
+/// A non-OAuth type drops the whole [oauth] table but leaves
+/// [graph] alone (its body goes with the account's own edits,
+/// not this patch). Every other line survives untouched.
 fn with_oauth(text: &str, form: &AccountFormState) -> String {
-    let Some(provider) = form.provider else {
+    let Some(provider) = form.provider() else {
         return configedit::without_table(text, "oauth");
     };
     let name = provider_name(Some(provider));
@@ -152,19 +154,35 @@ fn with_oauth(text: &str, form: &AccountFormState) -> String {
     if provider != OauthProvider::Microsoft {
         return text;
     }
-    if form.graph_send {
-        text = configedit::with_key(&text, "graph", "send", "true");
+    with_graph(&text, form)
+}
+
+/// The [graph] table for a Microsoft account: send off leaves
+/// the table as it stands (only flipping `send` if it exists),
+/// send on writes the auth flow, tenant and, for app-only, the
+/// secret command; delegated drops any lingering secret_cmd.
+fn with_graph(text: &str, form: &AccountFormState) -> String {
+    if !form.graph_send {
+        if configedit::has_table(text, "graph") {
+            return configedit::with_key(
+                text, "graph", "send", "false",
+            );
+        }
+        return text.to_string();
+    }
+    let auth = graph_auth_toml(form.graph_auth);
+    let mut text = configedit::with_key(text, "graph", "send", "true");
+    text = configedit::with_key(&text, "graph", "auth", &quoted(auth));
+    text = optional_key(&text, "graph", "tenant", form.tenant.trim());
+    if form.graph_auth == GraphAuth::AppOnly {
         return optional_key(
             &text,
             "graph",
-            "tenant",
-            form.tenant.trim(),
+            "secret_cmd",
+            form.graph_secret_cmd.trim(),
         );
     }
-    if configedit::has_table(text.as_str(), "graph") {
-        return configedit::with_key(&text, "graph", "send", "false");
-    }
-    text
+    configedit::without_key(&text, "graph", "secret_cmd")
 }
 
 /// A filled value is written, an emptied one removed, so the
@@ -188,6 +206,7 @@ fn quoted(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::account_form::AccountType;
     use super::super::account_form::tests::{
         filled_answers, filled_form,
     };
@@ -217,7 +236,7 @@ mod tests {
     fn an_oauth_account_needs_no_password_at_all() {
         let mut form = filled_form();
         form.password_cmd = String::new();
-        form.provider = Some(OauthProvider::Google);
+        form.account_type = AccountType::Google;
         assert_eq!(resolve_password_cmd(&form), Ok(String::new()));
     }
 
@@ -287,7 +306,7 @@ mod tests {
         let dirs = dirs_at(&root.path);
         let mut form = filled_form();
         form.password_cmd = String::new();
-        form.provider = Some(OauthProvider::Google);
+        form.account_type = AccountType::Google;
         form.client_id = "app-1".to_string();
         build_and_write(&dirs, &form).expect("save");
 
@@ -315,7 +334,7 @@ mod tests {
         let root = TempDir::new();
         let dirs = dirs_at(&root.path);
         let mut form = filled_form();
-        form.provider = Some(OauthProvider::Microsoft);
+        form.account_type = AccountType::Microsoft;
         form.graph_send = true;
         form.tenant = "tenant-1".to_string();
         build_and_write(&dirs, &form).expect("save");
@@ -325,6 +344,7 @@ mod tests {
         let graph = account.graph.as_ref().expect("graph table");
         assert!(graph.send);
         assert_eq!(graph.tenant.as_deref(), Some("tenant-1"));
+        assert_eq!(graph.auth, GraphAuth::Delegated);
         assert!(account.oauth.is_some());
     }
 
@@ -380,16 +400,21 @@ mod tests {
         assert!(text.contains("secret_cmd = \"pass show graph\""));
     }
 
+    /// An edit that re-affirms the inferred graph settings (as
+    /// opening the form does) keeps the app-only flow and the
+    /// secret command's hand-written comment.
     #[test]
-    fn an_edit_keeps_hand_written_graph_keys() {
+    fn an_edit_keeps_the_graph_secret_command_and_comment() {
         let root = TempDir::new();
         let dirs = seeded(&root);
         let mut form = filled_form();
         form.editing = Some("work".to_string());
         form.password_cmd = String::new();
-        form.provider = Some(OauthProvider::Microsoft);
+        form.account_type = AccountType::Microsoft;
         form.client_id = "app-2".to_string();
         form.graph_send = true;
+        form.graph_auth = GraphAuth::AppOnly;
+        form.graph_secret_cmd = "pass show graph".to_string();
         form.tenant = String::new();
         build_and_write(&dirs, &form).expect("save");
 
@@ -405,8 +430,30 @@ mod tests {
         assert!(text.contains("auth = \"app_only\""));
         assert!(
             text.contains("secret_cmd = \"pass show graph\"  # rotate"),
-            "hand-written keys and comments survive: {text}"
+            "the command and its comment survive: {text}"
         );
+    }
+
+    /// Switching an app-only account to delegated drops the
+    /// now-unused secret command.
+    #[test]
+    fn delegated_drops_the_graph_secret_command() {
+        let root = TempDir::new();
+        let dirs = seeded(&root);
+        let mut form = filled_form();
+        form.editing = Some("work".to_string());
+        form.password_cmd = String::new();
+        form.account_type = AccountType::Microsoft;
+        form.graph_send = true;
+        form.graph_auth = GraphAuth::Delegated;
+        build_and_write(&dirs, &form).expect("save");
+
+        let text = std::fs::read_to_string(
+            dirs.config.join("accounts/work.toml"),
+        )
+        .unwrap();
+        assert!(text.contains("auth = \"delegated\""), "{text}");
+        assert!(!text.contains("secret_cmd"), "{text}");
     }
 
     #[test]
@@ -415,7 +462,7 @@ mod tests {
         let dirs = seeded(&root);
         let mut form = filled_form();
         form.editing = Some("work".to_string());
-        form.provider = Some(OauthProvider::Microsoft);
+        form.account_type = AccountType::Microsoft;
         form.graph_send = false;
         build_and_write(&dirs, &form).expect("save");
 
@@ -425,5 +472,87 @@ mod tests {
         .unwrap();
         assert!(text.contains("send = false"), "{text}");
         assert!(text.contains("secret_cmd = \"pass show graph\""));
+    }
+
+    fn rich_imap_toml() -> &'static str {
+        "folder_order = [\"INBOX\", \"lists\"]\n\
+         folders_hidden = [\"Junk\"]\n\
+         folders_unsynced = [\"Archive\"]\n\
+         \n\
+         [account]\n\
+         name = \"work\"\n\
+         \n\
+         [imap]\n\
+         host = \"imap.example.com\"\n\
+         user = \"quin@example.com\"\n\
+         password_cmd = \"pass show mail/work\"  # rotate soon\n\
+         \n\
+         [smtp]\n\
+         host = \"smtp.example.com\"\n\
+         \n\
+         [[identity]]\n\
+         address = \"quin@example.com\"\n\
+         match = [\"quin@example.com\"]\n\
+         \n\
+         [[rules]]\n\
+         match_sender = \"ci@example.com\"\n\
+         move_to = \"ci\"\n"
+    }
+
+    /// Changing an IMAP account to Microsoft 365 adds the
+    /// [oauth]/[graph] tables while every hand-written line
+    /// (rules, folder lists, comments) is left untouched.
+    #[test]
+    fn changing_type_preserves_hand_written_content() {
+        let root = TempDir::new();
+        let dirs = dirs_at(&root.path);
+        let accounts = dirs.config.join("accounts");
+        std::fs::create_dir_all(&accounts).unwrap();
+        std::fs::write(accounts.join("work.toml"), rich_imap_toml())
+            .unwrap();
+
+        let mut form = filled_form();
+        form.editing = Some("work".to_string());
+        form.password_cmd = String::new();
+        form.account_type = AccountType::Microsoft;
+        form.client_id = "app-9".to_string();
+        form.graph_send = true;
+        form.graph_auth = GraphAuth::AppOnly;
+        form.tenant = "tenant-9".to_string();
+        form.graph_secret_cmd = "pass show graph".to_string();
+        build_and_write(&dirs, &form).expect("save");
+
+        let text = std::fs::read_to_string(accounts.join("work.toml"))
+            .unwrap();
+        assert!(text.contains("[[rules]]"), "rules survive: {text}");
+        assert!(text.contains("match_sender = \"ci@example.com\""));
+        assert!(
+            text.contains("folder_order = [\"INBOX\", \"lists\"]"),
+            "{text}"
+        );
+        assert!(text.contains("folders_hidden = [\"Junk\"]"));
+        assert!(text.contains("folders_unsynced = [\"Archive\"]"));
+        assert!(
+            text.contains(
+                "password_cmd = \"pass show mail/work\"  # rotate soon"
+            ),
+            "comments survive: {text}"
+        );
+        assert!(text.contains("provider = \"microsoft\""));
+        assert!(text.contains("client_id = \"app-9\""));
+        assert!(text.contains("auth = \"app_only\""));
+        assert!(text.contains("secret_cmd = \"pass show graph\""));
+
+        let loaded = antiphon_config::load(&dirs).expect("parse");
+        let account = &loaded.accounts[0].account;
+        assert_eq!(
+            account.oauth.as_ref().map(|oauth| oauth.provider),
+            Some(OauthProvider::Microsoft)
+        );
+        assert_eq!(account.rules.len(), 1);
+        assert_eq!(
+            account.folders_unsynced,
+            vec!["Archive".to_string()]
+        );
     }
 }

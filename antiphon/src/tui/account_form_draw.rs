@@ -4,15 +4,18 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph};
 
-use super::account_form::{Field, PASSWORD_HINT};
+use super::account_form::{
+    AccountFormState, Field, PASSWORD_HINT, client_id_env_hint,
+};
 use super::app::App;
+use super::draw::segmented::{self, SegmentStyle};
 use super::headers::with_cursor;
 
 const MODAL_WIDTH: u16 = 86;
 const LABEL_COLS: usize = 24;
 const BORDER_ROWS: u16 = 2;
-const HINT: &str = " tab move \u{b7} \u{2190}/\u{2192} cycle \u{b7} \
-     enter/^s save \u{b7} esc cancel ";
+const HINT: &str = " tab move \u{b7} \u{2190}/\u{2192}/space toggle \
+     \u{b7} enter/^s save \u{b7} esc cancel ";
 const BULLET: char = '\u{2022}';
 
 pub(super) fn draw_form(frame: &mut Frame, app: &App, area: Rect) {
@@ -67,7 +70,7 @@ pub(super) fn draw_form(frame: &mut Frame, app: &App, area: Rect) {
 
 fn field_line(
     app: &App,
-    form: &super::account_form::AccountFormState,
+    form: &AccountFormState,
     index: usize,
 ) -> Line<'static> {
     let theme = app.theme;
@@ -79,26 +82,67 @@ fn field_line(
             .add_modifier(Modifier::BOLD);
     }
     let label = format!("{:<LABEL_COLS$}", form.field_label(index));
+    let mut spans = vec![Span::styled(label, label_style)];
+    if let Some(options) = form.field_segments(index) {
+        spans.extend(segment_spans(app, form, index, options));
+        return Line::from(spans);
+    }
     let displayed = shown_value(form, index);
     let value = if active {
         with_cursor(&displayed, form.cursor)
     } else {
         displayed
     };
-    let mut spans = vec![
-        Span::styled(label, label_style),
-        Span::styled(value, Style::new().fg(theme.text_primary)),
-    ];
-    let show_hint = cfg!(target_os = "macos")
-        && form.field_id(index) == Field::PasswordCmd
-        && form.field_value(index).is_empty();
-    if show_hint {
+    spans
+        .push(Span::styled(value, Style::new().fg(theme.text_primary)));
+    if let Some(hint) = field_hint(form, index) {
         spans.push(Span::styled(
-            format!(" ({PASSWORD_HINT})"),
+            format!(" ({hint})"),
             Style::new().fg(theme.text_muted),
         ));
     }
     Line::from(spans)
+}
+
+/// The account type's selected segment wears its own
+/// brand-evocative accent; every other toggle uses the house
+/// accent.
+fn segment_spans(
+    app: &App,
+    form: &AccountFormState,
+    index: usize,
+    options: &'static [&'static str],
+) -> Vec<Span<'static>> {
+    let theme = app.theme;
+    let selected_bg = if form.field_id(index) == Field::AccountType {
+        theme.account_type_accent(form.type_accent())
+    } else {
+        theme.accent
+    };
+    segmented::segments(
+        options,
+        form.field_selected(index),
+        SegmentStyle {
+            selected_bg,
+            selected_fg: theme.background,
+            unselected_fg: theme.text_muted,
+        },
+    )
+}
+
+fn field_hint(form: &AccountFormState, index: usize) -> Option<String> {
+    match form.field_id(index) {
+        Field::PasswordCmd
+            if cfg!(target_os = "macos")
+                && form.field_value(index).is_empty() =>
+        {
+            Some(PASSWORD_HINT.to_string())
+        }
+        Field::ClientId => {
+            client_id_env_hint(form.account_type).map(str::to_string)
+        }
+        _ => None,
+    }
 }
 
 /// Greedy word wrap; the modal is narrow and errors are one
@@ -138,19 +182,41 @@ fn shown_value(
 
 #[cfg(test)]
 mod tests {
+    use antiphon_config::GraphAuth;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
+    use super::super::account_form::AccountType;
     use super::super::testkit::app_with_messages;
     use super::*;
 
     fn rendered(app: &App) -> ratatui::buffer::Buffer {
-        let backend = TestBackend::new(80, 20);
+        let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|frame| draw_form(frame, app, frame.area()))
             .unwrap();
         terminal.backend().buffer().clone()
+    }
+
+    fn form_of(account_type: AccountType) -> AccountFormState {
+        AccountFormState {
+            account_type,
+            graph_send: account_type == AccountType::Microsoft,
+            graph_auth: GraphAuth::AppOnly,
+            error: None,
+            ..AccountFormState::default()
+        }
+    }
+
+    fn has_bg(
+        buffer: &ratatui::buffer::Buffer,
+        bg: ratatui::style::Color,
+    ) -> bool {
+        (0..buffer.area.height).any(|y| {
+            (0..buffer.area.width)
+                .any(|x| buffer.cell((x, y)).unwrap().bg == bg)
+        })
     }
 
     fn text(buffer: &ratatui::buffer::Buffer) -> String {
@@ -189,5 +255,64 @@ mod tests {
         }
         let buffer = rendered(&app);
         assert!(text(&buffer).contains("account name is required"));
+    }
+
+    #[test]
+    fn the_type_toggle_draws_every_type_inline() {
+        let mut app = app_with_messages(1);
+        app.account_form = Some(form_of(AccountType::Imap));
+        let shown = text(&rendered(&app));
+        assert!(shown.contains("account type"));
+        assert!(shown.contains("IMAP"));
+        assert!(shown.contains("Microsoft 365"));
+        assert!(shown.contains("Google"));
+    }
+
+    #[test]
+    fn an_imap_form_shows_the_password_rows_not_oauth() {
+        let mut app = app_with_messages(1);
+        app.account_form = Some(form_of(AccountType::Imap));
+        let shown = text(&rendered(&app));
+        assert!(shown.contains("password command"));
+        assert!(!shown.contains("oauth client id"));
+        assert!(!shown.contains("graph send"));
+    }
+
+    #[test]
+    fn a_google_form_shows_the_client_id_and_env_hint() {
+        let mut app = app_with_messages(1);
+        app.account_form = Some(form_of(AccountType::Google));
+        let shown = text(&rendered(&app));
+        assert!(shown.contains("oauth client id"));
+        assert!(shown.contains("ANTIPHON_GOOGLE_CLIENT_ID"));
+        assert!(!shown.contains("password command"));
+        assert!(!shown.contains("graph send"));
+    }
+
+    #[test]
+    fn a_microsoft_form_shows_the_graph_toggles() {
+        let mut app = app_with_messages(1);
+        app.account_form = Some(form_of(AccountType::Microsoft));
+        let shown = text(&rendered(&app));
+        assert!(shown.contains("graph send"));
+        assert!(shown.contains("graph auth"));
+        assert!(shown.contains("delegated"));
+        assert!(shown.contains("app-only"));
+        assert!(shown.contains("graph secret command"));
+        assert!(!shown.contains("password command"));
+    }
+
+    #[test]
+    fn the_selected_type_wears_its_own_accent() {
+        let mut app = app_with_messages(1);
+        app.account_form = Some(form_of(AccountType::Microsoft));
+        let buffer = rendered(&app);
+        let accent = app
+            .theme
+            .account_type_accent(antiphon_ui::AccountAccent::Microsoft);
+        assert!(
+            has_bg(&buffer, accent),
+            "the Microsoft segment carries its warm accent"
+        );
     }
 }

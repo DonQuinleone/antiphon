@@ -21,11 +21,19 @@ fn labels(form: &AccountFormState) -> Vec<&'static str> {
         .collect()
 }
 
-fn provider_row(form: &AccountFormState) -> usize {
+fn type_row(form: &AccountFormState) -> usize {
     labels(form)
         .iter()
-        .position(|label| label.starts_with("oauth provider"))
-        .expect("provider row")
+        .position(|label| *label == "account type")
+        .expect("type row")
+}
+
+#[test]
+fn the_type_toggle_leads_the_form() {
+    let form = filled_form();
+    assert_eq!(form.field_id(0), Field::AccountType);
+    assert_eq!(form.field_value(0), "IMAP");
+    assert_eq!(form.field_segments(0), Some(&TYPE_OPTIONS as &[&str]));
 }
 
 #[test]
@@ -41,7 +49,7 @@ fn the_field_table_round_trips_every_answer() {
             answers.imap_user.as_str(),
             answers.smtp_host.as_str(),
             answers.password_cmd.as_str(),
-            "none",
+            "IMAP",
             "",
         ]
         .contains(&value);
@@ -50,7 +58,7 @@ fn the_field_table_round_trips_every_answer() {
 }
 
 #[test]
-fn prefill_starts_focused_on_the_first_field_at_its_end() {
+fn prefill_infers_imap_and_focuses_the_type_toggle() {
     let answers = filled_answers();
     let form = AccountFormState::from_answers(
         &answers,
@@ -58,34 +66,45 @@ fn prefill_starts_focused_on_the_first_field_at_its_end() {
     );
     assert_eq!(form.editing.as_deref(), Some("work"));
     assert_eq!(form.focus, 0);
-    assert_eq!(form.cursor, answers.address.chars().count());
+    assert_eq!(form.field_id(0), Field::AccountType);
     assert_eq!(form.address, answers.address);
     assert_eq!(form.password_cmd, answers.password_cmd);
     assert!(form.keychain_secret.is_empty());
-    assert_eq!(form.provider, None);
+    assert_eq!(form.account_type, AccountType::Imap);
 }
 
 #[test]
-fn a_provider_swaps_the_password_fields_for_oauth_ones() {
+fn the_type_drives_which_fields_show() {
     let mut form = filled_form();
     assert!(labels(&form).contains(&"password command"));
     assert!(!labels(&form).contains(&"oauth client id"));
 
-    form.provider = Some(OauthProvider::Google);
+    form.account_type = AccountType::Google;
     let shown = labels(&form);
     assert!(!shown.contains(&"password command"));
     assert!(shown.contains(&"oauth client id"));
     assert!(!shown.iter().any(|label| label.contains("graph")));
 
-    form.provider = Some(OauthProvider::Microsoft);
+    form.account_type = AccountType::Microsoft;
     let shown = labels(&form);
-    assert!(shown.iter().any(|label| label.starts_with("graph send")));
+    assert!(shown.contains(&"graph send"));
     assert!(
         !shown.contains(&"graph tenant"),
-        "tenant hides until graph send is on"
+        "the graph rows hide until graph send is on"
     );
+    assert!(!shown.contains(&"graph auth"));
+
     form.graph_send = true;
-    assert!(labels(&form).contains(&"graph tenant"));
+    let shown = labels(&form);
+    assert!(shown.contains(&"graph tenant"));
+    assert!(shown.contains(&"graph auth"));
+    assert!(
+        !shown.contains(&"graph secret command"),
+        "the secret command is app-only"
+    );
+
+    form.graph_auth = GraphAuth::AppOnly;
+    assert!(labels(&form).contains(&"graph secret command"));
 }
 
 fn cycle_at_focus(form: &mut AccountFormState, code: KeyCode) {
@@ -95,31 +114,41 @@ fn cycle_at_focus(form: &mut AccountFormState, code: KeyCode) {
 }
 
 #[test]
-fn left_and_right_cycle_the_provider_row() {
+fn left_right_and_space_cycle_the_type_row() {
     let mut form = filled_form();
-    form.focus = provider_row(&form);
+    form.focus = type_row(&form);
     cycle_at_focus(&mut form, KeyCode::Right);
-    assert_eq!(form.provider, Some(OauthProvider::Google));
+    assert_eq!(form.account_type, AccountType::Microsoft);
+    cycle_at_focus(&mut form, KeyCode::Char(' '));
+    assert_eq!(form.account_type, AccountType::Google);
     cycle_at_focus(&mut form, KeyCode::Right);
-    assert_eq!(form.provider, Some(OauthProvider::Microsoft));
-    cycle_at_focus(&mut form, KeyCode::Right);
-    assert_eq!(form.provider, None);
+    assert_eq!(form.account_type, AccountType::Imap);
     cycle_at_focus(&mut form, KeyCode::Left);
-    assert_eq!(form.provider, Some(OauthProvider::Microsoft));
+    assert_eq!(form.account_type, AccountType::Google);
+}
+
+#[test]
+fn the_provider_follows_the_type() {
+    let mut form = filled_form();
+    assert_eq!(form.provider(), None);
+    form.account_type = AccountType::Microsoft;
+    assert_eq!(form.provider(), Some(OauthProvider::Microsoft));
+    form.account_type = AccountType::Google;
+    assert_eq!(form.provider(), Some(OauthProvider::Google));
 }
 
 #[test]
 fn typing_on_a_cycle_row_changes_nothing() {
     let mut form = filled_form();
-    let row = provider_row(&form);
+    let row = type_row(&form);
     form.focus = row;
     assert!(form.field_mut().is_none());
-    assert_eq!(form.field_value(row), "none");
+    assert_eq!(form.field_value(row), "IMAP");
 }
 
 #[test]
-fn oauth_prefill_reads_the_oauth_and_graph_tables() {
-    use antiphon_config::{Graph, GraphAuth, Oauth};
+fn infer_type_reads_the_oauth_and_graph_tables() {
+    use antiphon_config::{Graph, Oauth};
 
     let mut form = filled_form();
     let mut account = minimal_account();
@@ -131,14 +160,31 @@ fn oauth_prefill_reads_the_oauth_and_graph_tables() {
         send: true,
         tenant: Some("tenant-1".to_string()),
         client_id: None,
-        auth: GraphAuth::Delegated,
-        secret_cmd: None,
+        auth: GraphAuth::AppOnly,
+        secret_cmd: Some("pass show graph".to_string()),
     });
-    form.oauth_prefill(&account);
-    assert_eq!(form.provider, Some(OauthProvider::Microsoft));
+    form.infer_type(&account);
+    assert_eq!(form.account_type, AccountType::Microsoft);
     assert_eq!(form.client_id, "app-1");
     assert!(form.graph_send);
+    assert_eq!(form.graph_auth, GraphAuth::AppOnly);
     assert_eq!(form.tenant, "tenant-1");
+    assert_eq!(form.graph_secret_cmd, "pass show graph");
+}
+
+#[test]
+fn infer_type_reads_a_google_account() {
+    use antiphon_config::Oauth;
+
+    let mut form = filled_form();
+    let mut account = minimal_account();
+    account.oauth = Some(Oauth {
+        provider: OauthProvider::Google,
+        client_id: None,
+    });
+    form.infer_type(&account);
+    assert_eq!(form.account_type, AccountType::Google);
+    assert!(form.client_id.is_empty());
 }
 
 pub(in super::super) fn minimal_account() -> antiphon_config::AccountFile
