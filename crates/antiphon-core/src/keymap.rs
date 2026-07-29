@@ -9,60 +9,76 @@ use crate::sequence::{Chord, KeySequence, SequenceError};
 const COUNT_RADIX: u32 = 10;
 const COUNT_CEILING: u32 = 9999;
 
-const DEFAULT_BINDINGS: &[(Action, &str)] = &[
-    (Action::MoveDown, "j"),
-    (Action::MoveUp, "k"),
-    (Action::Top, "gg"),
-    (Action::Bottom, "G"),
-    (Action::HalfPageDown, "ctrl-d"),
-    (Action::HalfPageUp, "ctrl-u"),
-    (Action::Open, "enter"),
-    (Action::Back, "esc"),
-    (Action::Quit, "q"),
-    (Action::Search, "/"),
-    (Action::Command, ":"),
-    (Action::NextAccount, "gt"),
-    (Action::PreviousAccount, "gT"),
-    (Action::AccountTab(1), "g1"),
-    (Action::AccountTab(2), "g2"),
-    (Action::AccountTab(3), "g3"),
-    (Action::AccountTab(4), "g4"),
-    (Action::AccountTab(5), "g5"),
-    (Action::AccountTab(6), "g6"),
-    (Action::AccountTab(7), "g7"),
-    (Action::AccountTab(8), "g8"),
-    (Action::AccountTab(9), "g9"),
-    (Action::AccountUnified, "gu"),
-    (Action::SidebarNext, "ctrl-n"),
-    (Action::SidebarPrevious, "ctrl-p"),
-    (Action::SidebarOpen, "ctrl-o"),
-    (Action::ToggleSidebar, "B"),
-    (Action::CycleReadingPane, "p"),
-    (Action::Sync, "s"),
-    (Action::Reply, "r"),
-    (Action::ReplyAll, "R"),
-    (Action::ReplyList, "L"),
-    (Action::Forward, "f"),
-    (Action::Compose, "n"),
-    (Action::ToggleRead, "m"),
-    (Action::MarkAllRead, "M"),
-    (Action::ToggleFlagged, "F"),
-    (Action::DeleteMessage, "d"),
-    (Action::ToggleHtml, "h"),
-    (Action::OpenHtmlBrowser, "b"),
-    (Action::PaneScrollDown, "J"),
-    (Action::PaneScrollUp, "K"),
-    (Action::Help, "?"),
-    (Action::ToggleHeaders, "t"),
-    (Action::OpenLink, "o"),
-    (Action::Attachments, "v"),
-    (Action::ThreadView, "T"),
-    (Action::FoldToggle, "za"),
-    (Action::FoldOpen, "zo"),
-    (Action::FoldClose, "zc"),
-    (Action::Archive, "a"),
-    (Action::MoveTo, "c"),
-    (Action::Settings, "<"),
+/// The input surface a key is resolved against. A key can mean
+/// different actions in different contexts (h toggles html in
+/// the pager, edits headers in the review screen); Global is
+/// the fallback checked after the active context, for keys that
+/// mean the same thing everywhere.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Context {
+    Global,
+    List,
+    Pager,
+    Review,
+    Settings,
+    Compose,
+    Prompt,
+}
+
+const DEFAULT_BINDINGS: &[(Context, Action, &str)] = &[
+    (Context::Global, Action::MoveDown, "j"),
+    (Context::Global, Action::MoveUp, "k"),
+    (Context::Global, Action::Top, "gg"),
+    (Context::Global, Action::Bottom, "G"),
+    (Context::Global, Action::HalfPageDown, "ctrl-d"),
+    (Context::Global, Action::HalfPageUp, "ctrl-u"),
+    (Context::Global, Action::Open, "enter"),
+    (Context::Global, Action::Back, "esc"),
+    (Context::Global, Action::Quit, "q"),
+    (Context::Global, Action::Search, "/"),
+    (Context::Global, Action::Command, ":"),
+    (Context::Global, Action::NextAccount, "gt"),
+    (Context::Global, Action::PreviousAccount, "gT"),
+    (Context::Global, Action::AccountTab(1), "g1"),
+    (Context::Global, Action::AccountTab(2), "g2"),
+    (Context::Global, Action::AccountTab(3), "g3"),
+    (Context::Global, Action::AccountTab(4), "g4"),
+    (Context::Global, Action::AccountTab(5), "g5"),
+    (Context::Global, Action::AccountTab(6), "g6"),
+    (Context::Global, Action::AccountTab(7), "g7"),
+    (Context::Global, Action::AccountTab(8), "g8"),
+    (Context::Global, Action::AccountTab(9), "g9"),
+    (Context::Global, Action::AccountUnified, "gu"),
+    (Context::Global, Action::SidebarNext, "ctrl-n"),
+    (Context::Global, Action::SidebarPrevious, "ctrl-p"),
+    (Context::Global, Action::SidebarOpen, "ctrl-o"),
+    (Context::Global, Action::ToggleSidebar, "B"),
+    (Context::Global, Action::CycleReadingPane, "p"),
+    (Context::Global, Action::Sync, "s"),
+    (Context::Global, Action::Reply, "r"),
+    (Context::Global, Action::ReplyAll, "R"),
+    (Context::Global, Action::ReplyList, "L"),
+    (Context::Global, Action::Forward, "f"),
+    (Context::Global, Action::Compose, "n"),
+    (Context::Global, Action::ToggleRead, "m"),
+    (Context::Global, Action::MarkAllRead, "M"),
+    (Context::Global, Action::ToggleFlagged, "F"),
+    (Context::Global, Action::DeleteMessage, "d"),
+    (Context::Global, Action::ToggleHtml, "h"),
+    (Context::Global, Action::OpenHtmlBrowser, "b"),
+    (Context::Global, Action::PaneScrollDown, "J"),
+    (Context::Global, Action::PaneScrollUp, "K"),
+    (Context::Global, Action::Help, "?"),
+    (Context::Global, Action::ToggleHeaders, "t"),
+    (Context::Global, Action::OpenLink, "o"),
+    (Context::Global, Action::Attachments, "v"),
+    (Context::Global, Action::ThreadView, "T"),
+    (Context::Global, Action::FoldToggle, "za"),
+    (Context::Global, Action::FoldOpen, "zo"),
+    (Context::Global, Action::FoldClose, "zc"),
+    (Context::Global, Action::Archive, "a"),
+    (Context::Global, Action::MoveTo, "c"),
+    (Context::Global, Action::Settings, "<"),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,9 +125,9 @@ impl std::error::Error for KeymapError {}
 
 #[derive(Debug)]
 pub struct Keymap {
-    singles: HashMap<Chord, Action>,
-    pairs: HashMap<(Chord, Chord), Action>,
-    prefixes: HashSet<Chord>,
+    singles: HashMap<(Context, Chord), Action>,
+    pairs: HashMap<(Context, Chord, Chord), Action>,
+    prefixes: HashSet<(Context, Chord)>,
     pending: Option<Chord>,
     count: u32,
     listing: Vec<(Action, String)>,
@@ -139,12 +155,9 @@ impl Keymap {
                 .iter_mut()
                 .find(|entry| entry.action == action)
                 .expect("defaults cover every action");
-            *entry = Entry {
-                action,
-                sequence,
-                text: text.clone(),
-                user: true,
-            };
+            entry.sequence = sequence;
+            entry.text = text.clone();
+            entry.user = true;
         }
         let listing: Vec<(Action, String)> = entries
             .iter()
@@ -161,7 +174,7 @@ impl Keymap {
             listing,
         };
         for entry in entries {
-            keymap.bind(entry.action, entry.sequence);
+            keymap.bind(entry.context, entry.action, entry.sequence);
         }
         Ok(keymap)
     }
@@ -180,29 +193,66 @@ impl Keymap {
         &self.listing
     }
 
-    fn bind(&mut self, action: Action, sequence: KeySequence) {
+    fn bind(
+        &mut self,
+        context: Context,
+        action: Action,
+        sequence: KeySequence,
+    ) {
         match sequence {
             KeySequence::One(chord) => {
-                self.singles.insert(chord, action);
+                self.singles.insert((context, chord), action);
             }
             KeySequence::Two(first, second) => {
-                self.prefixes.insert(first);
-                self.pairs.insert((first, second), action);
+                self.prefixes.insert((context, first));
+                self.pairs.insert((context, first, second), action);
             }
         }
+    }
+
+    /// A single-chord binding for the context, falling back to
+    /// Global for keys that mean the same thing everywhere.
+    fn single(&self, context: Context, chord: Chord) -> Option<Action> {
+        self.singles
+            .get(&(context, chord))
+            .or_else(|| self.singles.get(&(Context::Global, chord)))
+            .copied()
+    }
+
+    fn is_prefix(&self, context: Context, chord: Chord) -> bool {
+        self.prefixes.contains(&(context, chord))
+            || self.prefixes.contains(&(Context::Global, chord))
+    }
+
+    fn pair(
+        &self,
+        context: Context,
+        first: Chord,
+        second: Chord,
+    ) -> Option<Action> {
+        self.pairs
+            .get(&(context, first, second))
+            .or_else(|| {
+                self.pairs.get(&(Context::Global, first, second))
+            })
+            .copied()
     }
 
     /// A vim-style count prefix: digits accumulate before a
     /// binding and repeat it, e.g. 4j. A count only ever
     /// starts on a non-zero digit, so 0 stays bindable.
-    pub fn feed(&mut self, event: KeyEvent) -> Resolution {
+    pub fn feed(
+        &mut self,
+        context: Context,
+        event: KeyEvent,
+    ) -> Resolution {
         let chord = Chord::of(event);
         if self.pending.is_none()
             && let KeyCode::Char(digit @ '0'..='9') = chord.code
             && chord.modifiers.is_empty()
             && (self.count > 0 || digit != '0')
-            && !self.singles.contains_key(&chord)
-            && !self.prefixes.contains(&chord)
+            && self.single(context, chord).is_none()
+            && !self.is_prefix(context, chord)
         {
             let value = u32::from(digit as u8 - b'0');
             self.count =
@@ -210,17 +260,17 @@ impl Keymap {
             return Resolution::Pending;
         }
         if let Some(prefix) = self.pending.take() {
-            return match self.pairs.get(&(prefix, chord)) {
-                Some(action) => Resolution::Match(*action),
+            return match self.pair(context, prefix, chord) {
+                Some(action) => Resolution::Match(action),
                 None => Resolution::NoMatch,
             };
         }
-        if self.prefixes.contains(&chord) {
+        if self.is_prefix(context, chord) {
             self.pending = Some(chord);
             return Resolution::Pending;
         }
-        match self.singles.get(&chord) {
-            Some(action) => Resolution::Match(*action),
+        match self.single(context, chord) {
+            Some(action) => Resolution::Match(action),
             None => Resolution::NoMatch,
         }
     }
@@ -233,6 +283,7 @@ impl Default for Keymap {
 }
 
 struct Entry {
+    context: Context,
     action: Action,
     sequence: KeySequence,
     text: String,
@@ -242,7 +293,8 @@ struct Entry {
 fn default_entries() -> Vec<Entry> {
     DEFAULT_BINDINGS
         .iter()
-        .map(|(action, text)| Entry {
+        .map(|(context, action, text)| Entry {
+            context: *context,
             action: *action,
             sequence: text
                 .parse()
@@ -280,15 +332,15 @@ mod tests {
     fn count_prefixes_accumulate_and_consume() {
         let mut keymap = Keymap::new(&overrides(&[])).unwrap();
         assert_eq!(
-            keymap.feed(press(KeyCode::Char('4'))),
+            keymap.feed(Context::List, press(KeyCode::Char('4'))),
             Resolution::Pending
         );
         assert_eq!(
-            keymap.feed(press(KeyCode::Char('2'))),
+            keymap.feed(Context::List, press(KeyCode::Char('2'))),
             Resolution::Pending
         );
         assert_eq!(
-            keymap.feed(press(KeyCode::Char('j'))),
+            keymap.feed(Context::List, press(KeyCode::Char('j'))),
             Resolution::Match(Action::MoveDown)
         );
         assert_eq!(keymap.take_count(), 42);
@@ -299,7 +351,7 @@ mod tests {
     fn a_leading_zero_never_starts_a_count() {
         let mut keymap = Keymap::new(&overrides(&[])).unwrap();
         assert_eq!(
-            keymap.feed(press(KeyCode::Char('0'))),
+            keymap.feed(Context::List, press(KeyCode::Char('0'))),
             Resolution::NoMatch
         );
         assert_eq!(keymap.take_count(), 1);
@@ -311,7 +363,7 @@ mod tests {
             assert!(
                 DEFAULT_BINDINGS
                     .iter()
-                    .any(|(bound, _)| *bound == action),
+                    .any(|(_, bound, _)| *bound == action),
                 "no default binding for {action}",
             );
         }
@@ -382,7 +434,7 @@ mod tests {
         for (event, action) in cases {
             let mut keymap = Keymap::default();
             assert_eq!(
-                keymap.feed(event),
+                keymap.feed(Context::List, event),
                 Resolution::Match(action),
                 "event {event:?}",
             );
@@ -402,11 +454,11 @@ mod tests {
         for (second, action) in cases {
             let mut keymap = Keymap::default();
             assert_eq!(
-                keymap.feed(press(KeyCode::Char('g'))),
+                keymap.feed(Context::List, press(KeyCode::Char('g'))),
                 Resolution::Pending,
             );
             assert_eq!(
-                keymap.feed(second),
+                keymap.feed(Context::List, second),
                 Resolution::Match(action),
                 "event {second:?}",
             );
@@ -417,15 +469,15 @@ mod tests {
     fn pending_then_wrong_key_resets() {
         let mut keymap = Keymap::default();
         assert_eq!(
-            keymap.feed(press(KeyCode::Char('g'))),
+            keymap.feed(Context::List, press(KeyCode::Char('g'))),
             Resolution::Pending,
         );
         assert_eq!(
-            keymap.feed(press(KeyCode::Char('x'))),
+            keymap.feed(Context::List, press(KeyCode::Char('x'))),
             Resolution::NoMatch,
         );
         assert_eq!(
-            keymap.feed(press(KeyCode::Char('j'))),
+            keymap.feed(Context::List, press(KeyCode::Char('j'))),
             Resolution::Match(Action::MoveDown),
         );
     }
@@ -435,11 +487,11 @@ mod tests {
         let mut keymap = Keymap::new(&overrides(&[("quit", "x")]))
             .expect("override should build");
         assert_eq!(
-            keymap.feed(press(KeyCode::Char('x'))),
+            keymap.feed(Context::List, press(KeyCode::Char('x'))),
             Resolution::Match(Action::Quit),
         );
         assert_eq!(
-            keymap.feed(press(KeyCode::Char('q'))),
+            keymap.feed(Context::List, press(KeyCode::Char('q'))),
             Resolution::NoMatch,
         );
     }
@@ -449,11 +501,11 @@ mod tests {
         let mut keymap = Keymap::new(&overrides(&[("sync", "zs")]))
             .expect("override should build");
         assert_eq!(
-            keymap.feed(press(KeyCode::Char('z'))),
+            keymap.feed(Context::List, press(KeyCode::Char('z'))),
             Resolution::Pending,
         );
         assert_eq!(
-            keymap.feed(press(KeyCode::Char('s'))),
+            keymap.feed(Context::List, press(KeyCode::Char('s'))),
             Resolution::Match(Action::Sync),
         );
     }
@@ -463,7 +515,7 @@ mod tests {
         let mut keymap = Keymap::new(&overrides(&[("sync", "r")]))
             .expect("override should build");
         assert_eq!(
-            keymap.feed(press(KeyCode::Char('r'))),
+            keymap.feed(Context::List, press(KeyCode::Char('r'))),
             Resolution::Match(Action::Sync),
         );
     }
@@ -502,10 +554,10 @@ mod tests {
     #[test]
     fn default_bindings_bind_each_key_once() {
         let mut seen = std::collections::HashSet::new();
-        for (_, key) in DEFAULT_BINDINGS {
+        for (context, _, key) in DEFAULT_BINDINGS {
             assert!(
-                seen.insert(*key),
-                "{key:?} is bound more than once in the defaults"
+                seen.insert((context, *key)),
+                "{key:?} is bound more than once in {context:?}"
             );
         }
     }

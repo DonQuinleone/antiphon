@@ -5,7 +5,7 @@ use ratatui::crossterm::event::{
     MouseEventKind,
 };
 
-use antiphon_core::{Action, Keymap, Resolution};
+use antiphon_core::{Action, Context, Keymap, Resolution};
 
 use super::app::{App, View};
 use super::commands::PromptKind;
@@ -168,6 +168,18 @@ pub(super) fn compose_key(
     }
 }
 
+/// The keymap context for a view, so a key resolves against
+/// that surface's bindings before the Global fallback.
+fn context_for(view: View) -> Context {
+    match view {
+        View::List => Context::List,
+        View::Pager | View::Image => Context::Pager,
+        View::Review => Context::Review,
+        View::Settings => Context::Settings,
+        View::Compose | View::Editor => Context::Compose,
+    }
+}
+
 pub(super) fn keymap_key(
     app: &mut App,
     keymap: &mut Keymap,
@@ -216,7 +228,9 @@ pub(super) fn keymap_key(
         app.apply(antiphon_core::Action::MoveUp);
         return;
     }
-    let Resolution::Match(action) = keymap.feed(key) else {
+    let key_context = context_for(app.view);
+    let Resolution::Match(action) = keymap.feed(key_context, key)
+    else {
         return;
     };
     if read_only_blocks(app, action) {
