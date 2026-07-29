@@ -31,7 +31,9 @@
             pkgs.scdoc
             pkgs.installShellFiles
           ];
-          buildInputs = [ pkgs.notmuch ];
+          # udev gives hidapi's C hidraw backend libudev; the
+          # kernel headers it also needs come from the stdenv.
+          buildInputs = [ pkgs.notmuch pkgs.udev ];
           env.ANTIPHON_VERSION = "v${versionOf self}";
           postInstall = ''
             for page in antiphon antiphond antiphon-sendmail; do
@@ -71,6 +73,7 @@
             clippy
             pkg-config
             notmuch
+            udev
             scdoc
             shellcheck
           ];
