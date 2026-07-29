@@ -10,8 +10,13 @@ packages:
   # with systemd-libs from the base image.
   - gcc
   - pkgconf
+  # mold links far faster than the default; the release build uses
+  # it too, so proving it here keeps a release from meeting it cold.
+  - mold
 sources:
   - https://git.sr.ht/~donquinleone/antiphon
+environment:
+  RUSTFLAGS: -Clink-arg=-fuse-ld=mold
 tasks:
   - fmt: |
       cd antiphon

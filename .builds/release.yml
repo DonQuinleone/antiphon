@@ -13,11 +13,20 @@ packages:
   # hidapi (FIDO2 vault unlock) compiles its C hidraw backend.
   - gcc
   - pkgconf
-oauth: git.sr.ht/PROFILE:RO git.sr.ht/REPOSITORIES:RO git.sr.ht/OBJECTS:RW
+  # mold links the release binaries far faster than bfd/gold.
+  - mold
+  # Pushing the channel repos and regenerating the AUR .SRCINFO.
+  - openssh
+  - git
+secrets:
+  # CI deploy key: pushes the tap, AUR, copr-spec and GitHub mirror.
+  - 56f6f2c5-cff8-4190-9faf-0938e27ee8dd
 sources:
   - https://git.sr.ht/~donquinleone/antiphon
 environment:
   target: x86_64-linux-gnu
+  RUSTFLAGS: -Clink-arg=-fuse-ld=mold
+  ci_key: 56f6f2c5-cff8-4190-9faf-0938e27ee8dd
 tasks:
   - tag-only: |
       cd antiphon
@@ -36,9 +45,73 @@ tasks:
         LICENSE README.md "$name/"
       tar -czf "$name.tar.gz" "$name"
       sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
-  - publish: |
+  - publish-binary: |
       cd antiphon
       tag="$(git describe --exact-match --tags HEAD)"
       name="antiphon-$tag-$target"
       hut git artifact upload "$name.tar.gz" --rev "$tag"
       hut git artifact upload "$name.tar.gz.sha256" --rev "$tag"
+  - prepare-channels: |
+      cd antiphon
+      tag="$(git describe --exact-match --tags HEAD)"
+      base="https://git.sr.ht/~donquinleone/antiphon/archive"
+      curl -fsSL "$base/$tag.tar.gz" -o "$HOME/src.tar.gz"
+      sha="$(sha256sum "$HOME/src.tar.gz" | awk '{print $1}')"
+      {
+        echo "tag=$tag"
+        echo "ver=${tag#v}"
+        echo "sha=$sha"
+      } > "$HOME/release.env"
+      # The build guest carries none of the local includeIf routing,
+      # so the pseudonym identity is set explicitly here. These bump
+      # commits are metadata and go unsigned; the tag and binary are
+      # signed at the source.
+      git config --global user.name donquinleone
+      git config --global user.email don@donquinleone.com
+      mkdir -p "$HOME/.ssh"
+      cat "$HOME/release.env"
+  - homebrew: |
+      . "$HOME/release.env"
+      export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/$ci_key \
+        -o StrictHostKeyChecking=accept-new"
+      git clone git@git.sr.ht:~donquinleone/homebrew-antiphon tap
+      cd tap
+      f=Formula/antiphon.rb
+      sed -i -E "s|/archive/v[0-9.]+\.tar\.gz|/archive/$tag.tar.gz|" "$f"
+      sed -i -E "s|sha256 \"[0-9a-f]{64}\"|sha256 \"$sha\"|" "$f"
+      git add "$f"
+      git commit -m "antiphon $ver"
+      git push origin HEAD:master
+  - aur: |
+      . "$HOME/release.env"
+      export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/$ci_key \
+        -o StrictHostKeyChecking=accept-new"
+      git clone ssh://aur@aur.archlinux.org/antiphon.git aur
+      cd aur
+      sed -i -E "s|^pkgver=.*|pkgver=$ver|" PKGBUILD
+      sed -i -E "s|^pkgrel=.*|pkgrel=1|" PKGBUILD
+      sed -i -E "s|sha256sums=\('[0-9a-f]{64}'\)|sha256sums=('$sha')|" \
+        PKGBUILD
+      makepkg --printsrcinfo > .SRCINFO
+      git add PKGBUILD .SRCINFO
+      git commit -m "upgpkg: antiphon $ver"
+      git push origin HEAD:master
+  - copr: |
+      . "$HOME/release.env"
+      export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/$ci_key \
+        -o StrictHostKeyChecking=accept-new"
+      git clone git@git.sr.ht:~donquinleone/copr-spec copr
+      cd copr
+      sed -i -E "s|^Version:.*|Version:        $ver|" antiphon.spec
+      sed -i -E "s|^Release:.*|Release:        1%{?dist}|" antiphon.spec
+      git add antiphon.spec
+      git commit -m "antiphon $ver"
+      git push origin HEAD:master
+  - mirror-github: |
+      cd antiphon
+      . "$HOME/release.env"
+      export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/$ci_key \
+        -o StrictHostKeyChecking=accept-new"
+      git remote add github git@github.com:DonQuinleone/antiphon.git
+      git push github "HEAD:refs/heads/master"
+      git push github "refs/tags/$tag"
