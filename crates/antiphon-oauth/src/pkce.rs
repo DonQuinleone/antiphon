@@ -38,8 +38,12 @@ fn consent_for(grant: &Grant) -> Consent {
 }
 
 /// Microsoft app registrations need a Mobile and desktop
-/// platform redirect of http://127.0.0.1 for this flow; the
-/// device-code flow remains available where that is not set.
+/// platform redirect of http://localhost for this flow; Entra
+/// treats a localhost loopback as matching on any port, whereas
+/// 127.0.0.1 must match the port exactly. The listener still
+/// binds the loopback address, which localhost resolves to. The
+/// device-code flow remains available where the redirect is not
+/// set.
 pub fn pkce_loopback_flow(
     grant: &Grant,
     on_prompt: &dyn Fn(&BrowserPrompt),
@@ -78,7 +82,7 @@ pub(crate) fn flow_at(
                     .map_err(bad_endpoint)?,
             )
             .set_redirect_uri(
-                RedirectUrl::new(format!("http://127.0.0.1:{port}/"))
+                RedirectUrl::new(format!("http://localhost:{port}/"))
                     .map_err(bad_endpoint)?,
             );
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();

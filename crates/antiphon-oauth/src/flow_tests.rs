@@ -203,6 +203,11 @@ fn pkce_flow_exchanges_the_loopback_code() {
     assert!(consent.contains("code_challenge_method=S256"));
     assert!(consent.contains("access_type=offline"));
     assert!(consent.contains("prompt=consent"));
+    assert!(
+        consent.contains("localhost") && !consent.contains("127.0.0.1"),
+        "the loopback redirect is http://localhost so Entra matches \
+         it on any port"
+    );
 
     let requests = stub.finish();
     assert!(requests[0].contains("grant_type=authorization_code"));
