@@ -84,7 +84,7 @@ use antiphon_pgp::Keyring;
 
 use actions::account_names;
 use app::{App, DEFAULT_QUERY, KeyRoute, View};
-use daemon::{nudge_daemon, request_reload};
+use daemon::{nudge_daemon, reload_in_background, request_reload};
 use dispatch::{
     pending_resume_request, pending_rsvp_request,
     pending_template_request, pending_unsubscribe_request,

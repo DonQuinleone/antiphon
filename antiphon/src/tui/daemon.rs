@@ -87,6 +87,21 @@ pub(super) fn request_reload() -> Option<String> {
     }
 }
 
+/// Reloads the daemon off the UI thread. A settings change must
+/// never block a keystroke on the reload's IDLE-watcher restart
+/// (up to RELOAD_WAIT); the config is already persisted, so the
+/// daemon applies it regardless. A no-op under test, so the
+/// suite never reaches a real daemon.
+#[cfg(not(test))]
+pub(super) fn reload_in_background() {
+    std::thread::spawn(|| {
+        let _ = request_reload();
+    });
+}
+
+#[cfg(test)]
+pub(super) fn reload_in_background() {}
+
 fn wire_op(intent: OpIntent) -> Operation {
     let (account, message_id, kind) = match intent {
         OpIntent::Flag {

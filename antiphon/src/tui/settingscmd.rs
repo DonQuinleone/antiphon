@@ -154,12 +154,13 @@ fn cycle_essential(app: &mut App, step: i32) {
         Ok(()) => base,
         Err(error) => format!("{base} (not saved: {error})"),
     });
-    let hint = row.daemon.then(|| match super::request_reload() {
-        None => "applied to the running daemon".to_string(),
-        Some(notice) => notice,
-    });
+    if row.daemon {
+        super::reload_in_background();
+    }
     if let Some(state) = app.settings.as_mut() {
-        state.daemon_hint = hint;
+        state.daemon_hint = row
+            .daemon
+            .then(|| "applying to the running daemon".to_string());
     }
 }
 
