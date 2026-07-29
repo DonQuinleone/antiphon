@@ -25,6 +25,26 @@ fn t_pivots_to_the_thread_and_back_restores() {
 }
 
 #[test]
+fn the_thread_pivot_spans_folders_within_the_account() {
+    let mut app =
+        app_with_folders(&[("work", &["archive"][..])]);
+    app.scope = ViewScope::Account("work".into());
+    app.current_query = "path:\"work/archive/**\"".to_string();
+    app.active_search = Some("archive".to_string());
+    app.messages[0].thread_id = "th9".to_string();
+
+    app.apply_in_list(Action::ThreadView);
+
+    assert_eq!(app.current_query, "thread:th9");
+    let scoped = app.scoped(&app.current_query).unwrap();
+    assert_eq!(scoped, "(path:\"work/**\") and (thread:th9)");
+    assert!(
+        !scoped.contains("archive"),
+        "the pivot must not stay narrowed to one folder: {scoped}"
+    );
+}
+
+#[test]
 fn a_threadless_message_never_pivots() {
     let mut app = app_with_messages(1);
     app.apply_in_list(Action::ThreadView);

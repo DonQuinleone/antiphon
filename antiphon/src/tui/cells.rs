@@ -55,23 +55,30 @@ fn status_cell(
     Line::from(Span::styled(text, Style::new().fg(theme.text_muted)))
 }
 
+fn date_cell(theme: &Theme, rendered: String) -> Line<'static> {
+    Line::from(date_spans(theme, rendered))
+}
+
 /// The rendered date splits at its last space: the left part
 /// takes the date colour, the right the time colour, whatever
 /// strftime format the user set. A single-token format is all
 /// date.
-fn date_cell(theme: &Theme, rendered: String) -> Line<'static> {
+pub(super) fn date_spans(
+    theme: &Theme,
+    rendered: String,
+) -> Vec<Span<'static>> {
     let Some(split) = rendered.rfind(' ') else {
-        return Line::from(Span::styled(
+        return vec![Span::styled(
             rendered,
             Style::new().fg(theme.list_date),
-        ));
+        )];
     };
     let date = rendered[..split].to_string();
     let time = rendered[split..].to_string();
-    Line::from(vec![
+    vec![
         Span::styled(date, Style::new().fg(theme.list_date)),
         Span::styled(time, Style::new().fg(theme.list_time)),
-    ])
+    ]
 }
 
 fn from_cell(
