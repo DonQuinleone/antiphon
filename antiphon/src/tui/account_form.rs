@@ -112,6 +112,10 @@ impl AccountFormState {
     fn shows(&self, field: Field) -> bool {
         let microsoft = self.account_type == AccountType::Microsoft;
         match field {
+            Field::FromName | Field::FromAddress => {
+                self.editing.is_none()
+            }
+            Field::Identities => self.editing.is_some(),
             Field::ClientId => self.provider().is_some(),
             Field::GraphSend => microsoft,
             Field::GraphAuth | Field::Tenant => {

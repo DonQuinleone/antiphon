@@ -78,7 +78,7 @@ fn prefill_infers_imap_and_focuses_the_type_toggle() {
 }
 
 #[test]
-fn the_identities_row_shows_for_every_type() {
+fn a_new_account_shows_the_identity_inline_for_every_type() {
     let mut form = filled_form();
     for account_type in [
         AccountType::Imap,
@@ -86,9 +86,39 @@ fn the_identities_row_shows_for_every_type() {
         AccountType::Google,
     ] {
         form.account_type = account_type;
+        let labels = labels(&form);
         assert!(
-            labels(&form).contains(&"identities"),
-            "identities is shown for {account_type:?}"
+            labels.contains(&"from name")
+                && labels.contains(&"from address"),
+            "the identity is inline for {account_type:?}"
+        );
+        assert!(
+            !labels.contains(&"identities"),
+            "no launcher for a new {account_type:?} account"
+        );
+    }
+}
+
+#[test]
+fn editing_an_account_shows_the_identity_launcher() {
+    let mut form = AccountFormState::from_answers(
+        &filled_answers(),
+        Some("work".to_string()),
+    );
+    for account_type in [
+        AccountType::Imap,
+        AccountType::Microsoft,
+        AccountType::Google,
+    ] {
+        form.account_type = account_type;
+        let labels = labels(&form);
+        assert!(
+            labels.contains(&"identities"),
+            "the launcher shows editing {account_type:?}"
+        );
+        assert!(
+            !labels.contains(&"from name"),
+            "no inline identity editing {account_type:?}"
         );
     }
 }
@@ -245,6 +275,26 @@ pub(in super::super) fn minimal_account() -> antiphon_config::AccountFile
         folders_hidden: Vec::new(),
         folders_unsynced: Vec::new(),
     }
+}
+
+#[test]
+fn typing_the_inline_from_name_writes_the_first_identity() {
+    use ratatui::crossterm::event::KeyModifiers as Mods;
+
+    let mut app = super::super::testkit::app_with_messages(1);
+    app.open_account_form_add();
+    let index = {
+        let form = app.account_form.as_ref().unwrap();
+        (0..form.field_count())
+            .find(|&i| form.field_label(i) == "from name")
+            .expect("from name row")
+    };
+    app.account_form.as_mut().unwrap().focus = index;
+    for ch in "Quin".chars() {
+        feed(&mut app, KeyEvent::new(KeyCode::Char(ch), Mods::NONE));
+    }
+    let form = app.account_form.as_ref().unwrap();
+    assert_eq!(form.identities[0].from_name, "Quin");
 }
 
 #[test]

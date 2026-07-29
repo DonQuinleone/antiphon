@@ -8,6 +8,7 @@ use antiphon_config::{GraphAuth, OauthProvider};
 use antiphon_ui::AccountAccent;
 
 use super::account_form::AccountFormState;
+use super::account_form_identity::FormIdentity;
 use crate::tui::settings::wrapped;
 
 /// The kind of account, chosen by the segmented toggle at the
@@ -69,6 +70,8 @@ pub(super) enum Field {
     AccountType,
     Address,
     Name,
+    FromName,
+    FromAddress,
     Identities,
     ImapHost,
     ImapUser,
@@ -130,6 +133,28 @@ pub(super) const FIELDS: &[FieldSpec] = &[
     },
     field!(Field::Address, "e-mail address", address),
     field!(Field::Name, "account name", name),
+    FieldSpec {
+        field: Field::FromName,
+        label: "from name",
+        masked: false,
+        get: |state| first_from(state, |identity| &identity.from_name),
+        access: Access::Edit(|state| {
+            &mut first_identity_mut(state).from_name
+        }),
+        segments: None,
+        selected: |_| 0,
+    },
+    FieldSpec {
+        field: Field::FromAddress,
+        label: "from address",
+        masked: false,
+        get: |state| first_from(state, |identity| &identity.address),
+        access: Access::Edit(|state| {
+            &mut first_identity_mut(state).address
+        }),
+        segments: None,
+        selected: |_| 0,
+    },
     FieldSpec {
         field: Field::Identities,
         label: "identities",
@@ -230,6 +255,30 @@ pub(super) fn on_off(value: bool) -> &'static str {
     if value { "on" } else { "off" }
 }
 
+/// The new-account flow edits the account's single identity
+/// inline, so the from-name and from-address rows read and write
+/// `identities[0]`. Reading an empty list yields the empty
+/// string; writing seeds a default identity first.
+fn first_from<'a>(
+    state: &'a AccountFormState,
+    field: impl Fn(&'a FormIdentity) -> &'a String,
+) -> &'a str {
+    state
+        .identities
+        .first()
+        .map(|identity| field(identity).as_str())
+        .unwrap_or("")
+}
+
+fn first_identity_mut(
+    state: &mut AccountFormState,
+) -> &mut FormIdentity {
+    if state.identities.is_empty() {
+        state.identities.push(FormIdentity::default());
+    }
+    &mut state.identities[0]
+}
+
 fn cycle_type(state: &mut AccountFormState, step: i32) {
     let current = type_index(state);
     let next = wrapped(current, TYPES.len(), step);
@@ -247,3 +296,5 @@ pub(super) const PASSWORD_HINT: &str =
     "empty = use the Keychain field below";
 
 pub(super) const CLIENT_ID_MS_HINT: &str = "blank for Thunderbird's";
+
+pub(super) const FROM_ADDRESS_HINT: &str = "blank = e-mail address";

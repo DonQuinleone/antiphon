@@ -8,7 +8,7 @@ use super::account_form::AccountFormState;
 use antiphon_config::OauthProvider;
 
 use super::account_form_fields::{
-    CLIENT_ID_MS_HINT, Field, PASSWORD_HINT,
+    CLIENT_ID_MS_HINT, FROM_ADDRESS_HINT, Field, PASSWORD_HINT,
 };
 use super::account_form_identity;
 use super::app::App;
@@ -162,6 +162,9 @@ fn field_hint(form: &AccountFormState, index: usize) -> Option<String> {
         {
             Some(CLIENT_ID_MS_HINT.to_string())
         }
+        Field::FromAddress if form.field_value(index).is_empty() => {
+            Some(FROM_ADDRESS_HINT.to_string())
+        }
         _ => None,
     }
 }
@@ -297,7 +300,8 @@ mod tests {
         assert!(shown.contains("password command"));
         assert!(shown.contains("imap host"));
         assert!(shown.contains("smtp host"));
-        assert!(shown.contains("identities"));
+        assert!(shown.contains("from name"));
+        assert!(shown.contains("from address"));
         assert!(!shown.contains("oauth client id"));
         assert!(!shown.contains("graph mode"));
     }
@@ -309,7 +313,7 @@ mod tests {
         let shown = text(&rendered(&app));
         assert!(shown.contains("oauth client id"));
         assert!(!shown.contains("ANTIPHON_GOOGLE_CLIENT_ID"));
-        assert!(shown.contains("identities"));
+        assert!(shown.contains("from name"));
         assert!(!shown.contains("password command"));
         assert!(!shown.contains("imap host"));
         assert!(!shown.contains("smtp host"));
