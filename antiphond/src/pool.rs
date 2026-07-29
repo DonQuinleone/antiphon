@@ -7,7 +7,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub(crate) fn run_bounded<T, F>(items: &[T], limit: usize, task: F)
 where
     T: Sync,
-    F: Fn(&T) + Sync {
+    F: Fn(&T) + Sync,
+{
     if items.is_empty() {
         return;
     }
@@ -22,7 +23,8 @@ where
 
 fn drain<T, F>(items: &[T], next: &AtomicUsize, task: &F)
 where
-    F: Fn(&T) {
+    F: Fn(&T),
+{
     loop {
         let index = next.fetch_add(1, Ordering::Relaxed);
         let Some(item) = items.get(index) else {
@@ -47,7 +49,9 @@ mod tests {
         run_bounded(&items, 4, |item| {
             seen[*item].fetch_add(1, Ordering::SeqCst);
         });
-        assert!(seen.iter().all(|count| count.load(Ordering::SeqCst) == 1));
+        assert!(
+            seen.iter().all(|count| count.load(Ordering::SeqCst) == 1)
+        );
     }
 
     #[test]

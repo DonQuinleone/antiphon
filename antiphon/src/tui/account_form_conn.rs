@@ -201,9 +201,7 @@ fn oauth_spec(
 /// The command whose output is the account's password: the
 /// typed one in command mode, or the Keychain lookup in Keychain
 /// mode (macOS), matching how the daemon reads it.
-fn password_command(
-    form: &AccountFormState,
-) -> Result<String, String> {
+fn password_command(form: &AccountFormState) -> Result<String, String> {
     if cfg!(target_os = "macos") && form.keychain {
         let name = form.name.trim();
         if name.is_empty() {
@@ -341,9 +339,7 @@ fn reach_report(
 /// Maps a probe's `SyncError` onto the form's decision type: a
 /// login rejection is `Refused` (surfacing the server text from
 /// the source chain), everything else is `Unreachable`.
-fn map_probe(
-    outcome: Result<(), SyncError>,
-) -> Result<(), ProbeError> {
+fn map_probe(outcome: Result<(), SyncError>) -> Result<(), ProbeError> {
     match outcome {
         Ok(()) => Ok(()),
         Err(SyncError::Login { source, .. }) => {
@@ -380,9 +376,7 @@ fn run_command(command: &str) -> Result<String, String> {
         .trim_end_matches(['\r', '\n'])
         .to_string();
     if password.is_empty() {
-        return Err(
-            "the password command produced nothing".to_string()
-        );
+        return Err("the password command produced nothing".to_string());
     }
     Ok(password)
 }
@@ -471,9 +465,7 @@ mod tests {
         let report = run_test(
             &password_spec(),
             |_| Ok("secret".to_string()),
-            |_| {
-                Err(ProbeError::Unreachable("timed out".to_string()))
-            },
+            |_| Err(ProbeError::Unreachable("timed out".to_string())),
             never_reach,
         );
         assert_eq!(report.tone, Tone::Bad);
@@ -580,9 +572,7 @@ mod tests {
     }
 
     impl std::error::Error for Layered {
-        fn source(
-            &self,
-        ) -> Option<&(dyn std::error::Error + 'static)> {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
             self.source
                 .as_ref()
                 .map(|inner| inner.as_ref() as &dyn std::error::Error)

@@ -411,7 +411,9 @@ mod tests {
         });
         open_preview_html_browser(&mut app);
         assert_eq!(
-            app.notice.as_deref().map(|text| text.starts_with("opening")),
+            app.notice
+                .as_deref()
+                .map(|text| text.starts_with("opening")),
             Some(true),
             "the html part is handed to the opener: {:?}",
             app.notice

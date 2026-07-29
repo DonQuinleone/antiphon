@@ -388,7 +388,9 @@ mod tests {
 
     #[test]
     fn no_accounts_means_no_jobs() {
-        assert!(account_jobs(&set_with(Vec::new(), Vec::new())).is_empty());
+        assert!(
+            account_jobs(&set_with(Vec::new(), Vec::new())).is_empty()
+        );
     }
 
     #[test]

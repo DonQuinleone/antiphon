@@ -280,8 +280,7 @@ pub(super) fn keymap_key(
         folder_picker::feed(app, key);
         return;
     }
-    if matches!(app.view, View::Pager | View::List) && app.drawer_open
-    {
+    if matches!(app.view, View::Pager | View::List) && app.drawer_open {
         drawer::feed(app, key);
         return;
     }

@@ -1,7 +1,5 @@
 use crate::stub::MapFetcher;
-use crate::{
-    DiscoverError, Security, discover, domain_of,
-};
+use crate::{DiscoverError, Security, discover, domain_of};
 
 const ADDRESS: &str = "ada@example.com";
 const ISPDB_URL: &str =

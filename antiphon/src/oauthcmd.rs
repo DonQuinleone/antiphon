@@ -73,7 +73,8 @@ fn login_microsoft(
              client_credentials at send time, no sign-in needed"
         );
     }
-    for spec in account_grants(account, address, oauth, client_id, graph)
+    for spec in
+        account_grants(account, address, oauth, client_id, graph)
     {
         if !spec.wanted {
             continue;

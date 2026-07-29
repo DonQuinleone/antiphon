@@ -162,16 +162,15 @@ mod tests {
     fn a_fresh_token_is_used_without_refreshing() {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = store_with(&dir, &stored_set(FAR_FUTURE));
-        let token =
-            access_token(
-                &store,
-                "work-imap",
-                "work",
-                None,
-                NOW,
-                &no_refresh,
-            )
-                .expect("fresh token");
+        let token = access_token(
+            &store,
+            "work-imap",
+            "work",
+            None,
+            NOW,
+            &no_refresh,
+        )
+        .expect("fresh token");
         assert_eq!(token, "at-old");
     }
 
@@ -188,16 +187,15 @@ mod tests {
                 grant,
             )
         };
-        let token =
-            access_token(
-                &store,
-                "work-imap",
-                "work",
-                None,
-                NOW,
-                &refresh,
-            )
-                .expect("refreshed token");
+        let token = access_token(
+            &store,
+            "work-imap",
+            "work",
+            None,
+            NOW,
+            &refresh,
+        )
+        .expect("refreshed token");
         assert_eq!(token, "at-new");
         stub.finish();
     }
@@ -214,16 +212,15 @@ mod tests {
                 grant,
             )
         };
-        let token =
-            access_token(
-                &store,
-                "work-imap",
-                "work",
-                None,
-                NOW,
-                &refresh,
-            )
-                .expect("refreshed token");
+        let token = access_token(
+            &store,
+            "work-imap",
+            "work",
+            None,
+            NOW,
+            &refresh,
+        )
+        .expect("refreshed token");
         assert_eq!(token, "at-new");
 
         let persisted = store.load("work-imap").expect("persisted");
@@ -249,16 +246,15 @@ mod tests {
                 grant,
             )
         };
-        let error =
-            access_token(
-                &store,
-                "work-imap",
-                "work",
-                None,
-                NOW,
-                &refresh,
-            )
-                .expect_err("refresh fails");
+        let error = access_token(
+            &store,
+            "work-imap",
+            "work",
+            None,
+            NOW,
+            &refresh,
+        )
+        .expect_err("refresh fails");
         assert!(error.contains("work"));
         assert!(error.contains("invalid_grant"));
 
@@ -279,9 +275,14 @@ mod tests {
                 grant,
             )
         };
-        let token =
-            refreshed_token(&store, "work-imap", "work", None, &refresh)
-                .expect("forced refresh");
+        let token = refreshed_token(
+            &store,
+            "work-imap",
+            "work",
+            None,
+            &refresh,
+        )
+        .expect("forced refresh");
         assert_eq!(token, "at-new");
         stub.finish();
     }
@@ -290,16 +291,15 @@ mod tests {
     fn a_missing_token_names_the_login_command() {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = TokenStore::open(dir.path()).expect("open");
-        let error =
-            access_token(
-                &store,
-                "work-imap",
-                "work",
-                None,
-                NOW,
-                &no_refresh,
-            )
-                .expect_err("missing token");
+        let error = access_token(
+            &store,
+            "work-imap",
+            "work",
+            None,
+            NOW,
+            &no_refresh,
+        )
+        .expect_err("missing token");
         assert!(error.contains("antiphon oauth login work"));
     }
 }

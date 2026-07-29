@@ -177,7 +177,10 @@ mod tests {
             path: std::path::PathBuf::new(),
             paths: Vec::new(),
             in_reply_to: parent.map(str::to_string),
-            references: parent.into_iter().map(str::to_string).collect(),
+            references: parent
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
         }
     }
 

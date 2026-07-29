@@ -91,9 +91,7 @@ pub(crate) async fn connect_client(
         tls_connect(account.host.as_str(), account.port).await?;
     let authenticated = match &account.auth {
         Auth::Password(password) => {
-            client
-                .login(account.user.as_str(), password.as_str())
-                .await
+            client.login(account.user.as_str(), password.as_str()).await
         }
         Auth::XOauth2 { user, access_token } => {
             client

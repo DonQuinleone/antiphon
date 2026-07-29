@@ -245,8 +245,11 @@ fn intent_for(
     // copy in the account being viewed here too, or a message
     // Bcc'd to a second account would be acted on in the wrong
     // one.
-    let path =
-        super::mailpaths::scoped_path(&app.scope, &app.accounts, summary);
+    let path = super::mailpaths::scoped_path(
+        &app.scope,
+        &app.accounts,
+        summary,
+    );
     let account = account_of(&path);
     match action {
         BulkAction::Delete => OpIntent::Delete {

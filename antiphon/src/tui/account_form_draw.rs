@@ -316,12 +316,11 @@ mod tests {
         let mut app = app_with_messages(1);
         app.open_account_form_add();
         if let Some(form) = app.account_form.as_mut() {
-            form.conn_test = Some(
-                super::super::account_form_conn::test_result(
+            form.conn_test =
+                Some(super::super::account_form_conn::test_result(
                     "reached the server and signed in",
                     super::super::account_form_conn::Tone::Good,
-                ),
-            );
+                ));
         }
         let buffer = rendered(&app);
         assert!(text(&buffer).contains("reached the server"));

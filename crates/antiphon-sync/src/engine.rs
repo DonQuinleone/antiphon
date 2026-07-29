@@ -174,7 +174,8 @@ fn sync_folder(
             detail: String::from("server reported no UIDVALIDITY"),
         })?;
     let now = now_unix();
-    let baseline = folder_baseline(&maildir, stored, uid_validity, now)?;
+    let baseline =
+        folder_baseline(&maildir, stored, uid_validity, now)?;
     let sweeping = sweep_due(baseline.last_sweep_unix, now);
     let removed_messages = if sweeping {
         sweep_folder(session, folder, &maildir, &mailbox, nudge)?

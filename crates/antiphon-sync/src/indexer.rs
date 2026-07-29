@@ -46,9 +46,7 @@ impl Indexer {
         }
     }
 
-    pub(crate) fn finish(
-        mut self,
-    ) -> Result<(), SyncError> {
+    pub(crate) fn finish(mut self) -> Result<(), SyncError> {
         self.sender.take();
         self.handle.join().unwrap_or_else(|_| {
             Err(SyncError::Notmuch {

@@ -59,8 +59,7 @@ fn nonempty(value: Option<&str>) -> Option<&str> {
 fn token_identity(access_token: &str) -> Option<String> {
     let payload = access_token.split('.').nth(1)?;
     let bytes = URL_SAFE_NO_PAD.decode(payload).ok()?;
-    let claims: IdentityClaims =
-        serde_json::from_slice(&bytes).ok()?;
+    let claims: IdentityClaims = serde_json::from_slice(&bytes).ok()?;
     claims
         .upn
         .or(claims.unique_name)
@@ -142,8 +141,12 @@ mod tests {
     #[test]
     fn google_is_never_checked() {
         assert!(
-            verify(Provider::Google, Some("quin@example.com"), "opaque")
-                .is_ok()
+            verify(
+                Provider::Google,
+                Some("quin@example.com"),
+                "opaque"
+            )
+            .is_ok()
         );
     }
 

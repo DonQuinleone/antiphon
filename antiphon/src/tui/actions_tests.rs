@@ -26,8 +26,7 @@ fn t_pivots_to_the_thread_and_back_restores() {
 
 #[test]
 fn the_thread_pivot_spans_folders_within_the_account() {
-    let mut app =
-        app_with_folders(&[("work", &["archive"][..])]);
+    let mut app = app_with_folders(&[("work", &["archive"][..])]);
     app.scope = ViewScope::Account("work".into());
     app.current_query = "path:\"work/archive/**\"".to_string();
     app.active_search = Some("archive".to_string());
@@ -420,8 +419,9 @@ mod reading_pane_extras {
         assert!(!app.drawer_open);
         let buffer = rendered(&app, 70, 20);
         assert!(
-            !(0..20).any(|y| row_text(&buffer, y)
-                .starts_with("attachments")),
+            !(0..20).any(
+                |y| row_text(&buffer, y).starts_with("attachments")
+            ),
             "no collapsed summary before the drawer is opened"
         );
     }

@@ -3,9 +3,7 @@
 //! moves, each recorded as a durable `OpIntent`.
 
 use super::app::App;
-pub(super) use super::mailpaths::{
-    account_of, folder_of, scoped_path,
-};
+pub(super) use super::mailpaths::{account_of, folder_of, scoped_path};
 
 const UNREAD_TAG: &str = "unread";
 const FLAGGED_TAG: &str = "flagged";

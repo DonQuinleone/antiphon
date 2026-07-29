@@ -61,8 +61,11 @@ pub(crate) fn run<S: FolderSync>(
                 scope.spawn(|| run_spawned(&context, nudge))
             })
             .collect();
-        let mut all =
-            vec![run_worker(control, &context, indexer.nudge_channel())];
+        let mut all = vec![run_worker(
+            control,
+            &context,
+            indexer.nudge_channel(),
+        )];
         for handle in handles {
             all.push(handle.join().unwrap_or_default());
         }
@@ -75,7 +78,10 @@ pub(crate) fn run<S: FolderSync>(
 /// folders outnumber the single connection, and never exceed
 /// the bound.
 fn extra_workers(limit: usize, folders: usize) -> usize {
-    limit.max(1).saturating_sub(1).min(folders.saturating_sub(1))
+    limit
+        .max(1)
+        .saturating_sub(1)
+        .min(folders.saturating_sub(1))
 }
 
 struct Context<'a, S: FolderSync> {
@@ -168,7 +174,9 @@ fn merge(results: Vec<WorkerResult>) -> Result<SyncReport, SyncError> {
 fn lock(
     state: &Mutex<AccountState>,
 ) -> std::sync::MutexGuard<'_, AccountState> {
-    state.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 #[cfg(test)]
@@ -282,10 +290,7 @@ mod tests {
         )
         .unwrap();
         indexer.finish().unwrap();
-        assert_eq!(
-            syncer.synced.load(Ordering::SeqCst),
-            names.len()
-        );
+        assert_eq!(syncer.synced.load(Ordering::SeqCst), names.len());
         assert_eq!(outcome.folders.len(), names.len());
         assert_eq!(syncer.connections.load(Ordering::SeqCst), 3);
         let mut synced: Vec<String> = outcome

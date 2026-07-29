@@ -36,10 +36,8 @@ fn run_with<F: Fetcher>(app: &mut App, fetcher: &F) {
     settle(form, &address, discover(&address, fetcher));
 }
 
-type Lookup = Result<
-    Option<Discovered>,
-    antiphon_autodiscover::DiscoverError,
->;
+type Lookup =
+    Result<Option<Discovered>, antiphon_autodiscover::DiscoverError>;
 
 fn settle(form: &mut AccountFormState, address: &str, lookup: Lookup) {
     match lookup {

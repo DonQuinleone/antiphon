@@ -146,7 +146,12 @@ impl EditorSession {
     /// Forwards a mouse event as an SGR report at the given
     /// pane-relative, zero-based cell, so the editor scrolls
     /// natively as it would in a standalone terminal.
-    pub fn send_mouse(&mut self, kind: MouseEventKind, col: u16, row: u16) {
+    pub fn send_mouse(
+        &mut self,
+        kind: MouseEventKind,
+        col: u16,
+        row: u16,
+    ) {
         let bytes = encode_mouse(kind, col, row);
         if bytes.is_empty() {
             return;
@@ -260,7 +265,11 @@ fn ctrl_bytes(ch: char) -> Vec<u8> {
 /// The SGR mouse report for a forwarded event, at one-based
 /// coordinates. Only wheel notches are forwarded; every other
 /// kind encodes to nothing and is dropped.
-pub fn encode_mouse(kind: MouseEventKind, col: u16, row: u16) -> Vec<u8> {
+pub fn encode_mouse(
+    kind: MouseEventKind,
+    col: u16,
+    row: u16,
+) -> Vec<u8> {
     let Some(button) = wheel_button(kind) else {
         return Vec::new();
     };
