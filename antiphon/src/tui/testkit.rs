@@ -29,6 +29,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
             tags: Vec::new(),
             unread: index % 2 == 0,
             path: std::path::PathBuf::new(),
+            paths: Vec::new(),
             in_reply_to: None,
             references: Vec::new(),
         })

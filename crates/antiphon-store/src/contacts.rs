@@ -175,6 +175,7 @@ mod tests {
             tags: Vec::new(),
             unread: false,
             path: PathBuf::new(),
+            paths: Vec::new(),
             in_reply_to: None,
             references: Vec::new(),
         }

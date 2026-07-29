@@ -3,6 +3,9 @@
 //! moves, each recorded as a durable `OpIntent`.
 
 use super::app::App;
+pub(super) use super::mailpaths::{
+    account_of, folder_of, scoped_path,
+};
 
 const UNREAD_TAG: &str = "unread";
 const FLAGGED_TAG: &str = "flagged";
@@ -34,40 +37,6 @@ pub enum OpIntent {
         to_folder: String,
         from_folder: String,
     },
-}
-
-/// The folder a delivered message sits in, relative to its
-/// account maildir: empty for the root inbox, "lists/rust"
-/// for a nested folder.
-pub fn folder_of(path: &std::path::Path) -> String {
-    let account = account_of(path);
-    let mut parts: Vec<&str> = Vec::new();
-    let mut seen_account = false;
-    for component in path.components() {
-        let text = component.as_os_str().to_str().unwrap_or("");
-        if seen_account {
-            parts.push(text);
-        }
-        if !seen_account && text == account {
-            seen_account = true;
-        }
-    }
-    // The trailing cur|new/<file> pair never names a folder.
-    let folder_parts = parts.len().saturating_sub(2).min(parts.len());
-    parts[..folder_parts].join("/")
-}
-
-pub fn account_of(path: &std::path::Path) -> String {
-    let mut components = path.components();
-    for component in components.by_ref() {
-        if component.as_os_str() == "maildir" {
-            break;
-        }
-    }
-    components
-        .next()
-        .map(|c| c.as_os_str().to_string_lossy().into_owned())
-        .unwrap_or_default()
 }
 
 impl App {
@@ -244,22 +213,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn folder_of_reads_the_subdir_between_account_and_cur() {
-        let cases = [
-            ("store/maildir/work/cur/a.eml", ""),
-            ("store/maildir/work/lists/rust/new/a.eml", "lists/rust"),
-            ("store/maildir/work/archive/cur/a.eml", "archive"),
-        ];
-        for (path, expected) in cases {
-            assert_eq!(
-                folder_of(std::path::Path::new(path)),
-                expected,
-                "{path}"
-            );
-        }
-    }
-
-    #[test]
     fn typed_folder_names_resolve_aliases_and_the_root() {
         let mut app = app_with_messages(1);
         app.folder_aliases = vec![(
@@ -380,22 +333,6 @@ mod tests {
         app.apply(Action::ToggleFlagged);
         assert!(!app.messages[0].tags.contains(&"flagged".into()));
         assert_eq!(app.pending_ops.len(), 2);
-    }
-
-    #[test]
-    fn accounts_derive_from_maildir_paths() {
-        let cases = [
-            ("/store/maildir/work/cur/1.host:2,S", "work"),
-            ("/store/maildir/personal/new/2.host", "personal"),
-            ("/elsewhere/3.host", ""),
-        ];
-        for (path, expected) in cases {
-            assert_eq!(
-                account_of(std::path::Path::new(path)),
-                expected,
-                "{path}"
-            );
-        }
     }
 
     #[test]

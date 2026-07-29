@@ -67,6 +67,7 @@ fn summary(
         tags: Vec::new(),
         unread: false,
         path: std::path::PathBuf::new(),
+        paths: Vec::new(),
         in_reply_to: parent.map(str::to_string),
         references: parent.into_iter().map(str::to_string).collect(),
     }

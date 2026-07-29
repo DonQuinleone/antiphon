@@ -36,6 +36,7 @@ mod input;
 mod link_picker;
 mod lists;
 mod mailops;
+mod mailpaths;
 mod mark_all_read;
 mod message_list;
 mod oauth_status;

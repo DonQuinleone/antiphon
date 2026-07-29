@@ -398,7 +398,20 @@ impl App {
         query: String,
     ) {
         let folded = self.collapsed_ids();
+        let scoped: Vec<std::path::PathBuf> = messages
+            .iter()
+            .map(|m| {
+                super::mailops::scoped_path(
+                    &self.scope,
+                    &self.accounts,
+                    m,
+                )
+            })
+            .collect();
         self.messages = messages;
+        for (message, path) in self.messages.iter_mut().zip(scoped) {
+            message.path = path;
+        }
         self.total_messages = total;
         self.selected = 0;
         self.current_query = query;

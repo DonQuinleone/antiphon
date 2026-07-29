@@ -20,6 +20,12 @@ pub struct MessageSummary {
     pub tags: Vec<String>,
     pub unread: bool,
     pub path: PathBuf,
+    /// Every file notmuch holds for this message-id. A message
+    /// delivered to two synced accounts at once (sent from one,
+    /// Bcc'd to another) has one file per account, so callers can
+    /// act on the copy in the account being viewed rather than
+    /// whichever `path` notmuch happened to return first.
+    pub paths: Vec<PathBuf>,
     /// The message this one answers, as a bare Message-ID (no
     /// angle brackets, matching `id`); None when it opens a
     /// thread. Drives the reply tree.
@@ -211,6 +217,7 @@ fn summarise(
         tags,
         unread,
         path: message.filename().to_path_buf(),
+        paths: message.filenames().collect(),
         in_reply_to,
         references,
     })
