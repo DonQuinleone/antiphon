@@ -72,10 +72,10 @@ fn open_sealed(
 
 /// The `[vault] unlock` list turned into ordered secret sources.
 /// Each is tried in the order listed, so a cancelled touch falls
-/// through to the next. A passphrase or YubiKey entry with no
-/// `passphrase_cmd` contributes no source: the command yields the
-/// vault passphrase for the former and the FIDO2 PIN for the
-/// latter.
+/// through to the next. Passphrase needs `passphrase_cmd`; the
+/// YubiKey needs `yubikey_pin_cmd` for its FIDO2 PIN, a source of
+/// its own so the two secrets never share a command. An entry
+/// missing its command contributes nothing.
 fn unlock_sources(
     loaded: &Loaded,
     layout: &StoreLayout,
@@ -95,7 +95,8 @@ fn unlock_sources(
                 )));
             }
             Unlock::Yubikey => {
-                let Some(command) = &loaded.config.vault.passphrase_cmd
+                let Some(command) =
+                    &loaded.config.vault.yubikey_pin_cmd
                 else {
                     continue;
                 };

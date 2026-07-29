@@ -99,28 +99,35 @@ fn run_touchid_enrol(
         .map_err(|error| format!("enrolling Touch ID: {error}"))
 }
 
-/// Enrolment reads the vault passphrase, then the YubiKey PIN,
-/// through the same `passphrase_cmd`: it runs twice, so a
-/// pinentry wrapper is prompted first for the passphrase and
-/// then for the PIN. The passphrase is sealed under the key's
-/// hmac-secret and never stored in the clear.
+/// Enrolment reads the vault passphrase from `passphrase_cmd`
+/// and the YubiKey PIN from `yubikey_pin_cmd`, two separate
+/// sources so the secrets never mix, then seals the passphrase
+/// under the key's hmac-secret. The passphrase is never stored
+/// in the clear.
 fn run_yubikey_enrol(
     dirs: &Dirs,
     loaded: &Loaded,
 ) -> Result<(), String> {
-    let Some(command) = &loaded.config.vault.passphrase_cmd else {
+    let Some(passphrase_cmd) = &loaded.config.vault.passphrase_cmd
+    else {
         return Err(
-            "set `[vault] passphrase_cmd` first; enrolment reads \
-             the vault passphrase, then the YubiKey PIN, from it"
+            "set `[vault] passphrase_cmd` first; it supplies the \
+             vault passphrase to seal"
+                .to_string(),
+        );
+    };
+    let Some(pin_cmd) = &loaded.config.vault.yubikey_pin_cmd else {
+        return Err(
+            "set `[vault] yubikey_pin_cmd` first; it supplies the \
+             YubiKey's FIDO2 PIN"
                 .to_string(),
         );
     };
     let layout = StoreLayout::new(dirs.store_root());
-    println!("enter the vault passphrase when prompted");
-    let secret =
-        passphrase_command(command).map_err(|e| e.to_string())?;
-    println!("now enter the YubiKey PIN, then touch the key");
-    let pin = passphrase_command(command).map_err(|e| e.to_string())?;
+    let secret = passphrase_command(passphrase_cmd)
+        .map_err(|e| e.to_string())?;
+    let pin = passphrase_command(pin_cmd).map_err(|e| e.to_string())?;
+    println!("touch the YubiKey when it blinks (twice)");
     enrol_yubikey(layout.root(), &secret, &pin)
         .map_err(|error| format!("enrolling the YubiKey: {error}"))
 }

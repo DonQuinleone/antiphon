@@ -127,6 +127,10 @@ pub struct Vault {
     pub idle_lock_minutes: u32,
     pub unlock: Vec<Unlock>,
     pub passphrase_cmd: Option<String>,
+    /// The command that yields the YubiKey's FIDO2 PIN, kept
+    /// apart from `passphrase_cmd` so the two secrets never
+    /// share a source.
+    pub yubikey_pin_cmd: Option<String>,
 }
 
 impl Default for Vault {
@@ -140,6 +144,7 @@ impl Default for Vault {
             // or `yubikey` after enrolling.
             unlock: vec![Unlock::Passphrase],
             passphrase_cmd: None,
+            yubikey_pin_cmd: None,
         }
     }
 }
