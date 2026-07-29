@@ -31,7 +31,10 @@ image = { version = "=0.25.6", default-features = false, features = [
     "bmp",
 ] }
 ratatui = "=0.30.2"
-ratatui-image = "=11.0.6"
+ratatui-image = { version = "=11.0.6", default-features = false, features = [
+    "image-defaults",
+    "crossterm",
+] }
 clap = { version = "=4.6.4", features = ["derive"] }
 portable-pty = "=0.9.0"
 rpassword = "=7.5.4"
