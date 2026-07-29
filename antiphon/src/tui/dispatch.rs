@@ -210,7 +210,11 @@ pub(super) fn dispatch(
         return None;
     }
     if action == Action::OpenHtmlBrowser {
-        open_html_browser(app);
+        match app.view {
+            View::Pager => open_html_browser(app),
+            View::List => open_preview_html_browser(app),
+            _ => {}
+        }
         return None;
     }
     let opening = action == Action::Open && app.view == View::List;
@@ -243,14 +247,34 @@ pub(super) fn body_text(raw: &[u8]) -> String {
     antiphon_render::body_text(raw).text
 }
 
-/// Writes the open message's html part to a temp file and hands
-/// it to the system browser, for messages the terminal render
-/// cannot do justice; only ever from the pager.
+/// Writes a message's html part to a temp file and hands it to
+/// the system browser, for messages the terminal render cannot do
+/// justice. Driven from the pager over its open message, and from
+/// the list over the message shown in the reading pane.
 fn open_html_browser(app: &mut App) {
-    if app.view != View::Pager {
+    let raw = std::mem::take(&mut app.pager_raw);
+    open_html_bytes(app, &raw);
+    app.pager_raw = raw;
+}
+
+fn open_preview_html_browser(app: &mut App) {
+    if !app.reading_pane_active() {
+        app.notice = Some("open a message first".to_string());
         return;
     }
-    let Some(html) = antiphon_render::html_part(&app.pager_raw) else {
+    let Some(path) =
+        app.selected_message().map(|message| message.path.clone())
+    else {
+        return;
+    };
+    match std::fs::read(&path) {
+        Ok(raw) => open_html_bytes(app, &raw),
+        Err(error) => app.notice = Some(format!("open html: {error}")),
+    }
+}
+
+fn open_html_bytes(app: &mut App, raw: &[u8]) {
+    let Some(html) = antiphon_render::html_part(raw) else {
         app.notice = Some("this message has no html part".to_string());
         return;
     };
@@ -350,6 +374,49 @@ mod tests {
     use super::*;
 
     const NOON: i64 = 1_784_800_000;
+
+    #[test]
+    fn open_html_in_the_list_needs_a_previewed_message() {
+        let mut app = crate::tui::testkit::app_with_messages(1);
+        app.preview = None;
+        open_preview_html_browser(&mut app);
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("open a message first"),
+            "b in the list asks for a message when the pane is empty"
+        );
+    }
+
+    #[test]
+    fn open_html_in_the_reading_pane_opens_the_html_part() {
+        let raw = concat!(
+            "From: a@example.com\r\n",
+            "To: b@example.com\r\n",
+            "Subject: rich\r\n",
+            "MIME-Version: 1.0\r\n",
+            "Content-Type: text/html; charset=\"utf-8\"\r\n",
+            "\r\n",
+            "<p>hello</p>\r\n",
+        );
+        let dir = crate::tui::testkit::TempDir::new();
+        let path = dir.path.join("rich.eml");
+        std::fs::write(&path, raw).unwrap();
+        let mut app = crate::tui::testkit::app_with_messages(1);
+        app.messages[0].path = path.clone();
+        app.preview = Some(crate::tui::preview::Preview {
+            path,
+            lines: vec!["hello".to_string()],
+            headers: Vec::new(),
+            headers_all: Vec::new(),
+        });
+        open_preview_html_browser(&mut app);
+        assert_eq!(
+            app.notice.as_deref().map(|text| text.starts_with("opening")),
+            Some(true),
+            "the html part is handed to the opener: {:?}",
+            app.notice
+        );
+    }
 
     fn invite_message() -> Vec<u8> {
         let ics = [

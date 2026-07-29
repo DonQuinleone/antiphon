@@ -234,7 +234,7 @@ impl App {
     /// The reading pane shows a preview; without one there is
     /// nothing to open links or attachments over, so the list
     /// asks the reader to open the message in the pager first.
-    fn reading_pane_active(&self) -> bool {
+    pub(super) fn reading_pane_active(&self) -> bool {
         self.reading_pane != ReadingPane::Off && self.preview.is_some()
     }
 
