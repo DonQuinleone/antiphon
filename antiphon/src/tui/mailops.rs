@@ -128,7 +128,7 @@ impl App {
         self.selected = self.selected.min(self.last_index());
     }
 
-    fn trash_folder_of(&self, account: &str) -> String {
+    pub(super) fn trash_folder_of(&self, account: &str) -> String {
         self.trash_folders
             .iter()
             .find(|(name, _)| name == account)
@@ -196,7 +196,7 @@ impl App {
             .map(|(_, _, alias)| alias.as_str())
     }
 
-    fn archive_folder_of(&self, account: &str) -> String {
+    pub(super) fn archive_folder_of(&self, account: &str) -> String {
         self.archive_folders
             .iter()
             .find(|(name, _)| name == account)

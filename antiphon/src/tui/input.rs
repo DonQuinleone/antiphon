@@ -12,7 +12,7 @@ use super::commands::PromptKind;
 use super::dispatch::dispatch;
 use super::identity::ComposeContext;
 use super::{
-    account_form, attach, draw, drawer, export, folder_alias,
+    account_form, attach, bulk, draw, drawer, export, folder_alias,
     folder_picker, link_picker, mark_all_read, pager, pager_body,
     patches, run_query, run_search, session,
 };
@@ -508,6 +508,24 @@ pub(super) fn prompt_key(
         }
         return;
     }
+    if app
+        .prompt
+        .as_ref()
+        .is_some_and(|prompt| prompt.kind == PromptKind::ConfirmBulk)
+    {
+        match key.code {
+            KeyCode::Char('y' | 'Y') => {
+                app.prompt = None;
+                bulk::confirm(app);
+            }
+            KeyCode::Char('n' | 'N') | KeyCode::Esc => {
+                app.prompt = None;
+                bulk::cancel(app);
+            }
+            _ => {}
+        }
+        return;
+    }
     if app.confirming_unsubscribe() {
         let confirmed = matches!(key.code, KeyCode::Char('y' | 'Y'));
         app.confirm_unsubscribe(confirmed);
@@ -544,6 +562,7 @@ fn submit_prompt(app: &mut App, layout: &StoreLayout) {
             app.run_command(&prompt.buffer);
             patches::run_pending(app, layout);
             export::run_pending(app, layout);
+            bulk::run_pending(app, layout);
         }
         PromptKind::Search => run_search(app, layout, prompt.buffer),
         PromptKind::AttachmentPath => {
@@ -554,7 +573,8 @@ fn submit_prompt(app: &mut App, layout: &StoreLayout) {
         }
         PromptKind::ConfirmUnsubscribe
         | PromptKind::ConfirmDraft
-        | PromptKind::ConfirmDelete => {}
+        | PromptKind::ConfirmDelete
+        | PromptKind::ConfirmBulk => {}
     }
 }
 

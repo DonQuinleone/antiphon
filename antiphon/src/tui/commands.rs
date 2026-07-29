@@ -75,7 +75,10 @@ fn arm_export(app: &mut App, argument: &str) {
     });
 }
 
-fn argument_of<'a>(command: &'a str, name: &str) -> Option<&'a str> {
+pub(super) fn argument_of<'a>(
+    command: &'a str,
+    name: &str,
+) -> Option<&'a str> {
     if command == name {
         return Some("");
     }
@@ -128,6 +131,7 @@ pub enum PromptKind {
     SaveAttachment,
     ConfirmDraft,
     ConfirmDelete,
+    ConfirmBulk,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -184,6 +188,9 @@ impl App {
     pub fn run_command(&mut self, command: &str) {
         let command = command.trim();
         if self.pgp_toggle(command) {
+            return;
+        }
+        if super::bulk::arm(self, command) {
             return;
         }
         if self.arg_command(command) {

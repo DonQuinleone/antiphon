@@ -43,6 +43,13 @@ fn prompt_line(theme: &Theme, prompt: &Prompt) -> Line<'static> {
                 Style::new().fg(theme.accent_strong),
             ));
         }
+        PromptKind::ConfirmBulk => {
+            return Line::from(Span::styled(
+                "apply to the whole search? \u{b7} y confirm \
+                 \u{b7} esc/n cancel",
+                Style::new().fg(theme.accent_strong),
+            ));
+        }
     };
     Line::from(vec![
         Span::styled(

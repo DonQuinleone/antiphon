@@ -82,6 +82,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     draw_status(frame, app, status);
     super::folder_picker::draw_picker(frame, app, area);
     super::link_picker::draw_picker(frame, app, area);
+    super::bulk::draw_modal(frame, app, area);
     if app.help {
         draw_help(frame, app, area);
     }

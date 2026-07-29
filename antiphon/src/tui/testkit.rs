@@ -113,6 +113,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         date_format: String::new(),
         notice: None,
         prompt: None,
+        bulk: None,
         current_query: DEFAULT_QUERY.to_string(),
         pending_ops: Vec::new(),
         pending_template: None,

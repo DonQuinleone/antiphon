@@ -27,7 +27,6 @@ use super::sidebar::{self, AccountEntry, SidebarEntry};
 use antiphon_store::ScopeError;
 
 pub const DEFAULT_QUERY: &str = "*";
-const THREAD_QUERY_PREFIX: &str = "thread:";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum View {
@@ -119,6 +118,7 @@ pub struct App {
     pub date_format: String,
     pub notice: Option<String>,
     pub prompt: Option<Prompt>,
+    pub bulk: Option<super::bulk::Bulk>,
     pub current_query: String,
     pub pending_ops: Vec<OpIntent>,
     pub sync_progress: Option<antiphon_sync::SyncProgress>,
@@ -243,6 +243,7 @@ impl App {
             date_format: loaded.config.ui.date_format.clone(),
             notice: None,
             prompt: None,
+            bulk: None,
             current_query: DEFAULT_QUERY.to_string(),
             pending_ops: Vec::new(),
             sync_progress: None,
@@ -422,51 +423,6 @@ impl App {
         self.notice = Some("not built yet".to_string());
     }
 
-    /// The Message-IDs of the currently folded nodes, so a
-    /// refresh that rebuilds the tree can restore the folds
-    /// the reader had closed.
-    fn collapsed_ids(&self) -> Vec<String> {
-        let Some(tree) = &self.thread_tree else {
-            return Vec::new();
-        };
-        tree.nodes
-            .iter()
-            .enumerate()
-            .filter(|(_, node)| node.collapsed)
-            .filter_map(|(position, _)| {
-                self.messages.get(position).map(|m| m.id.clone())
-            })
-            .collect()
-    }
-
-    /// A thread pivot reorders the loaded messages into reply
-    /// pre-order and builds the tree over them; any other query
-    /// leaves a flat list.
-    fn build_thread_tree(
-        &mut self,
-        folded: Vec<String>,
-    ) -> Option<super::thread_tree::ThreadTree> {
-        if !self.current_query.starts_with(THREAD_QUERY_PREFIX) {
-            return None;
-        }
-        let (order, mut tree) = {
-            let items: Vec<super::thread_tree::Reply> =
-                self.messages.iter().map(reply_of).collect();
-            super::thread_tree::build(&items)
-        };
-        if tree.is_empty() {
-            return None;
-        }
-        self.messages =
-            order.iter().map(|i| self.messages[*i].clone()).collect();
-        for (position, message) in self.messages.iter().enumerate() {
-            if folded.contains(&message.id) {
-                tree.set_collapsed(position, true);
-            }
-        }
-        Some(tree)
-    }
-
     /// After an out-of-band refresh restores a saved index, snap
     /// off any node a fresh fold has hidden.
     pub(super) fn clamp_selected_visible(&mut self) {
@@ -482,19 +438,6 @@ impl App {
         } else {
             0
         };
-    }
-}
-
-fn reply_of(message: &MessageSummary) -> super::thread_tree::Reply<'_> {
-    super::thread_tree::Reply {
-        id: &message.id,
-        in_reply_to: message.in_reply_to.as_deref(),
-        references: message
-            .references
-            .iter()
-            .map(String::as_str)
-            .collect(),
-        date_unix: message.date_unix,
     }
 }
 
