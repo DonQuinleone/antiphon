@@ -99,6 +99,8 @@ pub(super) fn app_with_messages(count: usize) -> App {
         sync_interval_minutes: antiphon_config::Sync::default()
             .interval_minutes,
         sync_idle: false,
+        notify_sound: false,
+        notify_speech: false,
         settings: None,
         oauth_flow: None,
         auth_failures: Vec::new(),

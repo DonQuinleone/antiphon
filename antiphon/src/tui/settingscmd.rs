@@ -5,7 +5,7 @@ use super::configedit::persist_key;
 use super::settings::{SettingsOutcome, wrapped};
 use super::settingscmd_rows::*;
 
-const IDLE_OPTIONS: [&str; 2] = ["off", "on"];
+const ON_OFF: [&str; 2] = ["off", "on"];
 const ACCOUNTS_BAR_OPTIONS: [&str; 2] = ["sidebar", "tabs"];
 const READING_PANE_OPTIONS: [&str; 3] = ["below", "right", "off"];
 const COMPOSER_OPTIONS: [&str; 2] = ["embedded", "suspend"];
@@ -29,7 +29,7 @@ pub(super) struct EssentialRow {
     pub(super) selected: fn(&App) -> usize,
 }
 
-pub(super) const ESSENTIAL_ROWS: [EssentialRow; 8] = [
+pub(super) const ESSENTIAL_ROWS: [EssentialRow; 10] = [
     EssentialRow {
         label: "theme",
         table: "ui",
@@ -57,7 +57,7 @@ pub(super) const ESSENTIAL_ROWS: [EssentialRow; 8] = [
         daemon: true,
         render: render_idle,
         cycle: cycle_idle,
-        segments: Some(&IDLE_OPTIONS),
+        segments: Some(&ON_OFF),
         selected: |app| usize::from(app.sync_idle),
     },
     EssentialRow {
@@ -109,6 +109,26 @@ pub(super) const ESSENTIAL_ROWS: [EssentialRow; 8] = [
         cycle: cycle_sidebar_width,
         segments: None,
         selected: |_| 0,
+    },
+    EssentialRow {
+        label: "notify sound",
+        table: "notifications",
+        key: "sound",
+        daemon: true,
+        render: render_notify_sound,
+        cycle: cycle_notify_sound,
+        segments: Some(&ON_OFF),
+        selected: |app| usize::from(app.notify_sound),
+    },
+    EssentialRow {
+        label: "notify speech",
+        table: "notifications",
+        key: "speech",
+        daemon: true,
+        render: render_notify_speech,
+        cycle: cycle_notify_speech,
+        segments: Some(&ON_OFF),
+        selected: |app| usize::from(app.notify_speech),
     },
 ];
 

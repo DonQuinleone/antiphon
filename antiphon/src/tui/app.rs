@@ -108,6 +108,8 @@ pub struct App {
     pub(super) dirs: Dirs,
     pub sync_interval_minutes: u32,
     pub sync_idle: bool,
+    pub notify_sound: bool,
+    pub notify_speech: bool,
     pub settings: Option<super::settings::SettingsState>,
     pub oauth_flow: Option<super::oauthflow::OauthFlow>,
     /// Accounts the daemon last reported as needing a fresh
@@ -230,6 +232,8 @@ impl App {
             dirs: dirs.clone(),
             sync_interval_minutes: loaded.config.sync.interval_minutes,
             sync_idle: loaded.config.sync.idle,
+            notify_sound: loaded.config.notifications.sound,
+            notify_speech: loaded.config.notifications.speech,
             settings: None,
             oauth_flow: None,
             auth_failures: Vec::new(),

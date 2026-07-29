@@ -170,7 +170,11 @@ _$XDG_CONFIG_HOME/antiphon/config.toml_
 	compose From. Shift-J/K in the settings Accounts tab edit
 	the same list. *ui.accounts_bar* is *"sidebar"* (default)
 	or *"tabs"* (see DESCRIPTION), togglable live from the
-	settings Essentials tab.
+	settings Essentials tab. The *[notifications]* table takes
+	*folders*, the folders whose new mail notifies (default
+	*["INBOX"]*; empty watches every folder), edited in the
+	config file, plus *sound* and *speech* toggles editable
+	from the Essentials tab.
 
 _$XDG_CONFIG_HOME/antiphon/local.toml_
 	Per-machine overrides, loaded after *config.toml* and

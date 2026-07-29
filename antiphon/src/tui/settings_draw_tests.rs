@@ -243,6 +243,8 @@ fn essentials_tab_lists_every_row_and_the_daemon_hint() {
     assert!(text.contains("sync interval"));
     assert!(text.contains("sidebar width"));
     assert!(text.contains("composer"));
+    assert!(text.contains("notify sound"));
+    assert!(text.contains("notify speech"));
     // A segmented row draws every option inline, not just the
     // current one.
     assert!(text.contains("embedded") && text.contains("suspend"));

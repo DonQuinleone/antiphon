@@ -140,6 +140,24 @@ pub(super) fn cycle_idle(app: &mut App, _step: i32) -> String {
     app.sync_idle.to_string()
 }
 
+pub(super) fn render_notify_sound(app: &App) -> String {
+    on_off(app.notify_sound).to_string()
+}
+
+pub(super) fn cycle_notify_sound(app: &mut App, _step: i32) -> String {
+    app.notify_sound = !app.notify_sound;
+    app.notify_sound.to_string()
+}
+
+pub(super) fn render_notify_speech(app: &App) -> String {
+    on_off(app.notify_speech).to_string()
+}
+
+pub(super) fn cycle_notify_speech(app: &mut App, _step: i32) -> String {
+    app.notify_speech = !app.notify_speech;
+    app.notify_speech.to_string()
+}
+
 pub(super) fn render_interval_minutes(app: &App) -> String {
     app.sync_interval_minutes.to_string()
 }
