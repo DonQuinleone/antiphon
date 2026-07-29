@@ -8,6 +8,7 @@ mod indexer;
 mod maildir;
 mod notmuch;
 mod pool;
+mod probe;
 mod progress;
 mod reconcile;
 mod replay;
@@ -24,6 +25,7 @@ pub use drafts::{DraftPush, push_drafts};
 pub use engine::{SyncAccount, sync};
 pub use error::SyncError;
 pub use idle::{IdleSession, IdleWait};
+pub use probe::{probe_login, probe_reachable};
 pub use progress::{
     SyncProgress, SyncState, read_progress, write_progress,
 };

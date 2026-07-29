@@ -1,4 +1,5 @@
 mod account_form;
+mod account_form_conn;
 mod account_form_discover;
 mod account_form_draw;
 mod account_form_fields;
@@ -245,6 +246,7 @@ fn event_loop(
     while !app.quit {
         expire_notice(app, &mut notice_seen);
         oauthflow::poll(app);
+        account_form_conn::poll(app);
         tick_editor(terminal, app)?;
         preview::refresh(app);
         prepare_image(terminal, app, &mut picker)?;

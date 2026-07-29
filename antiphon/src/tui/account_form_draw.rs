@@ -22,7 +22,8 @@ const MODAL_WIDTH: u16 = 72;
 const LABEL_COLS: usize = 24;
 const BORDER_ROWS: u16 = 2;
 const HINT: &str = " tab move \u{b7} \u{2190}/\u{2192}/space toggle \
-     \u{b7} ^d discover \u{b7} enter/^s save \u{b7} esc cancel ";
+     \u{b7} ^d discover \u{b7} ^t test \u{b7} enter/^s save \
+     \u{b7} esc cancel ";
 const BULLET: char = '\u{2022}';
 
 pub(super) fn draw_form(frame: &mut Frame, app: &App, area: Rect) {
@@ -37,12 +38,8 @@ pub(super) fn draw_form(frame: &mut Frame, app: &App, area: Rect) {
     };
     let width = MODAL_WIDTH.min(area.width.saturating_sub(6));
     let inner_width = width.saturating_sub(2) as usize;
-    let error_lines = form
-        .error
-        .as_deref()
-        .map(|error| wrapped(error, inner_width))
-        .unwrap_or_default();
-    let extra_rows = 1 + error_lines.len() as u16;
+    let feedback = feedback_lines(app, form, inner_width);
+    let extra_rows = feedback.len() as u16;
     let height = (form.field_count() as u16 + BORDER_ROWS + extra_rows)
         .min(area.height.saturating_sub(2));
     let modal = Rect {
@@ -63,16 +60,55 @@ pub(super) fn draw_form(frame: &mut Frame, app: &App, area: Rect) {
     let mut lines: Vec<Line<'static>> = (0..form.field_count())
         .map(|index| field_line(app, form, index))
         .collect();
-    if !error_lines.is_empty() {
-        lines.push(Line::default());
-        for row in error_lines {
-            lines.push(Line::from(Span::styled(
-                row,
-                Style::new().fg(theme.accent_strong),
-            )));
-        }
-    }
+    lines.extend(feedback);
     frame.render_widget(Paragraph::new(lines), inner);
+}
+
+/// The feedback block below the fields: a save-validation error
+/// in the alert colour, then the connection test's result
+/// coloured by its tone. Each section is preceded by a blank
+/// row, and the block is empty when there is nothing to say.
+fn feedback_lines(
+    app: &App,
+    form: &AccountFormState,
+    width: usize,
+) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let theme = app.theme;
+    if let Some(error) = form.error.as_deref() {
+        push_feedback(&mut lines, error, width, theme.accent_strong);
+    }
+    if let Some(test) = form.conn_test.as_ref() {
+        let colour = test_tone_colour(app, test.tone);
+        push_feedback(&mut lines, &test.message, width, colour);
+    }
+    lines
+}
+
+fn push_feedback(
+    lines: &mut Vec<Line<'static>>,
+    text: &str,
+    width: usize,
+    colour: ratatui::style::Color,
+) {
+    lines.push(Line::default());
+    for row in wrapped(text, width) {
+        lines.push(Line::from(Span::styled(
+            row,
+            Style::new().fg(colour),
+        )));
+    }
+}
+
+fn test_tone_colour(
+    app: &App,
+    tone: super::account_form_conn::Tone,
+) -> ratatui::style::Color {
+    match tone {
+        super::account_form_conn::Tone::Working => app.theme.accent,
+        super::account_form_conn::Tone::Good => app.theme.status_ok,
+        super::account_form_conn::Tone::Bad => app.theme.status_error,
+    }
 }
 
 fn field_line(
@@ -273,6 +309,29 @@ mod tests {
         }
         let buffer = rendered(&app);
         assert!(text(&buffer).contains("account name is required"));
+    }
+
+    #[test]
+    fn a_connection_test_result_is_drawn_below_the_fields() {
+        let mut app = app_with_messages(1);
+        app.open_account_form_add();
+        if let Some(form) = app.account_form.as_mut() {
+            form.conn_test = Some(
+                super::super::account_form_conn::test_result(
+                    "reached the server and signed in",
+                    super::super::account_form_conn::Tone::Good,
+                ),
+            );
+        }
+        let buffer = rendered(&app);
+        assert!(text(&buffer).contains("reached the server"));
+    }
+
+    #[test]
+    fn the_hint_line_offers_the_connection_test() {
+        let mut app = app_with_messages(1);
+        app.account_form = Some(form_of(AccountType::Imap));
+        assert!(text(&rendered(&app)).contains("^t test"));
     }
 
     #[test]

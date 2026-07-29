@@ -56,39 +56,72 @@ fn client_id_params()
     )])
 }
 
-impl ImapSession {
-    pub fn connect(account: &SyncAccount) -> Result<Self, SyncError> {
-        let runtime = Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|source| SyncError::Runtime { source })?;
-        let mut client = runtime
-            .block_on(Client::rustls(
-                account.host.as_str(),
-                account.port,
-                false,
-                None,
-            ))
-            .map_err(|source| SyncError::Connect {
-                host: account.host.clone(),
-                port: account.port,
-                source: Box::new(source),
-            })?;
-        let authenticated = match &account.auth {
-            Auth::Password(password) => runtime.block_on(
-                client.login(account.user.as_str(), password.as_str()),
-            ),
-            Auth::XOauth2 { user, access_token } => runtime.block_on(
-                client.authenticate_xoauth2(
+/// A current-thread tokio runtime for one blocking session; the
+/// probe shares it so bounded and unbounded connects build their
+/// runtime the same way.
+pub(crate) fn build_runtime() -> Result<Runtime, SyncError> {
+    Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|source| SyncError::Runtime { source })
+}
+
+/// The TLS reachability step on its own: a connect that stops
+/// before authentication, so an OAuth account with no token can
+/// still be checked for a live server.
+pub(crate) async fn tls_connect(
+    host: &str,
+    port: u16,
+) -> Result<Client, SyncError> {
+    Client::rustls(host, port, false, None)
+        .await
+        .map_err(|source| SyncError::Connect {
+            host: host.to_string(),
+            port,
+            source: Box::new(source),
+        })
+}
+
+/// Reaches the server and authenticates, returning the ready
+/// client; shared by the sync session and the connection probe.
+pub(crate) async fn connect_client(
+    account: &SyncAccount,
+) -> Result<Client, SyncError> {
+    let mut client =
+        tls_connect(account.host.as_str(), account.port).await?;
+    let authenticated = match &account.auth {
+        Auth::Password(password) => {
+            client
+                .login(account.user.as_str(), password.as_str())
+                .await
+        }
+        Auth::XOauth2 { user, access_token } => {
+            client
+                .authenticate_xoauth2(
                     user.as_str(),
                     access_token.as_str(),
-                ),
-            ),
-        };
-        authenticated.map_err(|source| SyncError::Login {
-            user: account.user.clone(),
-            source: Box::new(source),
-        })?;
+                )
+                .await
+        }
+    };
+    authenticated.map_err(|source| SyncError::Login {
+        user: account.user.clone(),
+        source: Box::new(source),
+    })?;
+    Ok(client)
+}
+
+/// Best-effort LOGOUT: a probe drops the connection cleanly
+/// after its check, and a failed logout tells the caller nothing
+/// the check has not already reported.
+pub(crate) fn logout(runtime: &Runtime, mut client: Client) {
+    let _ = runtime.block_on(client.resolve(LogoutTask::new()));
+}
+
+impl ImapSession {
+    pub fn connect(account: &SyncAccount) -> Result<Self, SyncError> {
+        let runtime = build_runtime()?;
+        let mut client = runtime.block_on(connect_client(account))?;
         // Identify the client to the server (RFC 2971); best
         // effort, and a no-op where ID is not advertised.
         let _ = runtime.block_on(client.id(client_id_params()));
@@ -253,10 +286,8 @@ impl ImapSession {
         self.client.state.ext_uidplus_supported()
     }
 
-    pub fn logout(mut self) {
-        let _ = self
-            .runtime
-            .block_on(self.client.resolve(LogoutTask::new()));
+    pub fn logout(self) {
+        logout(&self.runtime, self.client);
     }
 
     fn uid_fetch(

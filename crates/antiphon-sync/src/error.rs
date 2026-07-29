@@ -14,6 +14,10 @@ pub enum SyncError {
         port: u16,
         source: Box<ClientError>,
     },
+    Timeout {
+        host: String,
+        port: u16,
+    },
     Login {
         user: String,
         source: Box<ClientError>,
@@ -67,6 +71,9 @@ impl fmt::Display for SyncError {
             }
             Self::Connect { host, port, source } => {
                 write!(out, "connecting to {host}:{port}: {source}")
+            }
+            Self::Timeout { host, port } => {
+                write!(out, "connecting to {host}:{port}: timed out")
             }
             Self::Login { user, source } => {
                 write!(out, "logging in as {user}: {source}")
@@ -122,7 +129,8 @@ impl std::error::Error for SyncError {
             Self::Index { source } => Some(source),
             Self::NotmuchSpawn { source } => Some(source),
             Self::Spool { source } => Some(source),
-            Self::SmtpMessage { .. }
+            Self::Timeout { .. }
+            | Self::SmtpMessage { .. }
             | Self::State { .. }
             | Self::Folder { .. }
             | Self::Idle { .. }

@@ -159,12 +159,12 @@ fn validate(form: &AccountFormState) -> Result<(), String> {
 /// provider's IMAP and SMTP hosts are fixed and the IMAP user
 /// is the e-mail address. The standard 993/587 ports stay
 /// implicit for the daemon to supply.
-struct OauthHosts {
-    imap: &'static str,
+pub(super) struct OauthHosts {
+    pub(super) imap: &'static str,
     smtp: &'static str,
 }
 
-fn oauth_hosts(provider: OauthProvider) -> OauthHosts {
+pub(super) fn oauth_hosts(provider: OauthProvider) -> OauthHosts {
     match provider {
         OauthProvider::Microsoft => OauthHosts {
             imap: "outlook.office365.com",

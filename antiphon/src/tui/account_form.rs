@@ -16,7 +16,7 @@ use crate::tui::settings::wrapped;
 /// edit overwrites (and possibly renames) rather than an add.
 /// The from addresses and names live in `identities`, managed
 /// through the identity sub-editor (`identity_ui`, when open).
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default)]
 pub(super) struct AccountFormState {
     pub(super) account_type: AccountType,
     pub(super) address: String,
@@ -39,6 +39,7 @@ pub(super) struct AccountFormState {
     pub(super) cursor: usize,
     pub(super) editing: Option<String>,
     pub(super) error: Option<String>,
+    pub(super) conn_test: Option<super::account_form_conn::ConnTest>,
     pub(super) identity_ui: Option<IdentityUi>,
 }
 
@@ -255,6 +256,7 @@ pub(super) fn feed(app: &mut App, key: KeyEvent) {
             KeyCode::Char('d') => {
                 super::account_form_discover::run(app)
             }
+            KeyCode::Char('t') => super::account_form_conn::start(app),
             _ => {}
         }
         return;

@@ -103,18 +103,34 @@ pub(crate) fn validate_address(address: &str) -> Result<(), String> {
     Err("that does not look like an e-mail address".to_string())
 }
 
+/// The Keychain service an account's mail password is stored
+/// under; one source of truth for the store and the lookup.
+pub(crate) fn mail_service(name: &str) -> String {
+    format!("antiphon-mail-{name}")
+}
+
+/// The command that reads an account's stored mail password
+/// back, written into the account file and reused by the
+/// connection test.
+pub(crate) fn keychain_lookup_command(name: &str) -> String {
+    format!(
+        "security find-generic-password -w -s {}",
+        mail_service(name)
+    )
+}
+
 #[cfg(target_os = "macos")]
 pub(crate) fn mail_secret(
     name: &str,
     address: &str,
 ) -> Result<String, String> {
-    let service = format!("antiphon-mail-{name}");
+    let service = mail_service(name);
     println!(
         "storing the mail password in your Keychain as \
          `{service}`"
     );
     keychain_store(&service, address, None)?;
-    Ok(format!("security find-generic-password -w -s {service}"))
+    Ok(keychain_lookup_command(name))
 }
 
 /// The settings form's masked field already holds the secret
@@ -126,9 +142,9 @@ pub(crate) fn store_keychain_secret(
     address: &str,
     secret: &str,
 ) -> Result<String, String> {
-    let service = format!("antiphon-mail-{name}");
+    let service = mail_service(name);
     keychain_store(&service, address, Some(secret))?;
-    Ok(format!("security find-generic-password -w -s {service}"))
+    Ok(keychain_lookup_command(name))
 }
 
 #[cfg(target_os = "macos")]
