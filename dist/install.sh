@@ -84,7 +84,8 @@ tarball_install() {
         || fail "checksum mismatch; refusing to install"
     mkdir -p "$BIN_DIR"
     tar -xzf "$tmp/$tarball" -C "$tmp"
-    install -m 755 "$tmp/antiphon" "$tmp/antiphond" "$BIN_DIR/"
+    dir="$tmp/${tarball%.tar.gz}"
+    install -m 755 "$dir/antiphon" "$dir/antiphond" "$BIN_DIR/"
     say "installed antiphon and antiphond to $BIN_DIR"
     case ":$PATH:" in
         *":$BIN_DIR:"*) ;;
