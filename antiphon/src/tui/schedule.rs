@@ -4,6 +4,7 @@
 //! outbox send-after time. Kept on `App` so `input.rs` can
 //! intercept its keys the same way the alias modal does.
 
+use antiphon_core::{Action, Context, Keymap, Resolution};
 use chrono::{Local, NaiveDateTime, TimeZone};
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
@@ -33,13 +34,25 @@ pub(super) fn begin(app: &mut App) {
 
 /// esc cancels, enter parses and applies, everything else edits
 /// the line.
-pub(super) fn feed_edit(app: &mut App, key: KeyEvent) {
+pub(super) fn feed_edit(
+    app: &mut App,
+    keymap: &mut Keymap,
+    key: KeyEvent,
+) {
+    match keymap.feed(Context::Prompt, key) {
+        Resolution::Match(Action::PromptCancel) => {
+            app.schedule_edit = None
+        }
+        Resolution::Match(Action::PromptSubmit) => apply(app),
+        _ => edit_line(app, key),
+    }
+}
+
+fn edit_line(app: &mut App, key: KeyEvent) {
     let Some(edit) = app.schedule_edit.as_mut() else {
         return;
     };
     match key.code {
-        KeyCode::Esc => app.schedule_edit = None,
-        KeyCode::Enter => apply(app),
         KeyCode::Char(ch) => {
             let at = byte_index(&edit.text, edit.cursor);
             edit.text.insert(at, ch);

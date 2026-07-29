@@ -135,6 +135,8 @@ const DEFAULT_BINDINGS: &[(Context, Action, &str)] = &[
     (Context::Compose, Action::ComposeCancel, "esc"),
     (Context::Compose, Action::OpenEditor, "ctrl-e"),
     (Context::Compose, Action::OpenEditor, "ctrl-h"),
+    (Context::Prompt, Action::PromptSubmit, "enter"),
+    (Context::Prompt, Action::PromptCancel, "esc"),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

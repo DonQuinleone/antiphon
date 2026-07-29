@@ -288,7 +288,7 @@ fn event_loop(
                 input::settings_key(app, &mut keymap, key)
             }
             KeyRoute::Prompt => {
-                input::prompt_key(app, layout, key);
+                input::prompt_key(app, &mut keymap, layout, key);
                 let mut request =
                     pending_template_request(app, context);
                 if request.is_none() {

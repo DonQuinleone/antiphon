@@ -4,6 +4,7 @@
 use std::io;
 
 use antiphon_config::Dirs;
+use antiphon_core::{Action, Context, Keymap, Resolution};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use super::app::App;
@@ -39,10 +40,22 @@ pub(super) fn begin_edit(app: &mut App) {
 /// Keys while an alias is being typed: esc cancels without
 /// writing anything, enter saves, everything else edits the
 /// buffer in place the way the account form's fields do.
-pub(super) fn feed_edit(app: &mut App, key: KeyEvent) {
+pub(super) fn feed_edit(
+    app: &mut App,
+    keymap: &mut Keymap,
+    key: KeyEvent,
+) {
+    match keymap.feed(Context::Prompt, key) {
+        Resolution::Match(Action::PromptCancel) => {
+            app.folder_alias_edit = None
+        }
+        Resolution::Match(Action::PromptSubmit) => save(app),
+        _ => edit_line(app, key),
+    }
+}
+
+fn edit_line(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Esc => app.folder_alias_edit = None,
-        KeyCode::Enter => save(app),
         KeyCode::Char(ch) => insert(app, ch),
         KeyCode::Backspace => backspace(app),
         KeyCode::Delete => delete(app),

@@ -76,6 +76,8 @@ pub enum Action {
     ComposeSubmit,
     ComposeCancel,
     OpenEditor,
+    PromptSubmit,
+    PromptCancel,
 }
 
 const NAMES: &[(Action, &str)] = &[
@@ -161,6 +163,8 @@ const NAMES: &[(Action, &str)] = &[
     (Action::ComposeSubmit, "compose-submit"),
     (Action::ComposeCancel, "compose-cancel"),
     (Action::OpenEditor, "open-editor"),
+    (Action::PromptSubmit, "prompt-submit"),
+    (Action::PromptCancel, "prompt-cancel"),
 ];
 
 impl Action {

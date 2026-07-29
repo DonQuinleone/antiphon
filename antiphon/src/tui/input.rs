@@ -92,7 +92,7 @@ pub(super) fn review_key(
     key: KeyEvent,
 ) -> std::io::Result<()> {
     if app.schedule_edit.is_some() {
-        super::schedule::feed_edit(app, key);
+        super::schedule::feed_edit(app, keymap, key);
         return Ok(());
     }
     if app.compose.is_none() {
@@ -131,7 +131,7 @@ pub(super) fn settings_key(
         return;
     }
     if app.folder_alias_edit.is_some() {
-        folder_alias::feed_edit(app, key);
+        folder_alias::feed_edit(app, keymap, key);
         return;
     }
     if settings::feed_modal(app, key) {
@@ -407,6 +407,7 @@ fn open_pager_image(app: &mut App, index: usize) {
 
 pub(super) fn prompt_key(
     app: &mut App,
+    keymap: &mut Keymap,
     layout: &StoreLayout,
     key: KeyEvent,
 ) {
@@ -460,12 +461,16 @@ pub(super) fn prompt_key(
         app.prompt_cancel();
         return;
     }
-    match key.code {
-        KeyCode::Char(ch) => app.prompt_push(ch),
-        KeyCode::Backspace => app.prompt_backspace(),
-        KeyCode::Esc => app.prompt_cancel(),
-        KeyCode::Enter => submit_prompt(app, layout),
-        _ => {}
+    match keymap.feed(Context::Prompt, key) {
+        Resolution::Match(Action::PromptSubmit) => {
+            submit_prompt(app, layout)
+        }
+        Resolution::Match(Action::PromptCancel) => app.prompt_cancel(),
+        _ => match key.code {
+            KeyCode::Char(ch) => app.prompt_push(ch),
+            KeyCode::Backspace => app.prompt_backspace(),
+            _ => {}
+        },
     }
 }
 
