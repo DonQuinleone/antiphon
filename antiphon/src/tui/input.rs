@@ -92,6 +92,11 @@ pub(super) fn review_key(
 ) -> std::io::Result<()> {
     use review::ReviewOutcome;
 
+    if app.schedule_edit.is_some() {
+        super::schedule::feed_edit(app, key);
+        return Ok(());
+    }
+
     let Some(state) = app.compose.as_mut() else {
         return Ok(());
     };
@@ -108,6 +113,7 @@ pub(super) fn review_key(
         ReviewOutcome::SaveDraft => {
             app.open_prompt(PromptKind::ConfirmDraft)
         }
+        ReviewOutcome::Schedule => super::schedule::begin(app),
     }
     Ok(())
 }

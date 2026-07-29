@@ -62,6 +62,7 @@ pub(super) fn app_with_messages(count: usize) -> App {
         folder_picker: None,
         account_form: None,
         folder_alias_edit: None,
+        schedule_edit: None,
         drawer_open: false,
         drawer_selected: 0,
         header_names: antiphon_config::Ui::default().headers,

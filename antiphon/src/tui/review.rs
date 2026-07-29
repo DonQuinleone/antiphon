@@ -26,6 +26,7 @@ pub(super) enum ReviewOutcome {
     EditHeaders,
     PromptAttachment,
     SaveDraft,
+    Schedule,
 }
 
 pub(super) fn feed(
@@ -48,6 +49,7 @@ pub(super) fn feed(
         KeyCode::Char('s') => toggle_sign(state),
         KeyCode::Char('x') => toggle_encrypt(state),
         KeyCode::Char('q') => ReviewOutcome::SaveDraft,
+        KeyCode::Char('@') => ReviewOutcome::Schedule,
         KeyCode::Char('j') | KeyCode::Down => select(state, 1),
         KeyCode::Char('k') | KeyCode::Up => select(state, -1),
         _ => ReviewOutcome::Stay,
@@ -100,6 +102,7 @@ pub(super) fn draw_review(frame: &mut Frame, app: &App, area: Rect) {
                 state.attachments.len()
             ),
         ),
+        ("Send:", super::schedule::label(state.schedule)),
     ];
     for (label, value) in labelled {
         lines.push(Line::from(vec![
@@ -234,6 +237,7 @@ mod tests {
             (Char('q'), SaveDraft),
             (Char('s'), Stay),
             (Char('x'), Stay),
+            (Char('@'), Schedule),
             (Char('z'), Stay),
             (KeyCode::Esc, Stay),
             (KeyCode::Enter, Stay),
@@ -314,10 +318,11 @@ mod tests {
         assert!(row(5).contains("sent"), "{:?}", row(5));
         assert!(row(6).contains("[encrypt]"), "{:?}", row(6));
         assert!(row(7).starts_with("Size:"), "{:?}", row(7));
-        assert!(row(9).starts_with("ATTACHMENTS"), "{:?}", row(9));
-        assert!(row(10).contains("none"), "{:?}", row(10));
-        assert!(row(12).starts_with("PREVIEW"), "{:?}", row(12));
-        assert!(row(13).contains("body line 1"), "{:?}", row(13));
+        assert!(row(8).starts_with("Send:"), "{:?}", row(8));
+        assert!(row(10).starts_with("ATTACHMENTS"), "{:?}", row(10));
+        assert!(row(11).contains("none"), "{:?}", row(11));
+        assert!(row(13).starts_with("PREVIEW"), "{:?}", row(13));
+        assert!(row(14).contains("body line 1"), "{:?}", row(14));
     }
 
     #[test]
@@ -352,16 +357,16 @@ mod tests {
         };
         assert!(row(7).contains("2 attachment(s)"), "{:?}", row(7));
         assert!(
-            row(10).starts_with(
+            row(11).starts_with(
                 "\u{25b8} a.pdf (application/pdf, 3 bytes)"
             ),
             "{:?}",
-            row(10)
+            row(11)
         );
         assert!(
-            row(11).starts_with("  b.txt (text/plain, 3 bytes)"),
+            row(12).starts_with("  b.txt (text/plain, 3 bytes)"),
             "{:?}",
-            row(11)
+            row(12)
         );
     }
 }

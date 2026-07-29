@@ -50,6 +50,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
     if app.view == View::Review {
         review::draw_review(frame, app, content);
+        super::schedule::draw_modal(frame, app, area);
         draw_status(frame, app, status);
         return;
     }

@@ -37,6 +37,9 @@ pub(super) struct ComposeState {
     pub contacts: Vec<Contact>,
     pub completion: Option<Completion>,
     pub forwarded_of: Option<(String, String)>,
+    /// Unix time at or after which the message may send; None
+    /// sends at the next outbox drain. Set on the review screen.
+    pub schedule: Option<u64>,
 }
 
 impl ComposeState {
@@ -61,6 +64,7 @@ impl ComposeState {
             contacts: Vec::new(),
             completion: None,
             forwarded_of: None,
+            schedule: None,
         }
     }
 

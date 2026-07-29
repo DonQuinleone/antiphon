@@ -51,6 +51,7 @@ mod preview;
 mod reader;
 mod replies;
 mod review;
+mod schedule;
 mod scope;
 mod session;
 mod settings;
