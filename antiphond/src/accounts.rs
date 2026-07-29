@@ -304,6 +304,7 @@ mod tests {
                 oauth: Some(Oauth {
                     provider: OauthProvider::Google,
                     client_id: Some("client-app".to_string()),
+                    tenant: None,
                 }),
                 graph: None,
                 folder_names: Default::default(),

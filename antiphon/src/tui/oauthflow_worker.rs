@@ -170,6 +170,7 @@ mod tests {
             &Oauth {
                 provider: OauthProvider::Google,
                 client_id: Some("app".to_string()),
+                tenant: None,
             },
             "app",
             None,
@@ -182,6 +183,7 @@ mod tests {
             &Oauth {
                 provider: OauthProvider::Microsoft,
                 client_id: Some("app".to_string()),
+                tenant: None,
             },
             "app",
             None,

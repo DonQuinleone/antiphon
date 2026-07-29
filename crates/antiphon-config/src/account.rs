@@ -76,6 +76,12 @@ pub struct Rule {
 pub struct Oauth {
     pub provider: OauthProvider,
     pub client_id: Option<String>,
+    /// Entra tenant for a single-tenant app registration. Every
+    /// grant, IMAP included, uses it instead of /common, which a
+    /// single-tenant registration refuses. Falls back to the
+    /// [graph] tenant when unset; [graph] tenant overrides it for
+    /// the Graph grant.
+    pub tenant: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

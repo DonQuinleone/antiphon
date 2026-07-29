@@ -77,24 +77,34 @@ pub(crate) fn account_grants(
             },
             wanted: true,
         }],
-        OauthProvider::Microsoft => {
-            microsoft_grants(account, client_id, graph)
-        }
+        OauthProvider::Microsoft => microsoft_grants(
+            account,
+            client_id,
+            oauth.tenant.as_deref(),
+            graph,
+        ),
     }
 }
 
-/// The IMAP grant always uses the [oauth] registration on the
-/// common endpoint; a delegated Graph grant may carry its own
+/// The IMAP grant uses the [oauth] registration; it takes the
+/// account tenant so a single-tenant registration is not sent to
+/// /common. A delegated Graph grant may carry its own
 /// registration and tenant, and app-only Graph needs no
 /// interactive grant at all (client credentials at send time).
+/// The account tenant comes from [oauth] tenant, or the [graph]
+/// tenant when only that is set, so one Entra tenant serves both.
 fn microsoft_grants(
     account: &str,
     client_id: &str,
+    oauth_tenant: Option<&str>,
     graph: Option<&Graph>,
 ) -> Vec<GrantSpec> {
     let sending = graph.filter(|graph| graph.send);
     let delegated =
         sending.filter(|graph| graph.auth == GraphAuth::Delegated);
+    let account_tenant = oauth_tenant
+        .map(str::to_owned)
+        .or_else(|| graph.and_then(|graph| graph.tenant.clone()));
     vec![
         GrantSpec {
             audience: "IMAP",
@@ -103,7 +113,7 @@ fn microsoft_grants(
                 provider: Provider::Microsoft,
                 scopes: MICROSOFT_IMAP_SCOPES.to_string(),
                 client_id: client_id.to_string(),
-                tenant: None,
+                tenant: account_tenant.clone(),
             },
             wanted: true,
         },
@@ -118,7 +128,8 @@ fn microsoft_grants(
                     .unwrap_or(client_id)
                     .to_string(),
                 tenant: delegated
-                    .and_then(|graph| graph.tenant.clone()),
+                    .and_then(|graph| graph.tenant.clone())
+                    .or(account_tenant),
             },
             wanted: delegated.is_some(),
         },
@@ -164,6 +175,7 @@ mod tests {
         Oauth {
             provider,
             client_id: client_id.map(str::to_string),
+            tenant: None,
         }
     }
 
@@ -208,6 +220,30 @@ mod tests {
             oauth_config(OauthProvider::Microsoft, Some("from-config"));
         let id = resolve_client_id(&oauth, "work", |_| None).unwrap();
         assert_eq!(id, "from-config");
+    }
+
+    #[test]
+    fn the_oauth_tenant_is_preferred_and_graph_keeps_its_override() {
+        let mut oauth =
+            oauth_config(OauthProvider::Microsoft, Some("app"));
+        oauth.tenant = Some("primary".to_string());
+        let graph = graph_config(
+            GraphAuth::Delegated,
+            Some("graph-tenant"),
+            None,
+        );
+        let grants =
+            account_grants("work", &oauth, "app", Some(&graph));
+        assert_eq!(
+            grants[0].grant.tenant.as_deref(),
+            Some("primary"),
+            "the [oauth] tenant covers the IMAP grant"
+        );
+        assert_eq!(
+            grants[1].grant.tenant.as_deref(),
+            Some("graph-tenant"),
+            "[graph] tenant still overrides for Graph"
+        );
     }
 
     #[test]
@@ -278,7 +314,11 @@ mod tests {
         assert_eq!(send.grant.client_id, "graph-app");
         assert_eq!(send.grant.tenant.as_deref(), Some("tenant-1"));
         assert_eq!(grants[0].grant.client_id, "imap-app");
-        assert_eq!(grants[0].grant.tenant, None);
+        assert_eq!(
+            grants[0].grant.tenant.as_deref(),
+            Some("tenant-1"),
+            "the IMAP grant reuses the tenant, not /common"
+        );
     }
 
     #[test]

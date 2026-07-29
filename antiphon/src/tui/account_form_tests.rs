@@ -184,6 +184,7 @@ fn infer_type_reads_the_oauth_and_graph_tables() {
     account.oauth = Some(Oauth {
         provider: OauthProvider::Microsoft,
         client_id: Some("app-1".to_string()),
+        tenant: None,
     });
     account.graph = Some(Graph {
         send: true,
@@ -210,6 +211,7 @@ fn infer_type_reads_a_google_account() {
     account.oauth = Some(Oauth {
         provider: OauthProvider::Google,
         client_id: None,
+        tenant: None,
     });
     form.infer_type(&account);
     assert_eq!(form.account_type, AccountType::Google);
