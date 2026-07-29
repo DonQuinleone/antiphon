@@ -78,6 +78,16 @@ pub fn has_html_part(raw: &[u8]) -> bool {
     })
 }
 
+/// The message's html part verbatim, for handing to a browser;
+/// None when the message is plain text only.
+pub fn html_part(raw: &[u8]) -> Option<String> {
+    let message = MessageParser::default().parse(raw)?;
+    message.html_bodies().find_map(|part| match &part.body {
+        PartType::Html(text) => Some(text.to_string()),
+        _ => None,
+    })
+}
+
 fn raw_body_preferring(
     raw: &[u8],
     preference: BodyPreference,
@@ -174,6 +184,24 @@ fn empty() -> BodyText {
 #[cfg(test)]
 mod tests {
     use super::{BodyKind, body_text};
+
+    #[test]
+    fn html_part_returns_the_html_when_present() {
+        let html = concat!(
+            "From: alice@example.com\r\n",
+            "Content-Type: text/html; charset=utf-8\r\n",
+            "\r\n",
+            "<p>hello</p>\r\n",
+        );
+        let part = super::html_part(html.as_bytes());
+        assert!(
+            part.as_deref()
+                .is_some_and(|body| body.contains("<p>hello</p>")),
+            "{part:?}"
+        );
+        let plain = "Content-Type: text/plain\r\n\r\njust text\r\n";
+        assert!(super::html_part(plain.as_bytes()).is_none());
+    }
 
     #[test]
     fn extracts_the_right_body() {

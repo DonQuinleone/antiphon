@@ -22,7 +22,7 @@ pub use compose::{
 pub use extract::{
     BodyKind, BodyPreference, BodyText, body_text,
     body_text_preferring, delivered_addresses, has_html_part,
-    rendered_body, rendered_body_preferring,
+    html_part, rendered_body, rendered_body_preferring,
 };
 pub use flowed::flow;
 pub use headers::{MessageHeader, all_headers, selected_headers};

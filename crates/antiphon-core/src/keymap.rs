@@ -49,6 +49,7 @@ const DEFAULT_BINDINGS: &[(Action, &str)] = &[
     (Action::ToggleFlagged, "F"),
     (Action::DeleteMessage, "d"),
     (Action::ToggleHtml, "h"),
+    (Action::OpenHtmlBrowser, "b"),
     (Action::PaneScrollDown, "J"),
     (Action::PaneScrollUp, "K"),
     (Action::Help, "?"),

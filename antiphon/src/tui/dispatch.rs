@@ -209,6 +209,10 @@ pub(super) fn dispatch(
         }
         return None;
     }
+    if action == Action::OpenHtmlBrowser {
+        open_html_browser(app);
+        return None;
+    }
     let opening = action == Action::Open && app.view == View::List;
     if !opening {
         app.apply(action);
@@ -237,6 +241,35 @@ pub(super) fn dispatch(
 
 pub(super) fn body_text(raw: &[u8]) -> String {
     antiphon_render::body_text(raw).text
+}
+
+/// Writes the open message's html part to a temp file and hands
+/// it to the system browser, for messages the terminal render
+/// cannot do justice; only ever from the pager.
+fn open_html_browser(app: &mut App) {
+    if app.view != View::Pager {
+        return;
+    }
+    let Some(html) = antiphon_render::html_part(&app.pager_raw) else {
+        app.notice = Some("this message has no html part".to_string());
+        return;
+    };
+    match write_html_temp(&html) {
+        Ok(path) => crate::tui::link_picker::spawn_opener(
+            app,
+            &path.to_string_lossy(),
+        ),
+        Err(error) => app.notice = Some(format!("open html: {error}")),
+    }
+}
+
+fn write_html_temp(html: &str) -> std::io::Result<std::path::PathBuf> {
+    let dir = std::env::temp_dir()
+        .join(format!("antiphon-view-{}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join("message.html");
+    std::fs::write(&path, html)?;
+    Ok(path)
 }
 
 fn fresh_request(
