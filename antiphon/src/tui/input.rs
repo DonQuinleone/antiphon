@@ -11,12 +11,12 @@ use super::app::{App, View};
 use super::commands::PromptKind;
 use super::dispatch::dispatch;
 use super::identity::ComposeContext;
-use super::settings::{self, SettingsOutcome};
 use super::{
     account_form, attach, draw, drawer, export, folder_alias,
     folder_picker, headers, link_picker, mark_all_read, pager,
     pager_body, patches, review, run_query, run_search, session,
 };
+use crate::tui::settings::{self, SettingsOutcome};
 
 const MOUSE_WHEEL_ROWS: usize = 3;
 

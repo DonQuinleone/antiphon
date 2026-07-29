@@ -5,13 +5,13 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use super::app::App;
-use super::draw::segmented::{self, SegmentStyle};
-use super::folders::FolderRow;
-use super::headers::with_cursor;
-use super::oauth_status::OauthState;
-use super::settings::{SettingsState, SettingsTab};
-use super::settingscmd::{self, EssentialRow};
+use crate::tui::app::App;
+use crate::tui::draw::segmented::{self, SegmentStyle};
+use crate::tui::folders::FolderRow;
+use crate::tui::headers::with_cursor;
+use crate::tui::oauth_status::OauthState;
+use crate::tui::settings::cmd::{self, EssentialRow};
+use crate::tui::settings::{SettingsState, SettingsTab};
 
 const SELECTED_MARK: &str = "\u{25b8} ";
 const UNSELECTED_MARK: &str = "  ";
@@ -26,7 +26,11 @@ const FOLDERS_HELP: &str = "Shift-J/K reorder \u{b7} h hide \u{b7} \
 const SETTINGS_MODAL_WIDTH: u16 = 78;
 const SETTINGS_MODAL_HEIGHT: u16 = 26;
 
-pub(super) fn draw_settings(frame: &mut Frame, app: &App, area: Rect) {
+pub(in crate::tui) fn draw_settings(
+    frame: &mut Frame,
+    app: &App,
+    area: Rect,
+) {
     let Some(state) = &app.settings else {
         return;
     };
@@ -176,7 +180,7 @@ fn push_oauth_detail(
 
 fn account_line(
     theme: &Theme,
-    account: &super::settings::AccountSummary,
+    account: &crate::tui::settings::AccountSummary,
     index: usize,
     selected: bool,
     name_w: usize,
@@ -211,7 +215,7 @@ fn account_line(
 /// row's own styling.
 fn oauth_style(
     theme: &Theme,
-    info: &super::oauth_status::OauthInfo,
+    info: &crate::tui::oauth_status::OauthInfo,
     row_style: Style,
 ) -> Style {
     if matches!(info.state, OauthState::NeedsSignIn) {
@@ -228,7 +232,7 @@ fn draw_essentials(
 ) {
     let theme = app.theme;
     let mut lines = Vec::new();
-    for (index, row) in settingscmd::ESSENTIAL_ROWS.iter().enumerate() {
+    for (index, row) in cmd::ESSENTIAL_ROWS.iter().enumerate() {
         let selected = index == state.essentials_selected;
         lines.push(essential_line(app, row, selected));
     }
@@ -361,7 +365,7 @@ const ALIAS_HINT: &str =
 /// The alias edits in a small modal of its own, named after
 /// the folder, so the mode is unmistakable and the keys sit
 /// right under the text being typed.
-pub(super) fn draw_alias_modal(
+pub(in crate::tui) fn draw_alias_modal(
     frame: &mut Frame,
     app: &App,
     area: Rect,
@@ -422,5 +426,5 @@ fn col_width(
 }
 
 #[cfg(test)]
-#[path = "settings_draw_tests.rs"]
+#[path = "draw_tests.rs"]
 mod tests;

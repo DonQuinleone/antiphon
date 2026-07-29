@@ -258,7 +258,7 @@ fn remove_key_deletes_the_line_from_a_real_file() {
     );
 }
 
-/// Every essentials key that `settingscmd` writes goes
+/// Every essentials key that `cmd` writes goes
 /// through the very same generic edit, over the four
 /// shapes a config file can be in: key present, key
 /// absent, table absent, file absent.

@@ -8,7 +8,7 @@ use ratatui::widgets::Paragraph;
 use super::app::{App, DEFAULT_QUERY, View};
 use super::commands::{Prompt, PromptKind};
 use super::message_list::UNREAD_MARK;
-use super::settings::SettingsTab;
+use crate::tui::settings::SettingsTab;
 
 pub(super) fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     let theme = app.theme;

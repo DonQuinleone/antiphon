@@ -1,8 +1,13 @@
+mod accounts;
+mod cmd;
+mod cmd_rows;
+mod draw;
+
+pub(super) use draw::{draw_alias_modal, draw_settings};
+
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
-use super::app::{App, View};
-use super::settings_accounts;
-use super::settingscmd;
+use crate::tui::app::{App, View};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SettingsTab {
@@ -49,7 +54,7 @@ pub(super) struct AccountSummary {
     pub(super) address: String,
     pub(super) host: String,
     pub(super) kind: ServerKind,
-    pub(super) oauth: Option<super::oauth_status::OauthInfo>,
+    pub(super) oauth: Option<crate::tui::oauth_status::OauthInfo>,
 }
 
 impl AccountSummary {
@@ -70,7 +75,7 @@ pub(super) struct SettingsState {
     pub(super) pending_revoke: Option<String>,
     pub(super) essentials_selected: usize,
     pub(super) daemon_hint: Option<String>,
-    pub(super) folders: Vec<super::folders::FolderRow>,
+    pub(super) folders: Vec<crate::tui::folders::FolderRow>,
     pub(super) folder_selected: usize,
 }
 
@@ -87,11 +92,11 @@ impl App {
     pub(super) fn open_settings(&mut self) {
         // One status poll per settings open keeps the daemon's
         // auth-failure report current without chatter.
-        super::oauth_status::refresh_auth_failures(self);
+        crate::tui::oauth_status::refresh_auth_failures(self);
         let folders = self.folder_rows();
         self.settings = Some(SettingsState {
             tab: SettingsTab::Accounts,
-            accounts: settings_accounts::account_summaries(
+            accounts: accounts::account_summaries(
                 &self.dirs,
                 &self.auth_failures,
             ),
@@ -110,7 +115,7 @@ impl App {
     /// listing kept in memory, so add, edit and remove all
     /// settle here rather than each patching their own copy.
     pub(super) fn refresh_settings_accounts(&mut self) {
-        let accounts = settings_accounts::account_summaries(
+        let accounts = accounts::account_summaries(
             &self.dirs,
             &self.auth_failures,
         );
@@ -131,14 +136,14 @@ pub(super) fn feed(app: &mut App, key: KeyEvent) -> SettingsOutcome {
     let pending_revoke = state.pending_revoke.clone();
     let tab = state.tab;
     if app.oauth_flow.is_some() && key.code == KeyCode::Esc {
-        super::oauthflow::cancel(app);
+        crate::tui::oauthflow::cancel(app);
         return SettingsOutcome::Stay;
     }
     if let Some(name) = pending_delete {
-        return settings_accounts::feed_confirm_delete(app, key, &name);
+        return accounts::feed_confirm_delete(app, key, &name);
     }
     if let Some(name) = pending_revoke {
-        return super::oauth_status::feed_confirm_revoke(
+        return crate::tui::oauth_status::feed_confirm_revoke(
             app, key, &name,
         );
     }
@@ -153,11 +158,9 @@ pub(super) fn feed(app: &mut App, key: KeyEvent) -> SettingsOutcome {
             SettingsOutcome::Stay
         }
         _ => match tab {
-            SettingsTab::Accounts => {
-                settings_accounts::feed_accounts(app, key)
-            }
-            SettingsTab::Essentials => settingscmd::feed(app, key),
-            SettingsTab::Folders => super::folders::feed(app, key),
+            SettingsTab::Accounts => accounts::feed_accounts(app, key),
+            SettingsTab::Essentials => cmd::feed(app, key),
+            SettingsTab::Folders => crate::tui::folders::feed(app, key),
         },
     }
 }
@@ -181,8 +184,8 @@ pub(super) fn wrapped(current: usize, len: usize, step: i32) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::super::testkit::app_with_settings;
-    use super::*;
+    use crate::tui::settings::*;
+    use crate::tui::testkit::app_with_settings;
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(
@@ -219,8 +222,7 @@ mod tests {
     #[test]
     fn esc_cancels_a_running_sign_in_instead_of_closing() {
         let mut app = app_with_settings(&["work"]);
-        app.oauth_flow =
-            Some(super::super::oauthflow::test_flow("work"));
+        app.oauth_flow = Some(crate::tui::oauthflow::test_flow("work"));
         assert_eq!(
             feed(&mut app, key(KeyCode::Esc)),
             SettingsOutcome::Stay

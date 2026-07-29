@@ -1,9 +1,9 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
-use super::app::App;
-use super::configedit::persist_key;
-use super::settings::{SettingsOutcome, wrapped};
-use super::settingscmd_rows::*;
+use crate::tui::app::App;
+use crate::tui::configedit::persist_key;
+use crate::tui::settings::cmd_rows::*;
+use crate::tui::settings::{SettingsOutcome, wrapped};
 
 const ON_OFF: [&str; 2] = ["off", "on"];
 const ACCOUNTS_BAR_OPTIONS: [&str; 2] = ["sidebar", "tabs"];
@@ -175,7 +175,7 @@ fn cycle_essential(app: &mut App, step: i32) {
         Err(error) => format!("{base} (not saved: {error})"),
     });
     if row.daemon {
-        super::reload_in_background();
+        crate::tui::reload_in_background();
     }
     if let Some(state) = app.settings.as_mut() {
         state.daemon_hint = row
@@ -197,9 +197,9 @@ pub(super) fn persist(
 
 #[cfg(test)]
 mod tests {
-    use super::super::settings::SettingsTab;
-    use super::super::testkit::{app_with_messages, app_with_settings};
-    use super::*;
+    use crate::tui::settings::SettingsTab;
+    use crate::tui::settings::cmd::*;
+    use crate::tui::testkit::{app_with_messages, app_with_settings};
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn essentials_selection_cycles_a_row_and_persists() {
-        use super::super::testkit::TempDir;
+        use crate::tui::testkit::TempDir;
 
         let dir = TempDir::new();
         let mut app = app_with_settings(&[]);
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn a_daemon_key_sets_the_restart_hint_a_client_key_does_not() {
-        use super::super::testkit::TempDir;
+        use crate::tui::testkit::TempDir;
 
         let dir = TempDir::new();
         let mut app = app_with_settings(&[]);
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn persist_writes_through_the_generic_config_edit() {
-        use super::super::testkit::TempDir;
+        use crate::tui::testkit::TempDir;
 
         let dir = TempDir::new();
         let mut app = app_with_messages(1);

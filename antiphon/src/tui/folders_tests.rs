@@ -75,7 +75,7 @@ fn an_alias_with_no_matching_folder_is_never_joined_in() {
 }
 
 fn app_on_folders_tab(dir: &TempDir) -> App {
-    use super::super::settings::{SettingsState, SettingsTab};
+    use crate::tui::settings::{SettingsState, SettingsTab};
 
     let mut app = super::super::testkit::app_with_folders(&[(
         "work",

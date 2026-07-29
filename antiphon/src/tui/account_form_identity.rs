@@ -9,7 +9,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use super::account_form::{AccountFormState, edit_text};
 use super::account_form_fields::on_off;
 use super::app::App;
-use super::settings::wrapped;
+use crate::tui::settings::wrapped;
 
 /// One identity as the form holds it: every value a string (the
 /// match patterns comma-separated) bar the auto-sign toggle.

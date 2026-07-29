@@ -8,8 +8,8 @@ use super::account_form_fields::{
 use super::account_form_identity::{FormIdentity, IdentityUi};
 use super::app::App;
 use super::headers::byte_index;
-use super::settings::wrapped;
 use crate::account_wizard::AccountAnswers;
+use crate::tui::settings::wrapped;
 
 /// The in-TUI replacement for the setup wizard's terminal Q&A:
 /// one field per row, `editing` naming the account file an

@@ -5,8 +5,8 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use super::app::App;
 use super::configedit::{persist_root_key, toml_string_array};
 use super::folder_alias::begin_edit;
-use super::settings::{self, SettingsOutcome};
 use super::sidebar::{self, AccountEntry};
+use crate::tui::settings::{self, SettingsOutcome};
 
 const FOLDER_ORDER_KEY: &str = "folder_order";
 const FOLDERS_HIDDEN_KEY: &str = "folders_hidden";

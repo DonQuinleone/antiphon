@@ -4,11 +4,11 @@
 use antiphon_config::{Dirs, NamedAccount, OauthProvider};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
-use super::app::App;
-use super::settings::{
+use crate::tui::app::App;
+use crate::tui::settings::cmd;
+use crate::tui::settings::{
     AccountSummary, ServerKind, SettingsOutcome, wrapped,
 };
-use super::settingscmd;
 
 pub(super) fn feed_accounts(
     app: &mut App,
@@ -47,12 +47,12 @@ pub(super) fn feed_accounts(
         }
         KeyCode::Char('o') => {
             if let Some(name) = selected_account_name(app) {
-                super::oauthflow::authorise(app, &name);
+                crate::tui::oauthflow::authorise(app, &name);
             }
             SettingsOutcome::Stay
         }
         KeyCode::Char('x') => {
-            super::oauth_status::arm_revoke(app);
+            crate::tui::oauth_status::arm_revoke(app);
             SettingsOutcome::Stay
         }
         _ => SettingsOutcome::Stay,
@@ -107,9 +107,8 @@ fn shift_account_order(app: &mut App, step: i32) {
         .iter()
         .map(|account| account.name.clone())
         .collect();
-    let value = super::configedit::toml_string_array(&order);
-    let result =
-        settingscmd::persist(app, ACCOUNTS_TABLE, ORDER_KEY, &value);
+    let value = crate::tui::configedit::toml_string_array(&order);
+    let result = cmd::persist(app, ACCOUNTS_TABLE, ORDER_KEY, &value);
     reorder_live_accounts(app, &order);
     app.notice = Some(match result {
         Ok(()) => format!("account order: {}", order.join(", ")),
@@ -158,7 +157,7 @@ fn remove_account(app: &mut App, name: &str) {
         .join("accounts")
         .join(format!("{name}.toml"));
     app.notice = Some(match std::fs::remove_file(&path) {
-        Ok(()) => match super::request_reload() {
+        Ok(()) => match crate::tui::request_reload() {
             None => format!("removed account {name}"),
             Some(notice) => {
                 format!("removed account {name} ({notice})")
@@ -179,7 +178,7 @@ pub(super) fn account_summaries(
     let Ok(loaded) = antiphon_config::load(dirs) else {
         return Vec::new();
     };
-    let store = super::oauth_status::open_store_if_present(dirs);
+    let store = crate::tui::oauth_status::open_store_if_present(dirs);
     let now = now_unix();
     loaded
         .accounts
@@ -207,7 +206,7 @@ fn summary_of(
             .unwrap_or_default(),
         host: entry.account.imap.host.clone(),
         kind: server_kind(entry),
-        oauth: super::oauth_status::info_for(
+        oauth: crate::tui::oauth_status::info_for(
             entry,
             store,
             auth_failures,
@@ -233,9 +232,9 @@ fn now_unix() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::super::settings::{SettingsOutcome, feed};
-    use super::super::testkit::{TempDir, app_with_settings};
-    use super::*;
+    use crate::tui::settings::accounts::*;
+    use crate::tui::settings::{SettingsOutcome, feed};
+    use crate::tui::testkit::{TempDir, app_with_settings};
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(

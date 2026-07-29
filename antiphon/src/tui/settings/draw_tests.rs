@@ -3,9 +3,9 @@ use ratatui::backend::TestBackend;
 
 use antiphon_config::ReadingPane;
 
-use super::super::settings::{AccountSummary, ServerKind};
-use super::super::testkit::app_with_messages;
-use super::*;
+use crate::tui::settings::draw::*;
+use crate::tui::settings::{AccountSummary, ServerKind};
+use crate::tui::testkit::app_with_messages;
 
 fn rendered(app: &App) -> ratatui::buffer::Buffer {
     // Wide enough for a full account row with its OAuth state
@@ -60,7 +60,7 @@ fn accounts_tab_lists_name_address_and_host() {
 
 #[test]
 fn an_oauth_account_row_wears_its_state_and_detail() {
-    use super::super::oauth_status::{OauthInfo, OauthState};
+    use crate::tui::oauth_status::{OauthInfo, OauthState};
 
     let mut app = app_with_messages(1);
     app.settings = Some(SettingsState {
@@ -101,7 +101,7 @@ fn an_oauth_account_row_wears_its_state_and_detail() {
 
 #[test]
 fn oauth_rows_name_the_provider_not_the_host() {
-    use super::super::oauth_status::{OauthInfo, OauthState};
+    use crate::tui::oauth_status::{OauthInfo, OauthState};
 
     let mut app = app_with_messages(1);
     app.settings = Some(SettingsState {
@@ -156,7 +156,7 @@ fn oauth_rows_name_the_provider_not_the_host() {
 
 #[test]
 fn a_needs_sign_in_row_wears_the_warning_colour() {
-    use super::super::oauth_status::{OauthInfo, OauthState};
+    use crate::tui::oauth_status::{OauthInfo, OauthState};
 
     let mut app = app_with_messages(1);
     app.settings = Some(SettingsState {
@@ -263,7 +263,7 @@ fn a_selected_segment_carries_the_accent_highlight() {
     app.reading_pane = ReadingPane::Right;
     // Land the selection on the reading pane row so its active
     // segment is drawn.
-    let reading = settingscmd::ESSENTIAL_ROWS
+    let reading = crate::tui::settings::cmd::ESSENTIAL_ROWS
         .iter()
         .position(|row| row.label == "reading pane")
         .expect("a reading pane row");
@@ -328,13 +328,12 @@ fn folders_tab_lists_rows_and_the_selected_ones_edit_shows() {
         ],
         folder_selected: 0,
     });
-    app.folder_alias_edit =
-        Some(super::super::folder_alias::AliasEdit {
-            account: "personal".to_string(),
-            folder: "lists/rust".to_string(),
-            text: "renamed".to_string(),
-            cursor: 7,
-        });
+    app.folder_alias_edit = Some(crate::tui::folder_alias::AliasEdit {
+        account: "personal".to_string(),
+        folder: "lists/rust".to_string(),
+        text: "renamed".to_string(),
+        cursor: 7,
+    });
     let backend = TestBackend::new(90, 30);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal

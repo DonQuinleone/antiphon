@@ -1,9 +1,9 @@
 use antiphon_config::{AccountsBar, Composer, ReadingPane};
 use antiphon_ui::Theme;
 
-use super::app::App;
-use super::draw::{SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN};
-use super::settings::wrapped;
+use crate::tui::app::App;
+use crate::tui::draw::{SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN};
+use crate::tui::settings::wrapped;
 
 const LIST_ROWS_MIN: u16 = 1;
 const LIST_ROWS_MAX: u16 = 60;
@@ -215,8 +215,8 @@ fn stepped(value: u32, step: i32, min: u32, max: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::super::testkit::app_with_messages;
-    use super::*;
+    use crate::tui::settings::cmd_rows::*;
+    use crate::tui::testkit::app_with_messages;
 
     #[test]
     fn theme_cycles_forward_and_backward_with_wraparound() {

@@ -12,8 +12,8 @@ use super::help::draw_help;
 use super::message_list::draw_list;
 use super::pager::draw_pager;
 use super::review;
-use super::settings_draw::draw_settings;
 use super::status::draw_status;
+use crate::tui::settings::draw_settings;
 
 #[path = "segmented.rs"]
 pub(in crate::tui) mod segmented;
@@ -56,7 +56,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
     if app.view == View::Settings {
         draw_settings(frame, app, content);
-        super::settings_draw::draw_alias_modal(frame, app, content);
+        crate::tui::settings::draw_alias_modal(frame, app, content);
         draw_status(frame, app, status);
         super::account_form_draw::draw_form(frame, app, area);
         super::account_form_identity_draw::draw_overlay(

@@ -111,7 +111,7 @@ pub struct App {
     pub sync_idle: bool,
     pub notify_sound: bool,
     pub notify_speech: bool,
-    pub settings: Option<super::settings::SettingsState>,
+    pub settings: Option<crate::tui::settings::SettingsState>,
     pub oauth_flow: Option<super::oauthflow::OauthFlow>,
     /// Accounts the daemon last reported as needing a fresh
     /// OAuth sign-in; feeds the status line and settings rows.

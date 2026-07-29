@@ -8,8 +8,8 @@ use antiphon_store::StoreLayout;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use super::app::App;
-use super::settings::SettingsOutcome;
 use crate::oauthgrants::expiry;
+use crate::tui::settings::SettingsOutcome;
 
 /// A token this close to expiry reads as due for a refresh;
 /// the daemon renews it on its next pass.

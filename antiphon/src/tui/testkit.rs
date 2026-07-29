@@ -12,8 +12,10 @@ use super::commands::FrameStats;
 use super::crypto::{ComposeCrypto, PgpPlan};
 use super::identity::ComposeIdentity;
 use super::scope::ViewScope;
-use super::settings::{AccountSummary, SettingsState, SettingsTab};
 use super::sidebar::{self, AccountEntry};
+use crate::tui::settings::{
+    AccountSummary, SettingsState, SettingsTab,
+};
 
 pub(super) fn app_with_messages(count: usize) -> App {
     let messages = (0..count)
@@ -175,7 +177,7 @@ pub(super) fn app_with_settings(accounts: &[&str]) -> App {
                 account_name: (*name).to_string(),
                 address: format!("{name}@example.com"),
                 host: format!("imap.{name}.example.com"),
-                kind: super::settings::ServerKind::Imap,
+                kind: crate::tui::settings::ServerKind::Imap,
                 oauth: None,
             })
             .collect(),

@@ -8,7 +8,7 @@ use antiphon_config::{GraphAuth, OauthProvider};
 use antiphon_ui::AccountAccent;
 
 use super::account_form::AccountFormState;
-use super::settings::wrapped;
+use crate::tui::settings::wrapped;
 
 /// The kind of account, chosen by the segmented toggle at the
 /// top of the form; it drives which of the fields below show.
