@@ -116,6 +116,7 @@ const DEFAULT_BINDINGS: &[(Context, Action, &str)] = &[
     (Context::Review, Action::RemoveAttachment, "d"),
     (Context::Review, Action::ToggleSign, "s"),
     (Context::Review, Action::ToggleEncrypt, "x"),
+    (Context::Review, Action::ToggleReadReceipt, "k"),
     (Context::Review, Action::SaveDraft, "q"),
     (Context::Review, Action::Schedule, "@"),
     (Context::SettingsAccounts, Action::ReorderDown, "J"),

@@ -388,6 +388,9 @@ impl App {
             Action::ToggleEncrypt => {
                 state.encrypt_override = Some(!state.plan().encrypt)
             }
+            Action::ToggleReadReceipt => {
+                state.read_receipt = !state.read_receipt
+            }
             _ => {}
         }
     }

@@ -83,6 +83,7 @@ mod tests {
                     bytes: b"plain words\n",
                 },
             ],
+            read_receipt: false,
         }
     }
 

@@ -16,6 +16,9 @@ pub struct Draft<'a> {
     pub body: &'a str,
     pub signature: Option<&'a str>,
     pub attachments: Vec<AttachmentPart<'a>>,
+    /// Ask the recipient's client to return a read receipt
+    /// (RFC 8098 MDN), carried as Disposition-Notification-To.
+    pub read_receipt: bool,
 }
 
 pub fn build_message(
@@ -35,6 +38,12 @@ pub fn build_message(
         .text_body(body);
     if !draft.cc.is_empty() {
         builder = builder.cc(address_list(&draft.cc));
+    }
+    if draft.read_receipt {
+        builder = builder.header(
+            "Disposition-Notification-To",
+            Address::new_address(None::<&str>, draft.from),
+        );
     }
     if let Some(parent) = draft.in_reply_to {
         builder = builder.in_reply_to(parent);
@@ -128,6 +137,7 @@ mod tests {
             body: "See you Thursday.",
             signature: Some("Q\n"),
             attachments: Vec::new(),
+            read_receipt: false,
         }
     }
 
@@ -155,6 +165,26 @@ mod tests {
     #[test]
     fn the_mailer_header_names_antiphon_and_the_version() {
         assert!(built().contains("X-Mailer: Antiphon 9.9.9"));
+    }
+
+    #[test]
+    fn a_read_receipt_is_requested_only_when_asked() {
+        assert!(
+            !built().contains("Disposition-Notification-To"),
+            "no receipt header off by default"
+        );
+        let mut draft = draft();
+        draft.read_receipt = true;
+        let text = String::from_utf8(build_message(
+            &draft,
+            "example.com",
+            1_753_380_000,
+            "Antiphon 9.9.9",
+        ))
+        .unwrap();
+        assert!(text.contains(
+            "Disposition-Notification-To: <quin@example.com>"
+        ));
     }
 
     #[test]

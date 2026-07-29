@@ -89,6 +89,7 @@ mod tests {
                     bytes: b"plain words\n",
                 },
             ],
+            read_receipt: false,
         };
         build_message(
             &draft,

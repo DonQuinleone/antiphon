@@ -31,6 +31,9 @@ pub(super) struct ComposeState {
     pub references: Vec<String>,
     pub sign_override: Option<bool>,
     pub encrypt_override: Option<bool>,
+    /// Whether the outgoing message asks for a read receipt;
+    /// toggled on the review screen, off by default.
+    pub read_receipt: bool,
     pub attachments: Vec<Attachment>,
     pub selected_attachment: usize,
     pub reviewed: bool,
@@ -58,6 +61,7 @@ impl ComposeState {
             references: fields.references,
             sign_override: overrides.0,
             encrypt_override: overrides.1,
+            read_receipt: false,
             attachments: Vec::new(),
             selected_attachment: 0,
             reviewed: false,
@@ -183,6 +187,7 @@ impl ComposeState {
             in_reply_to: self.in_reply_to.clone(),
             references: self.references.clone(),
             body: self.body.clone(),
+            read_receipt: self.read_receipt,
         }
     }
 }
@@ -388,6 +393,36 @@ mod tests {
         state.step_focus(1);
         assert_eq!(state.fields.focus, 1, "tab moves focus again");
         assert!(state.completion.is_none());
+    }
+
+    #[test]
+    fn a_read_receipt_flag_reaches_outgoing_and_the_header() {
+        let mut state = test_state();
+        state.fields.to = "alba@example.com".to_string();
+        assert!(!state.draft_outgoing().read_receipt, "off default");
+        state.read_receipt = true;
+        let outgoing = state.outgoing().unwrap();
+        assert!(outgoing.read_receipt);
+        let raw = assemble(&outgoing, &[], 1_753_380_000);
+        let text = String::from_utf8(raw).unwrap();
+        assert!(text.contains(
+            "Disposition-Notification-To: <tester@example.com>"
+        ));
+    }
+
+    #[test]
+    fn the_review_toggle_flips_the_read_receipt_field() {
+        use super::super::app::View;
+        use super::super::testkit::app_with_messages;
+
+        let mut app = app_with_messages(1);
+        app.compose = Some(test_state());
+        app.view = View::Review;
+        assert!(!app.compose.as_ref().unwrap().read_receipt);
+        app.apply(antiphon_core::Action::ToggleReadReceipt);
+        assert!(app.compose.as_ref().unwrap().read_receipt);
+        app.apply(antiphon_core::Action::ToggleReadReceipt);
+        assert!(!app.compose.as_ref().unwrap().read_receipt);
     }
 
     #[test]

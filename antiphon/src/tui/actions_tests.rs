@@ -305,6 +305,7 @@ mod reading_pane_extras {
                 content_type: "application/pdf",
                 bytes: b"%PDF-1.7",
             }],
+            read_receipt: false,
         };
         let raw = antiphon_render::build_message(
             &draft,

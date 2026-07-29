@@ -25,6 +25,7 @@ pub(super) struct Outgoing {
     pub in_reply_to: Option<String>,
     pub references: Vec<String>,
     pub body: String,
+    pub read_receipt: bool,
 }
 
 /// Header lists keep what you typed, display names included,
@@ -74,6 +75,7 @@ pub(super) fn assemble(
             .iter()
             .map(Attachment::as_part)
             .collect(),
+        read_receipt: outgoing.read_receipt,
     };
     build_message(&draft, domain, date_unix, MAILER)
 }

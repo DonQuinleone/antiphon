@@ -180,6 +180,12 @@ fn compose_status(
             Style::new().fg(theme.accent),
         ));
     }
+    if state.read_receipt {
+        spans.push(Span::styled(
+            " [receipt]".to_string(),
+            Style::new().fg(theme.accent),
+        ));
+    }
     Line::from(spans)
 }
 
@@ -198,7 +204,8 @@ fn compose_hint(
         View::Editor => ":q reviews \u{b7} ctrl-e headers".to_string(),
         View::Review => "y send \u{b7} @ schedule \u{b7} q draft \
                          \u{b7} e body \u{b7} h headers \u{b7} a \
-                         attach \u{b7} s/x seal \u{b7} ? keys"
+                         attach \u{b7} s/x seal \u{b7} k receipt \
+                         \u{b7} ? keys"
             .to_string(),
         _ => "tab/shift-tab fields \u{b7} ctrl-e editor \u{b7} \
               esc backs out"
