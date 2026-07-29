@@ -256,6 +256,31 @@ fn identities_round_trip_through_config_load() {
     );
 }
 
+/// A block signature is escaped into a TOML basic string on
+/// write and comes back with its newlines intact on load.
+#[test]
+fn a_multi_line_signature_round_trips() {
+    let root = tempfile::tempdir().unwrap();
+    let dirs = dirs_at(root.path());
+    write_account_file(&dirs, &answers(), None).expect("seed");
+    let path = dirs.config.join("accounts").join("work.toml");
+
+    let signature = "Quin\n--\nSent with \"Antiphon\"";
+    let identities = [Identity {
+        address: "quin@example.com".to_string(),
+        name: Some("Quin".to_string()),
+        signature: Some(signature.to_string()),
+        matches: vec!["quin@example.com".to_string()],
+        pgp_sign: false,
+        pgp_key: None,
+    }];
+    write_account_identities(&path, &identities).expect("write");
+
+    let loaded = antiphon_config::load(&dirs).expect("parse");
+    let first = &loaded.accounts[0].account.identities[0];
+    assert_eq!(first.signature.as_deref(), Some(signature));
+}
+
 #[test]
 fn a_rename_carries_the_hand_written_content_across() {
     let root = tempfile::tempdir().unwrap();

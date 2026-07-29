@@ -75,6 +75,36 @@ fn the_auto_sign_toggle_flips_with_space() {
 }
 
 #[test]
+fn enter_inserts_a_newline_in_the_signature() {
+    let mut form = form_with_identity();
+    list_key(&mut form, KeyCode::Char('e'));
+    for _ in 0..4 {
+        editor_key(&mut form, key(KeyCode::Tab));
+    }
+    for ch in "one".chars() {
+        editor_key(&mut form, key(KeyCode::Char(ch)));
+    }
+    editor_key(&mut form, key(KeyCode::Enter));
+    for ch in "two".chars() {
+        editor_key(&mut form, key(KeyCode::Char(ch)));
+    }
+    commit(&mut form);
+    assert_eq!(form.identities[0].signature, "one\ntwo");
+}
+
+#[test]
+fn enter_on_a_single_line_field_steps_rather_than_typing() {
+    let mut form = form_with_identity();
+    list_key(&mut form, KeyCode::Char('e'));
+    editor_key(&mut form, key(KeyCode::Enter));
+    let focus = match &form.identity_ui {
+        Some(IdentityUi::Edit(editor)) => editor.focus,
+        _ => panic!("editor open"),
+    };
+    assert_eq!(focus, 1, "enter steps from-name to from-address");
+}
+
+#[test]
 fn esc_backs_out_of_the_editor_then_the_list() {
     let mut form = form_with_identity();
     list_key(&mut form, KeyCode::Char('e'));

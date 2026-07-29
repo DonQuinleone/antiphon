@@ -127,6 +127,9 @@ pub(super) struct EditorSpec {
     pub(super) get: fn(&FormIdentity) -> &str,
     get_mut: Option<fn(&mut FormIdentity) -> &mut String>,
     pub(super) toggle: bool,
+    /// A multi-line field takes Enter as a newline rather than as
+    /// a step or save, so a block signature can be typed in place.
+    pub(super) multiline: bool,
 }
 
 pub(super) const EDITOR_FIELDS: &[EditorSpec] = &[
@@ -135,36 +138,42 @@ pub(super) const EDITOR_FIELDS: &[EditorSpec] = &[
         get: |identity| &identity.from_name,
         get_mut: Some(|identity| &mut identity.from_name),
         toggle: false,
+        multiline: false,
     },
     EditorSpec {
         label: "from address",
         get: |identity| &identity.address,
         get_mut: Some(|identity| &mut identity.address),
         toggle: false,
+        multiline: false,
     },
     EditorSpec {
         label: "pgp key",
         get: |identity| &identity.pgp_key,
         get_mut: Some(|identity| &mut identity.pgp_key),
         toggle: false,
+        multiline: false,
     },
     EditorSpec {
         label: "auto-sign",
         get: |identity| on_off(identity.pgp_sign),
         get_mut: None,
         toggle: true,
+        multiline: false,
     },
     EditorSpec {
         label: "signature",
         get: |identity| &identity.signature,
         get_mut: Some(|identity| &mut identity.signature),
         toggle: false,
+        multiline: true,
     },
     EditorSpec {
         label: "match patterns",
         get: |identity| &identity.matches,
         get_mut: Some(|identity| &mut identity.matches),
         toggle: false,
+        multiline: false,
     },
 ];
 
@@ -294,6 +303,10 @@ fn editor_enter(form: &mut AccountFormState) {
         Some(editor) => editor.focus,
         None => return,
     };
+    if EDITOR_FIELDS[focus].multiline {
+        editor_field_key(form, KeyCode::Char('\n'));
+        return;
+    }
     if focus == EDITOR_FIELDS.len() - 1 {
         commit(form);
     } else {

@@ -106,23 +106,25 @@ fn draw_editor(
     } else {
         " add identity "
     };
-    let rows = EDITOR_FIELDS.len() as u16;
-    let modal = modal_rect(area, rows + BORDER_ROWS);
+    let lines: Vec<Line<'static>> = (0..EDITOR_FIELDS.len())
+        .flat_map(|index| editor_lines(app, editor, index))
+        .collect();
+    let modal = modal_rect(area, lines.len() as u16 + BORDER_ROWS);
     let block = bordered(app, title, EDIT_HINT);
     let inner = block.inner(modal);
     frame.render_widget(Clear, modal);
     frame.render_widget(block, modal);
-    let lines: Vec<Line<'static>> = (0..EDITOR_FIELDS.len())
-        .map(|index| editor_line(app, editor, index))
-        .collect();
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
-fn editor_line(
+/// One field's rows: a plain field is a single line; a multi-line
+/// field (the signature) spills onto continuation rows indented
+/// under the value, so a block signature reads as it will send.
+fn editor_lines(
     app: &App,
     editor: &IdentityEditor,
     index: usize,
-) -> Line<'static> {
+) -> Vec<Line<'static>> {
     let theme = app.theme;
     let spec = &EDITOR_FIELDS[index];
     let active = index == editor.focus;
@@ -132,9 +134,12 @@ fn editor_line(
             .fg(theme.accent_strong)
             .add_modifier(Modifier::BOLD);
     }
-    let label = format!("{:<LABEL_COLS$}", spec.label);
-    let mut spans = vec![Span::styled(label, label_style)];
+    let label = Span::styled(
+        format!("{:<LABEL_COLS$}", spec.label),
+        label_style,
+    );
     if spec.toggle {
+        let mut spans = vec![label];
         spans.extend(segmented::segments(
             &ON_OFF_OPTIONS,
             usize::from(editor.draft.pgp_sign),
@@ -144,7 +149,7 @@ fn editor_line(
                 unselected_fg: theme.text_muted,
             },
         ));
-        return Line::from(spans);
+        return vec![Line::from(spans)];
     }
     let value = (spec.get)(&editor.draft).to_string();
     let shown = if active {
@@ -152,9 +157,19 @@ fn editor_line(
     } else {
         value
     };
-    spans
-        .push(Span::styled(shown, Style::new().fg(theme.text_primary)));
-    Line::from(spans)
+    let value_style = Style::new().fg(theme.text_primary);
+    let mut rows = shown.split('\n');
+    let first = rows.next().unwrap_or("").to_string();
+    let mut lines =
+        vec![Line::from(vec![label, Span::styled(first, value_style)])];
+    let indent = " ".repeat(LABEL_COLS);
+    for row in rows {
+        lines.push(Line::from(vec![
+            Span::raw(indent.clone()),
+            Span::styled(row.to_string(), value_style),
+        ]));
+    }
+    lines
 }
 
 fn bordered(

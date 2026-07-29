@@ -166,8 +166,24 @@ fn quoted_array(values: &[String]) -> String {
     format!("[{}]", items.join(", "))
 }
 
+/// A TOML basic string with the escapes the spec requires, so a
+/// multi-line signature round-trips as `"line one\nline two"`
+/// rather than an unterminated string.
 fn quoted(value: &str) -> String {
-    format!("\"{value}\"")
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// An edit that changed the account's name leaves its old file
