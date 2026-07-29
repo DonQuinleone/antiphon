@@ -17,7 +17,10 @@ use super::app::App;
 use super::draw::segmented::{self, SegmentStyle};
 use super::headers::with_cursor;
 
-const MODAL_WIDTH: u16 = 72;
+/// Narrower than the account form (72) so the identity editor
+/// nests inside it rather than covering it, with the form's
+/// fields framing it.
+const MODAL_WIDTH: u16 = 62;
 const LABEL_COLS: usize = 16;
 const BORDER_ROWS: u16 = 2;
 const LIST_HINT: &str = " a add \u{b7} e edit \u{b7} d remove \u{b7} \
@@ -168,7 +171,7 @@ fn bordered(
 }
 
 fn modal_rect(area: Rect, rows: u16) -> Rect {
-    let width = MODAL_WIDTH.min(area.width.saturating_sub(2));
+    let width = MODAL_WIDTH.min(area.width.saturating_sub(10));
     let height = rows.min(area.height.saturating_sub(2));
     Rect {
         x: area.x + (area.width.saturating_sub(width)) / 2,
