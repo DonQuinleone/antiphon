@@ -337,6 +337,66 @@ pub(super) fn keymap_key(
     }
 }
 
+/// Whether the embedded editor is the surface under the mouse:
+/// the full editor view, or the compose view with the pty pane
+/// shown below the header fields.
+fn editor_focused(app: &App) -> bool {
+    app.editor.is_some()
+        && matches!(app.view, View::Editor | View::Compose)
+}
+
+/// Hands a wheel notch over the editor pane to the editor as an
+/// SGR mouse report, so it scrolls natively. Returns whether
+/// the editor took the event; anything it declines falls back
+/// to the pager. Nothing is forwarded unless the editor has
+/// asked for mouse reporting, so an editor with the mouse off
+/// is never fed stray escape bytes.
+pub(super) fn editor_mouse(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    mouse: MouseEvent,
+) -> std::io::Result<bool> {
+    let wheel = matches!(
+        mouse.kind,
+        MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+    );
+    if !editor_focused(app) || !wheel {
+        return Ok(false);
+    }
+    let size = terminal.size()?;
+    let area =
+        ratatui::layout::Rect::new(0, 0, size.width, size.height);
+    let Some((col, row)) =
+        pane_relative(draw::editor_pane_area(area), mouse)
+    else {
+        return Ok(false);
+    };
+    let Some(pane) = app.editor.as_mut() else {
+        return Ok(false);
+    };
+    if !pane.session.wants_mouse() {
+        return Ok(false);
+    }
+    pane.session.send_mouse(mouse.kind, col, row);
+    Ok(true)
+}
+
+/// Translates an absolute mouse position into the pane's own
+/// zero-based coordinates, or None when it falls outside.
+fn pane_relative(
+    pane: ratatui::layout::Rect,
+    mouse: MouseEvent,
+) -> Option<(u16, u16)> {
+    let inside = mouse.column >= pane.x
+        && mouse.column < pane.x + pane.width
+        && mouse.row >= pane.y
+        && mouse.row < pane.y + pane.height;
+    if !inside {
+        return None;
+    }
+    Some((mouse.column - pane.x, mouse.row - pane.y))
+}
+
 /// Mouse input serves the pager alone: the wheel scrolls it
 /// and a left click on a link span hands the url to the
 /// system opener, through the exact rows the draw produced.
@@ -580,5 +640,25 @@ mod tests {
         assert!(app.pending_ops.is_empty(), "nothing was queued");
         assert!(!read_only_blocks(&mut app, Action::MoveDown));
         assert!(!read_only_blocks(&mut app, Action::Open));
+    }
+
+    fn wheel_at(column: u16, row: u16) -> MouseEvent {
+        MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn pane_relative_offsets_inside_and_rejects_outside() {
+        let pane = ratatui::layout::Rect::new(0, 5, 80, 10);
+        assert_eq!(pane_relative(pane, wheel_at(10, 7)), Some((10, 2)));
+        assert_eq!(pane_relative(pane, wheel_at(0, 5)), Some((0, 0)));
+        // The row above the pane belongs to the header summary.
+        assert_eq!(pane_relative(pane, wheel_at(10, 4)), None);
+        // One past the bottom edge is outside.
+        assert_eq!(pane_relative(pane, wheel_at(10, 15)), None);
     }
 }

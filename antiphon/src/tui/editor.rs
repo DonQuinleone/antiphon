@@ -5,7 +5,9 @@ use std::sync::mpsc::{Receiver, channel};
 use portable_pty::{
     Child, CommandBuilder, MasterPty, PtySize, native_pty_system,
 };
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{
+    KeyCode, KeyEvent, KeyModifiers, MouseEventKind,
+};
 
 const PTY_READ_CHUNK: usize = 4096;
 const SCROLLBACK_LINES: usize = 0;
@@ -13,6 +15,14 @@ const EDITOR_TERM: &str = "xterm-256color";
 const ESC: u8 = 0x1b;
 const BACKSPACE_DEL: u8 = 0x7f;
 const CTRL_MASK: u8 = 0x1f;
+
+/// SGR mouse report frame: `ESC [ < button ; col ; row M`,
+/// with one-based coordinates. Only the press form (`M`) is
+/// used, which is what a wheel notch carries.
+const SGR_MOUSE_INTRO: &str = "\x1b[<";
+const SGR_MOUSE_PRESS: char = 'M';
+const SGR_WHEEL_UP: u16 = 64;
+const SGR_WHEEL_DOWN: u16 = 65;
 
 /// The body file handed to the embedded editor and the live
 /// pty session, settled once the child exits; everything else
@@ -95,6 +105,28 @@ impl EditorSession {
 
     pub fn send_key(&mut self, key: KeyEvent) {
         let bytes = encode_key(key);
+        if bytes.is_empty() {
+            return;
+        }
+        let _ = self.writer.write_all(&bytes);
+        let _ = self.writer.flush();
+    }
+
+    /// Whether the editor has asked for SGR mouse reporting, so
+    /// a wheel notch can be forwarded rather than typed into the
+    /// buffer as stray escape bytes when the mouse is off.
+    pub fn wants_mouse(&self) -> bool {
+        let screen = self.parser.screen();
+        screen.mouse_protocol_mode() != vt100::MouseProtocolMode::None
+            && screen.mouse_protocol_encoding()
+                == vt100::MouseProtocolEncoding::Sgr
+    }
+
+    /// Forwards a mouse event as an SGR report at the given
+    /// pane-relative, zero-based cell, so the editor scrolls
+    /// natively as it would in a standalone terminal.
+    pub fn send_mouse(&mut self, kind: MouseEventKind, col: u16, row: u16) {
+        let bytes = encode_mouse(kind, col, row);
         if bytes.is_empty() {
             return;
         }
@@ -204,6 +236,29 @@ fn ctrl_bytes(ch: char) -> Vec<u8> {
     vec![(lowered as u8) & CTRL_MASK]
 }
 
+/// The SGR mouse report for a forwarded event, at one-based
+/// coordinates. Only wheel notches are forwarded; every other
+/// kind encodes to nothing and is dropped.
+pub fn encode_mouse(kind: MouseEventKind, col: u16, row: u16) -> Vec<u8> {
+    let Some(button) = wheel_button(kind) else {
+        return Vec::new();
+    };
+    format!(
+        "{SGR_MOUSE_INTRO}{button};{};{}{SGR_MOUSE_PRESS}",
+        col + 1,
+        row + 1
+    )
+    .into_bytes()
+}
+
+fn wheel_button(kind: MouseEventKind) -> Option<u16> {
+    match kind {
+        MouseEventKind::ScrollUp => Some(SGR_WHEEL_UP),
+        MouseEventKind::ScrollDown => Some(SGR_WHEEL_DOWN),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,5 +302,29 @@ mod tests {
                 "{code:?} {modifiers:?}"
             );
         }
+    }
+
+    #[test]
+    fn wheel_notches_encode_to_sgr_mouse_reports() {
+        let cases: &[(MouseEventKind, u16, u16, &[u8])] = &[
+            (MouseEventKind::ScrollUp, 9, 4, b"\x1b[<64;10;5M"),
+            (MouseEventKind::ScrollDown, 9, 4, b"\x1b[<65;10;5M"),
+            (MouseEventKind::ScrollDown, 0, 0, b"\x1b[<65;1;1M"),
+        ];
+        for (kind, col, row, expected) in cases {
+            assert_eq!(
+                encode_mouse(*kind, *col, *row),
+                *expected,
+                "{kind:?} at ({col},{row})"
+            );
+        }
+    }
+
+    #[test]
+    fn non_wheel_mouse_kinds_encode_to_nothing() {
+        assert!(
+            encode_mouse(MouseEventKind::Moved, 3, 3).is_empty(),
+            "movement is not forwarded"
+        );
     }
 }

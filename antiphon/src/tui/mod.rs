@@ -261,7 +261,9 @@ fn event_loop(
         }
         let event = event::read()?;
         if let Event::Mouse(mouse) = event {
-            input::pager_mouse(terminal, app, mouse)?;
+            if !input::editor_mouse(terminal, app, mouse)? {
+                input::pager_mouse(terminal, app, mouse)?;
+            }
             daemon::drain_ops(app);
             continue;
         }

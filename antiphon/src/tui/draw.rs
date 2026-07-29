@@ -34,11 +34,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let (content, status) = split_status(area);
     if app.view == View::Compose {
         if app.editor.is_some() {
-            let [fields, pane] = Layout::vertical([
-                Constraint::Length(FIELD_SUMMARY_ROWS),
-                Constraint::Min(0),
-            ])
-            .areas(content);
+            let (fields, pane) = split_editor(content);
             headers::draw_headers(frame, app, fields);
             draw_editor_screen(frame, app, pane);
         } else {
@@ -244,16 +240,33 @@ pub(super) fn editor_rows(height: u16) -> u16 {
 /// it, aerc style: the fields stay ours, the pty gets only
 /// the body.
 fn draw_editor(frame: &mut Frame, app: &App, area: Rect) {
-    let [summary, editor] = Layout::vertical([
-        Constraint::Length(FIELD_SUMMARY_ROWS),
-        Constraint::Min(0),
-    ])
-    .areas(area);
+    let (summary, editor) = split_editor(area);
     if let Some(state) = &app.compose {
         let lines = headers::field_lines(app.theme, state, false);
         frame.render_widget(Paragraph::new(lines), summary);
     }
     draw_editor_screen(frame, app, editor);
+}
+
+/// Splits an area into the header-field summary and the editor
+/// pty pane below it, the aerc-style compose layout. Shared so
+/// the draw and the mouse routing agree on where the pane sits.
+fn split_editor(area: Rect) -> (Rect, Rect) {
+    let [fields, pane] = Layout::vertical([
+        Constraint::Length(FIELD_SUMMARY_ROWS),
+        Constraint::Min(0),
+    ])
+    .areas(area);
+    (fields, pane)
+}
+
+/// The rect the editor pty occupies within the whole terminal,
+/// so mouse input can translate a wheel event into the same
+/// pane-relative cell the draw laid it out at.
+pub(super) fn editor_pane_area(area: Rect) -> Rect {
+    let (content, _) = split_status(area);
+    let (_, pane) = split_editor(content);
+    pane
 }
 
 fn draw_editor_screen(frame: &mut Frame, app: &App, area: Rect) {
