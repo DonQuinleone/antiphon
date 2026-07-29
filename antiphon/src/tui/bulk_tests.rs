@@ -12,6 +12,7 @@ fn summary(id: &str, path: &str, subject: &str) -> MessageSummary {
         tags: Vec::new(),
         unread: false,
         path: std::path::PathBuf::from(path),
+        paths: vec![std::path::PathBuf::from(path)],
         in_reply_to: None,
         references: Vec::new(),
     }

@@ -240,7 +240,14 @@ fn intent_for(
     action: &BulkAction,
     summary: &MessageSummary,
 ) -> OpIntent {
-    let account = account_of(&summary.path);
+    // The bulk set is fetched straight from the index, so its
+    // paths skip the list's per-scope re-pointing; choose the
+    // copy in the account being viewed here too, or a message
+    // Bcc'd to a second account would be acted on in the wrong
+    // one.
+    let path =
+        super::mailpaths::scoped_path(&app.scope, &app.accounts, summary);
+    let account = account_of(&path);
     match action {
         BulkAction::Delete => OpIntent::Delete {
             account,
@@ -248,21 +255,22 @@ fn intent_for(
         },
         BulkAction::Trash => {
             let folder = app.trash_folder_of(&account);
-            move_intent(summary, account, folder)
+            move_intent(summary, &path, account, folder)
         }
         BulkAction::Archive => {
             let folder = app.archive_folder_of(&account);
-            move_intent(summary, account, folder)
+            move_intent(summary, &path, account, folder)
         }
         BulkAction::Move(input) => {
             let folder = app.resolve_folder(&account, input);
-            move_intent(summary, account, folder)
+            move_intent(summary, &path, account, folder)
         }
     }
 }
 
 fn move_intent(
     summary: &MessageSummary,
+    path: &std::path::Path,
     account: String,
     to_folder: String,
 ) -> OpIntent {
@@ -270,7 +278,7 @@ fn move_intent(
         account,
         message_id: summary.id.clone(),
         to_folder,
-        from_folder: folder_of(&summary.path),
+        from_folder: folder_of(path),
     }
 }
 
