@@ -302,3 +302,15 @@ fn complete_consent(consent_url: &str) {
         .write_all(request.as_bytes())
         .expect("write callback");
 }
+
+#[test]
+fn the_microsoft_mail_grant_requests_imap_and_smtp() {
+    assert!(
+        MICROSOFT_IMAP_SCOPES.contains("IMAP.AccessAsUser.All"),
+        "the mail grant reads over IMAP"
+    );
+    assert!(
+        MICROSOFT_IMAP_SCOPES.contains("SMTP.Send"),
+        "without SMTP.Send the XOAUTH2 SMTP send is refused"
+    );
+}

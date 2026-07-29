@@ -60,7 +60,8 @@ pub const GOOGLE_TOKEN_URL: &str =
     "https://oauth2.googleapis.com/token";
 
 pub const MICROSOFT_IMAP_SCOPES: &str = "offline_access \
-     https://outlook.office.com/IMAP.AccessAsUser.All";
+     https://outlook.office.com/IMAP.AccessAsUser.All \
+     https://outlook.office.com/SMTP.Send";
 pub const MICROSOFT_GRAPH_SEND_SCOPES: &str = "offline_access \
      https://graph.microsoft.com/Mail.Send";
 pub const GOOGLE_MAIL_SCOPES: &str = "https://mail.google.com/";
