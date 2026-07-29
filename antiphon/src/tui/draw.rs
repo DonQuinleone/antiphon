@@ -55,6 +55,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         return;
     }
     if app.view == View::Settings {
+        draw_mail_view(frame, app, content);
         draw_settings(frame, app, content);
         crate::tui::settings::draw_alias_modal(frame, app, content);
         draw_status(frame, app, status);
@@ -81,6 +82,19 @@ pub fn draw(frame: &mut Frame, app: &App) {
         super::folder_picker::draw_picker(frame, app, area);
         return;
     }
+    draw_mail_view(frame, app, content);
+    draw_status(frame, app, status);
+    super::folder_picker::draw_picker(frame, app, area);
+    if app.help {
+        draw_help(frame, app, area);
+    }
+}
+
+/// The mail surface: sidebar, the message list (or thread tree)
+/// and the reading pane. Drawn on its own for the list view and
+/// again behind the settings modal, so settings reads as an
+/// overlay on the application rather than a blank page.
+fn draw_mail_view(frame: &mut Frame, app: &App, content: Rect) {
     let (sidebar, main) =
         split_sidebar(content, app.sidebar, app.sidebar_width);
     if let Some(sidebar) = sidebar {
@@ -95,11 +109,6 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
     if let Some(pane) = pane {
         draw_reading_pane(frame, app, pane);
-    }
-    draw_status(frame, app, status);
-    super::folder_picker::draw_picker(frame, app, area);
-    if app.help {
-        draw_help(frame, app, area);
     }
 }
 
