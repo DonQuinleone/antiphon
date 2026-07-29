@@ -3,7 +3,7 @@ use std::process::ExitCode;
 use antiphon_config::{Dirs, Loaded, load};
 use antiphon_store::StoreLayout;
 use antiphon_vault::{
-    Auth, CreateOptions, VaultStatus, enrol_touchid,
+    Auth, CreateOptions, VaultStatus, enrol_touchid, enrol_yubikey,
     passphrase_command, select_backend,
 };
 
@@ -36,21 +36,32 @@ pub fn create() -> ExitCode {
 }
 
 pub fn touchid_enrol() -> ExitCode {
-    let Some(dirs) = Dirs::from_process() else {
-        eprintln!("cannot resolve the home directory");
-        return ExitCode::FAILURE;
-    };
-    let loaded = match load(&dirs) {
-        Ok(loaded) => loaded,
+    run_enrol("Touch ID", "touchid", run_touchid_enrol)
+}
+
+pub fn yubikey_enrol() -> ExitCode {
+    run_enrol("YubiKey", "yubikey", run_yubikey_enrol)
+}
+
+/// The shared shape of an enrolment command: resolve the config,
+/// run the method, and report how to switch it on. The method
+/// itself is the only part that differs.
+fn run_enrol(
+    label: &str,
+    method: &str,
+    run: impl FnOnce(&Dirs, &Loaded) -> Result<(), String>,
+) -> ExitCode {
+    let (dirs, loaded) = match load_env() {
+        Ok(pair) => pair,
         Err(error) => {
             eprintln!("{error}");
             return ExitCode::FAILURE;
         }
     };
-    match run_touchid_enrol(&dirs, &loaded) {
+    match run(&dirs, &loaded) {
         Ok(()) => {
             println!(
-                "Touch ID enrolled; add `touchid` to `[vault] \
+                "{label} enrolled; add `{method}` to `[vault] \
                  unlock` to use it"
             );
             ExitCode::SUCCESS
@@ -60,6 +71,14 @@ pub fn touchid_enrol() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn load_env() -> Result<(Dirs, Loaded), String> {
+    let dirs = Dirs::from_process().ok_or_else(|| {
+        "cannot resolve the home directory".to_owned()
+    })?;
+    let loaded = load(&dirs).map_err(|error| error.to_string())?;
+    Ok((dirs, loaded))
 }
 
 fn run_touchid_enrol(
@@ -78,6 +97,32 @@ fn run_touchid_enrol(
         passphrase_command(command).map_err(|e| e.to_string())?;
     enrol_touchid(layout.root(), &secret)
         .map_err(|error| format!("enrolling Touch ID: {error}"))
+}
+
+/// Enrolment reads the vault passphrase, then the YubiKey PIN,
+/// through the same `passphrase_cmd`: it runs twice, so a
+/// pinentry wrapper is prompted first for the passphrase and
+/// then for the PIN. The passphrase is sealed under the key's
+/// hmac-secret and never stored in the clear.
+fn run_yubikey_enrol(
+    dirs: &Dirs,
+    loaded: &Loaded,
+) -> Result<(), String> {
+    let Some(command) = &loaded.config.vault.passphrase_cmd else {
+        return Err(
+            "set `[vault] passphrase_cmd` first; enrolment reads \
+             the vault passphrase, then the YubiKey PIN, from it"
+                .to_string(),
+        );
+    };
+    let layout = StoreLayout::new(dirs.store_root());
+    println!("enter the vault passphrase when prompted");
+    let secret =
+        passphrase_command(command).map_err(|e| e.to_string())?;
+    println!("now enter the YubiKey PIN, then touch the key");
+    let pin = passphrase_command(command).map_err(|e| e.to_string())?;
+    enrol_yubikey(layout.root(), &secret, &pin)
+        .map_err(|error| format!("enrolling the YubiKey: {error}"))
 }
 
 pub(crate) fn run_create(

@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use secrecy::SecretString;
 
+use crate::fido2;
 use crate::passphrase::passphrase_command;
 use crate::touchid;
 use crate::vault::VaultError;
@@ -59,6 +60,39 @@ impl SecretSource for TouchidSource {
     }
 }
 
+/// The vault passphrase recovered through a YubiKey's FIDO2
+/// hmac-secret, prompting for a touch. The PIN comes from the
+/// same command that yields a passphrase, so one prompt path
+/// serves both; on a host without the key the read reports the
+/// method unsupported and the resolver falls through.
+pub struct YubikeySource {
+    store_root: PathBuf,
+    pin_command: String,
+}
+
+impl YubikeySource {
+    pub fn new(
+        store_root: impl Into<PathBuf>,
+        pin_command: impl Into<String>,
+    ) -> YubikeySource {
+        YubikeySource {
+            store_root: store_root.into(),
+            pin_command: pin_command.into(),
+        }
+    }
+}
+
+impl SecretSource for YubikeySource {
+    fn method(&self) -> &'static str {
+        "yubikey"
+    }
+
+    fn passphrase(&self) -> Result<SecretString, VaultError> {
+        let pin = passphrase_command(&self.pin_command)?;
+        fido2::read_passphrase(&self.store_root, &pin)
+    }
+}
+
 /// The vault passphrase produced by running `passphrase_cmd`.
 pub struct PassphraseCmdSource {
     command: String,
@@ -91,6 +125,17 @@ pub fn enrol_touchid(
     secret: &SecretString,
 ) -> Result<(), VaultError> {
     touchid::store_passphrase(store_root, secret)
+}
+
+/// Seal the vault passphrase behind a YubiKey's hmac-secret, the
+/// one-time enrolment that gives the key something to unlock.
+/// Off the hot path; driven by `antiphon vault yubikey-enrol`.
+pub fn enrol_yubikey(
+    store_root: &Path,
+    secret: &SecretString,
+    pin: &SecretString,
+) -> Result<(), VaultError> {
+    fido2::enrol(store_root, secret, pin)
 }
 
 #[cfg(test)]

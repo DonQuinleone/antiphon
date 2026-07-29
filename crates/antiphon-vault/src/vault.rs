@@ -101,6 +101,7 @@ pub enum VaultError {
     NotYet(&'static str),
     PassphraseCommand(String),
     Touchid(String),
+    Fido2(String),
     NoUnlockMethod,
 }
 
@@ -167,6 +168,9 @@ impl fmt::Display for VaultError {
             }
             VaultError::Touchid(detail) => {
                 write!(out, "Touch ID: {detail}")
+            }
+            VaultError::Fido2(detail) => {
+                write!(out, "YubiKey: {detail}")
             }
             VaultError::NoUnlockMethod => {
                 write!(

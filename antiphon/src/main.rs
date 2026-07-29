@@ -91,6 +91,8 @@ enum VaultAction {
     Create,
     /// Store the vault passphrase behind Touch ID (macOS).
     TouchidEnrol,
+    /// Seal the vault passphrase behind a YubiKey (FIDO2).
+    YubikeyEnrol,
 }
 
 #[derive(Subcommand)]
@@ -107,6 +109,7 @@ fn main() -> ExitCode {
         Some(Command::Vault { action }) => match action {
             VaultAction::Create => vaultcmd::create(),
             VaultAction::TouchidEnrol => vaultcmd::touchid_enrol(),
+            VaultAction::YubikeyEnrol => vaultcmd::yubikey_enrol(),
         },
         Some(Command::Oauth { action }) => match action {
             OauthAction::Login { account } => oauthcmd::login(&account),

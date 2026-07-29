@@ -3,7 +3,7 @@ use antiphon_ipc::VaultState;
 use antiphon_store::StoreLayout;
 use antiphon_vault::{
     Auth, PassphraseCmdSource, SecretSource, TouchidSource, Vault,
-    VaultStatus, resolve_passphrase, select_backend,
+    VaultStatus, YubikeySource, resolve_passphrase, select_backend,
 };
 
 /// Ensure the store is readable before the daemon opens it. An
@@ -71,9 +71,11 @@ fn open_sealed(
 }
 
 /// The `[vault] unlock` list turned into ordered secret sources.
-/// Touch ID is tried before the passphrase command when listed
-/// first; a passphrase entry with no `passphrase_cmd`, and the
-/// as-yet-unimplemented Yubikey method, contribute no source.
+/// Each is tried in the order listed, so a cancelled touch falls
+/// through to the next. A passphrase or YubiKey entry with no
+/// `passphrase_cmd` contributes no source: the command yields the
+/// vault passphrase for the former and the FIDO2 PIN for the
+/// latter.
 fn unlock_sources(
     loaded: &Loaded,
     layout: &StoreLayout,
@@ -92,7 +94,16 @@ fn unlock_sources(
                     command.clone(),
                 )));
             }
-            Unlock::Yubikey => {}
+            Unlock::Yubikey => {
+                let Some(command) = &loaded.config.vault.passphrase_cmd
+                else {
+                    continue;
+                };
+                sources.push(Box::new(YubikeySource::new(
+                    layout.root(),
+                    command.clone(),
+                )));
+            }
         }
     }
     sources
