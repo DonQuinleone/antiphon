@@ -59,7 +59,7 @@ fn accounts_tab_lists_name_address_and_host() {
 }
 
 #[test]
-fn an_oauth_account_row_wears_its_state_and_detail() {
+fn an_oauth_account_row_wears_its_state() {
     use crate::tui::oauth_status::{OauthInfo, OauthState};
 
     let mut app = app_with_messages(1);
@@ -74,7 +74,6 @@ fn an_oauth_account_row_wears_its_state_and_detail() {
             oauth: Some(OauthInfo {
                 state: OauthState::Ok { minutes_left: 42 },
                 app_only: false,
-                detail: "imap: scope \u{b7} valid".to_string(),
             }),
         }],
         account_selected: 0,
@@ -93,8 +92,8 @@ fn an_oauth_account_row_wears_its_state_and_detail() {
         "the row carries the state: {text}"
     );
     assert!(
-        text.contains("imap: scope"),
-        "the detail line follows the selection: {text}"
+        !text.contains("imap: scope"),
+        "the raw scope detail is gone: {text}"
     );
     assert!(text.contains("revoke the sign-in for work? y/n"));
 }
@@ -116,7 +115,6 @@ fn oauth_rows_name_the_provider_not_the_host() {
                 oauth: Some(OauthInfo {
                     state: OauthState::Ok { minutes_left: 5 },
                     app_only: false,
-                    detail: String::new(),
                 }),
             },
             AccountSummary {
@@ -128,7 +126,6 @@ fn oauth_rows_name_the_provider_not_the_host() {
                 oauth: Some(OauthInfo {
                     state: OauthState::Ok { minutes_left: 5 },
                     app_only: false,
-                    detail: String::new(),
                 }),
             },
         ],
@@ -170,7 +167,6 @@ fn a_needs_sign_in_row_wears_the_warning_colour() {
             oauth: Some(OauthInfo {
                 state: OauthState::NeedsSignIn,
                 app_only: false,
-                detail: String::new(),
             }),
         }],
         account_selected: 0,

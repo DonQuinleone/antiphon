@@ -20,6 +20,9 @@ const STATE_WIDTH: usize = 10;
 const COL_GAP: usize = 2;
 const MIN_NAME_WIDTH: usize = 6;
 const MIN_ADDRESS_WIDTH: usize = 14;
+/// Long addresses are truncated to this many columns so the type
+/// and OAuth status always fit on the row.
+const MAX_ADDRESS_WIDTH: usize = 30;
 const FOLDERS_HELP: &str = "Shift-J/K reorder \u{b7} h hide \u{b7} \
      u unsync \u{b7} enter alias";
 
@@ -126,7 +129,8 @@ fn draw_accounts(
     let address_w = col_width(
         state.accounts.iter().map(|a| a.address.chars().count()),
         MIN_ADDRESS_WIDTH,
-    );
+    )
+    .min(MAX_ADDRESS_WIDTH);
     for (index, account) in state.accounts.iter().enumerate() {
         lines.push(account_line(
             theme,
@@ -137,7 +141,6 @@ fn draw_accounts(
             address_w,
         ));
     }
-    push_oauth_detail(&mut lines, theme, state);
     if let Some(name) = &state.pending_delete {
         lines.push(Line::default());
         lines.push(Line::from(Span::styled(
@@ -155,29 +158,6 @@ fn draw_accounts(
     frame.render_widget(Paragraph::new(lines), area);
 }
 
-/// The selected account's grant scopes and expiries, under
-/// the list, so the row itself stays one line.
-fn push_oauth_detail(
-    lines: &mut Vec<Line<'static>>,
-    theme: &Theme,
-    state: &SettingsState,
-) {
-    let detail = state
-        .accounts
-        .get(state.account_selected)
-        .and_then(|account| account.oauth.as_ref())
-        .map(|info| info.detail.clone())
-        .unwrap_or_default();
-    if detail.is_empty() {
-        return;
-    }
-    lines.push(Line::default());
-    lines.push(Line::from(Span::styled(
-        detail,
-        Style::new().fg(theme.text_muted),
-    )));
-}
-
 fn account_line(
     theme: &Theme,
     account: &crate::tui::settings::AccountSummary,
@@ -192,11 +172,13 @@ fn account_line(
         style = style.bg(theme.selection_bg).fg(theme.selection_fg);
     }
     let position = index + 1;
+    let address =
+        fit(&account.address, address_w.saturating_sub(COL_GAP));
     let mut spans = vec![Span::styled(
         format!(
             "{marker}{position:>2} {:<name_w$}{:<address_w$} {}",
             account.name,
-            account.address,
+            address,
             account.server_label(),
         ),
         style,
@@ -423,6 +405,18 @@ fn col_width(
     minimum: usize,
 ) -> usize {
     values.max().unwrap_or(0).max(minimum) + COL_GAP
+}
+
+/// Truncates to `width` columns with a trailing ellipsis, so a
+/// long address cannot push the type and status off the row.
+fn fit(text: &str, width: usize) -> String {
+    if text.chars().count() <= width {
+        return text.to_string();
+    }
+    let mut out: String =
+        text.chars().take(width.saturating_sub(1)).collect();
+    out.push('\u{2026}');
+    out
 }
 
 #[cfg(test)]

@@ -8,7 +8,6 @@ use antiphon_store::StoreLayout;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use super::app::App;
-use crate::oauthgrants::expiry;
 
 /// A token this close to expiry reads as due for a refresh;
 /// the daemon renews it on its next pass.
@@ -26,7 +25,6 @@ pub(super) enum OauthState {
 pub(super) struct OauthInfo {
     pub(super) state: OauthState,
     pub(super) app_only: bool,
-    pub(super) detail: String,
 }
 
 impl OauthInfo {
@@ -82,38 +80,15 @@ pub(super) fn info_for(
         graph.send && graph.auth == GraphAuth::AppOnly
     });
     let imap = load(store, &imap_grant(name));
-    let graph = load(store, &graph_grant(name));
     let failed = auth_failures.iter().any(|failure| failure == name);
     Some(OauthInfo {
         state: classify(imap.as_ref(), now, failed),
         app_only,
-        detail: detail_line(imap.as_ref(), graph.as_ref(), now),
     })
 }
 
 fn load(store: Option<&TokenStore>, grant: &str) -> Option<TokenSet> {
     store?.load(grant).ok()
-}
-
-/// The selected account's scopes and expiries, one segment per
-/// stored grant; empty when nothing is stored.
-fn detail_line(
-    imap: Option<&TokenSet>,
-    graph: Option<&TokenSet>,
-    now: u64,
-) -> String {
-    let mut segments = Vec::new();
-    for (label, tokens) in [("imap", imap), ("graph", graph)] {
-        let Some(tokens) = tokens else {
-            continue;
-        };
-        segments.push(format!(
-            "{label}: {} \u{b7} {}",
-            tokens.scope,
-            expiry(tokens, now)
-        ));
-    }
-    segments.join("  ")
 }
 
 /// The token store without starting anything: `None` while the
@@ -246,28 +221,16 @@ mod tests {
         let ok = OauthInfo {
             state: OauthState::Ok { minutes_left: 42 },
             app_only: false,
-            detail: String::new(),
         };
         assert_eq!(ok.label(), "oauth: ok (42 min)");
         let app_only = OauthInfo {
             state: OauthState::NeedsSignIn,
             app_only: true,
-            detail: String::new(),
         };
         assert_eq!(
             app_only.label(),
             "oauth: needs sign-in \u{b7} app-only"
         );
-    }
-
-    #[test]
-    fn the_detail_line_names_each_stored_grant() {
-        let imap = tokens_expiring_at(NOW + 3600);
-        let detail = detail_line(Some(&imap), None, NOW);
-        assert!(detail.contains("imap: https://mail.google.com/"));
-        assert!(detail.contains("60 min"));
-        assert!(!detail.contains("graph"));
-        assert_eq!(detail_line(None, None, NOW), "");
     }
 
     #[test]
