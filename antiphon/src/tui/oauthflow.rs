@@ -101,6 +101,7 @@ fn finish(app: &mut App, result: Result<String, String>) {
     let Some(flow) = app.oauth_flow.take() else {
         return;
     };
+    let succeeded = result.is_ok();
     app.notice = Some(match result {
         Ok(notice) => match super::request_reload() {
             None => notice,
@@ -111,7 +112,17 @@ fn finish(app: &mut App, result: Result<String, String>) {
         }
     });
     super::oauth_status::refresh_auth_failures(app);
+    // A completed sign-in outranks the daemon's last report: drop
+    // the stale failure so the row reads authorised at once rather
+    // than staying on "needs sign-in" until the next status poll.
+    if succeeded {
+        clear_auth_failure(&mut app.auth_failures, &flow.account);
+    }
     app.refresh_settings_accounts();
+}
+
+fn clear_auth_failure(failures: &mut Vec<String>, account: &str) {
+    failures.retain(|name| name != account);
 }
 
 pub(super) fn cancel(app: &mut App) {
@@ -135,6 +146,18 @@ pub(super) fn test_flow(account: &str) -> OauthFlow {
 mod tests {
     use super::super::testkit::TempDir;
     use super::*;
+
+    #[test]
+    fn a_successful_sign_in_drops_the_stale_failure() {
+        let mut failures =
+            vec!["work".to_string(), "other".to_string()];
+        clear_auth_failure(&mut failures, "work");
+        assert_eq!(
+            failures,
+            vec!["other".to_string()],
+            "the signed-in account is no longer flagged failed",
+        );
+    }
 
     #[test]
     fn poll_moves_worker_updates_into_the_ui() {
