@@ -5,6 +5,11 @@ packages:
   - gnupg
   - cryptsetup
   - e2fsprogs
+  # hidapi (FIDO2 vault unlock) compiles its C hidraw backend,
+  # so a C toolchain and pkg-config are needed; libudev ships
+  # with systemd-libs from the base image.
+  - gcc
+  - pkgconf
 sources:
   - https://git.sr.ht/~donquinleone/antiphon
 tasks:

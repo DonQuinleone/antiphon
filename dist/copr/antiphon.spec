@@ -19,6 +19,9 @@ BuildRequires:  gcc
 BuildRequires:  scdoc
 BuildRequires:  notmuch-devel
 BuildRequires:  systemd-rpm-macros
+# hidapi (FIDO2 vault unlock) compiles its C hidraw backend and
+# links libudev; this pulls both pkg-config and systemd-devel.
+BuildRequires:  pkgconfig(libudev)
 
 Requires:       notmuch
 

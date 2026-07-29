@@ -3,6 +3,9 @@ packages:
   - rust
   - notmuch
   - hut
+  # hidapi (FIDO2 vault unlock) compiles its C hidraw backend.
+  - gcc
+  - pkgconf
 oauth: git.sr.ht/PROFILE:RO git.sr.ht/REPOSITORIES:RO git.sr.ht/OBJECTS:RW
 sources:
   - https://git.sr.ht/~donquinleone/antiphon
