@@ -4,10 +4,11 @@ packages:
   - notmuch-dev
   - notmuch
   - build-base
-  # hidapi (FIDO2 vault unlock) builds its C hidraw backend and
-  # locates libudev through pkg-config.
+  # hidapi (FIDO2 vault unlock) builds its C hidraw backend
+  # against the kernel headers and libudev, found via pkg-config.
   - eudev-dev
   - pkgconf
+  - linux-headers
 sources:
   - https://git.sr.ht/~donquinleone/antiphon
 environment:
