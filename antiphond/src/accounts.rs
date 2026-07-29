@@ -4,6 +4,8 @@ use antiphon_config::{GraphAuth, Loaded, Rule};
 use antiphon_oauth::imap_grant;
 use antiphon_sync::{Auth, DeliveryRule, SmtpAccount, SyncAccount};
 
+use crate::notify::NotifyPrefs;
+
 const IMAPS_PORT: u16 = 993;
 const SUBMISSION_PORT: u16 = 587;
 
@@ -16,7 +18,7 @@ pub(crate) struct AccountSet {
     pub(crate) oauth: Vec<OauthAccount>,
     pub(crate) smtp: Vec<(String, SmtpAccount)>,
     pub(crate) rules: Vec<(String, Vec<DeliveryRule>)>,
-    pub(crate) notify: bool,
+    pub(crate) notify: NotifyPrefs,
 }
 
 impl AccountSet {
@@ -26,7 +28,12 @@ impl AccountSet {
             oauth: oauth_accounts(loaded),
             smtp: smtp_accounts(loaded),
             rules: delivery_rules(loaded),
-            notify: loaded.config.notifications.enabled,
+            notify: NotifyPrefs {
+                enabled: loaded.config.notifications.enabled,
+                folders: loaded.config.notifications.folders.clone(),
+                sound: loaded.config.notifications.sound,
+                speech: loaded.config.notifications.speech,
+            },
         }
     }
 

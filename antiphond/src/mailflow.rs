@@ -188,8 +188,8 @@ impl Mailflow {
             drop(state);
             announce_rules(account, outcome);
         }
-        if announce && set.notify {
-            notify::new_mail(account, report);
+        if announce && set.notify.enabled {
+            notify::new_mail(account, report, &set.notify);
         }
     }
 
@@ -308,7 +308,7 @@ mod tests {
             oauth: Vec::new(),
             smtp: Vec::new(),
             rules: vec![("work".to_owned(), vec![tagger.clone()])],
-            notify: false,
+            notify: crate::notify::NotifyPrefs::default(),
         };
         assert_eq!(set.rules_for("work"), &[tagger]);
         assert!(set.rules_for("home").is_empty());

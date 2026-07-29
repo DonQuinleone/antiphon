@@ -166,11 +166,22 @@ pub enum Unlock {
 #[serde(deny_unknown_fields, default)]
 pub struct Notifications {
     pub enabled: bool,
+    /// Folders whose new mail raises a notification; empty
+    /// watches every folder. Defaults to the inbox alone, so
+    /// filing and sent mail stay quiet.
+    pub folders: Vec<String>,
+    pub sound: bool,
+    pub speech: bool,
 }
 
 impl Default for Notifications {
     fn default() -> Notifications {
-        Notifications { enabled: true }
+        Notifications {
+            enabled: true,
+            folders: vec!["INBOX".to_string()],
+            sound: false,
+            speech: false,
+        }
     }
 }
 
