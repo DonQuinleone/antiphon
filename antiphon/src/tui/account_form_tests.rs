@@ -116,17 +116,17 @@ fn the_type_drives_which_fields_show() {
 
     form.account_type = AccountType::Microsoft;
     let shown = labels(&form);
-    assert!(shown.contains(&"graph send"));
+    assert!(shown.contains(&"graph mode"));
     assert!(
-        !shown.contains(&"graph tenant"),
+        !shown.contains(&"tenant id"),
         "the graph rows hide until graph send is on"
     );
-    assert!(!shown.contains(&"graph auth"));
+    assert!(!shown.contains(&"auth type"));
 
     form.graph_send = true;
     let shown = labels(&form);
-    assert!(shown.contains(&"graph tenant"));
-    assert!(shown.contains(&"graph auth"));
+    assert!(shown.contains(&"tenant id"));
+    assert!(shown.contains(&"auth type"));
     assert!(
         !shown.contains(&"graph secret command"),
         "the secret command is app-only"

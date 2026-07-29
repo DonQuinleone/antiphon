@@ -5,7 +5,11 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph};
 
 use super::account_form::AccountFormState;
-use super::account_form_fields::{Field, PASSWORD_HINT};
+use antiphon_config::OauthProvider;
+
+use super::account_form_fields::{
+    CLIENT_ID_MS_HINT, Field, PASSWORD_HINT,
+};
 use super::account_form_identity;
 use super::app::App;
 use super::draw::segmented::{self, SegmentStyle};
@@ -149,6 +153,12 @@ fn field_hint(form: &AccountFormState, index: usize) -> Option<String> {
         {
             Some(PASSWORD_HINT.to_string())
         }
+        Field::ClientId
+            if form.provider() == Some(OauthProvider::Microsoft)
+                && form.field_value(index).is_empty() =>
+        {
+            Some(CLIENT_ID_MS_HINT.to_string())
+        }
         _ => None,
     }
 }
@@ -286,7 +296,7 @@ mod tests {
         assert!(shown.contains("smtp host"));
         assert!(shown.contains("identities"));
         assert!(!shown.contains("oauth client id"));
-        assert!(!shown.contains("graph send"));
+        assert!(!shown.contains("graph mode"));
     }
 
     #[test]
@@ -300,7 +310,7 @@ mod tests {
         assert!(!shown.contains("password command"));
         assert!(!shown.contains("imap host"));
         assert!(!shown.contains("smtp host"));
-        assert!(!shown.contains("graph send"));
+        assert!(!shown.contains("graph mode"));
     }
 
     #[test]
@@ -308,8 +318,8 @@ mod tests {
         let mut app = app_with_messages(1);
         app.account_form = Some(form_of(AccountType::Microsoft));
         let shown = text(&rendered(&app));
-        assert!(shown.contains("graph send"));
-        assert!(shown.contains("graph auth"));
+        assert!(shown.contains("graph mode"));
+        assert!(shown.contains("auth type"));
         assert!(shown.contains("delegated"));
         assert!(shown.contains("app-only"));
         assert!(shown.contains("graph secret command"));

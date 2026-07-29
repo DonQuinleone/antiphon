@@ -145,7 +145,7 @@ pub(super) const FIELDS: &[FieldSpec] = &[
     field!(Field::ClientId, "oauth client id", client_id),
     FieldSpec {
         field: Field::GraphSend,
-        label: "graph send",
+        label: "graph mode",
         masked: false,
         get: |state| on_off(state.graph_send),
         access: Access::Cycle(|state, _| {
@@ -156,14 +156,14 @@ pub(super) const FIELDS: &[FieldSpec] = &[
     },
     FieldSpec {
         field: Field::GraphAuth,
-        label: "graph auth",
+        label: "auth type",
         masked: false,
         get: |state| graph_auth_name(state.graph_auth),
         access: Access::Cycle(cycle_graph_auth),
         segments: Some(&GRAPH_AUTH_OPTIONS),
         selected: graph_auth_index,
     },
-    field!(Field::Tenant, "graph tenant", tenant),
+    field!(Field::Tenant, "tenant id", tenant),
     field!(
         Field::GraphSecretCmd,
         "graph secret command",
@@ -245,3 +245,5 @@ fn cycle_graph_auth(state: &mut AccountFormState, _step: i32) {
 
 pub(super) const PASSWORD_HINT: &str =
     "empty = use the Keychain field below";
+
+pub(super) const CLIENT_ID_MS_HINT: &str = "blank for Thunderbird's";
