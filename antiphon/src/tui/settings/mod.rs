@@ -112,6 +112,23 @@ impl App {
         // rather than reported missing until the next launch.
         if let Ok(loaded) = antiphon_config::load(&self.dirs) {
             self.accounts = super::actions::account_names(&loaded);
+            // A just-added account must join the sidebar's account
+            // list, or the periodic folder discovery (which only
+            // walks these entries) never finds it and it stays
+            // invisible, and so unsyncable, until a restart. Keep
+            // the folders already discovered for existing accounts.
+            self.account_entries = super::prefs::account_seeds(&loaded)
+                .into_iter()
+                .map(|seed| super::sidebar::AccountEntry {
+                    folders: self
+                        .account_entries
+                        .iter()
+                        .find(|entry| entry.name == seed.name)
+                        .map(|entry| entry.folders.clone())
+                        .unwrap_or_default(),
+                    ..seed
+                })
+                .collect();
         }
         let accounts = accounts::account_summaries(
             &self.dirs,
@@ -217,6 +234,59 @@ mod tests {
         assert_eq!(wrapped(2, 3, 1), 0);
         assert_eq!(wrapped(0, 3, -1), 2);
         assert_eq!(wrapped(0, 0, 1), 0);
+    }
+
+    fn write_account(config: &std::path::Path, name: &str) {
+        let accounts = config.join("accounts");
+        std::fs::create_dir_all(&accounts).unwrap();
+        std::fs::write(
+            accounts.join(format!("{name}.toml")),
+            format!(
+                "[account]\nname = \"{name}\"\n\n\
+                 [imap]\nhost = \"h\"\nuser = \"u\"\n\n\
+                 [smtp]\nhost = \"s\"\n"
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_newly_added_account_joins_the_sidebar_entries() {
+        use crate::tui::sidebar::AccountEntry;
+        use crate::tui::testkit::{TempDir, app_with_messages};
+
+        let dir = TempDir::new();
+        write_account(&dir.path, "work");
+        write_account(&dir.path, "home");
+        let mut app = app_with_messages(1);
+        app.dirs.config = dir.path.clone();
+        app.account_entries = vec![AccountEntry {
+            name: "work".to_string(),
+            folders: vec!["archive".to_string()],
+            order: Vec::new(),
+            hidden: Vec::new(),
+            unsynced: Vec::new(),
+        }];
+        app.refresh_settings_accounts();
+        let names: Vec<&str> = app
+            .account_entries
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect();
+        assert!(
+            names.contains(&"home"),
+            "the added account joins the sidebar: {names:?}"
+        );
+        let work = app
+            .account_entries
+            .iter()
+            .find(|entry| entry.name == "work")
+            .expect("work stays");
+        assert_eq!(
+            work.folders,
+            vec!["archive".to_string()],
+            "an existing account keeps its discovered folders"
+        );
     }
 
     #[test]
