@@ -21,6 +21,9 @@ packages:
 secrets:
   # CI deploy key: pushes the tap, AUR, copr-spec and GitHub mirror.
   - 56f6f2c5-cff8-4190-9faf-0938e27ee8dd
+  # COPR custom-webhook URL, installed as a file at ~/.copr_secret;
+  # a POST to it rebuilds the package from the bumped copr-spec.
+  - e3f5e876-ad3d-4569-814e-fe03e2911373
 sources:
   - https://git.sr.ht/~donquinleone/antiphon
 environment:
@@ -107,6 +110,10 @@ tasks:
       git add antiphon.spec
       git commit -m "antiphon $ver"
       git push origin HEAD:master
+      # Tell COPR to rebuild from the bumped spec; best-effort, so a
+      # webhook hiccup never fails an otherwise-published release.
+      curl -fsS -X POST "$(cat "$HOME/.copr_secret")" \
+        || echo "copr webhook trigger failed (non-fatal)"
   - mirror-github: |
       cd antiphon
       . "$HOME/release.env"
