@@ -273,9 +273,13 @@ fn event_loop(
             KeyRoute::Compose => {
                 input::compose_key(terminal, app, layout, key)?
             }
-            KeyRoute::Review => {
-                input::review_key(terminal, app, layout, key)?
-            }
+            KeyRoute::Review => input::review_key(
+                terminal,
+                app,
+                &mut keymap,
+                layout,
+                key,
+            )?,
             KeyRoute::Settings => input::settings_key(app, key),
             KeyRoute::Prompt => {
                 input::prompt_key(app, layout, key);

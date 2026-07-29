@@ -361,10 +361,31 @@ impl App {
             View::List => self.apply_in_list(action),
             View::Pager => self.apply_in_pager(action),
             View::Image => self.apply_in_image(action),
-            View::Compose
-            | View::Editor
-            | View::Review
-            | View::Settings => {}
+            View::Review => self.apply_in_review(action),
+            View::Compose | View::Editor | View::Settings => {}
+        }
+    }
+
+    /// The review screen's in-place keys: attachment selection
+    /// and removal and the seal toggles, which mutate the
+    /// compose without needing the terminal or the store.
+    fn apply_in_review(&mut self, action: Action) {
+        let Some(state) = self.compose.as_mut() else {
+            return;
+        };
+        match action {
+            Action::MoveDown => state.select_attachment(1),
+            Action::MoveUp => state.select_attachment(-1),
+            Action::RemoveAttachment => {
+                state.remove_selected_attachment()
+            }
+            Action::ToggleSign => {
+                state.sign_override = Some(!state.plan().sign)
+            }
+            Action::ToggleEncrypt => {
+                state.encrypt_override = Some(!state.plan().encrypt)
+            }
+            _ => {}
         }
     }
 

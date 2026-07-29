@@ -1,6 +1,5 @@
 use antiphon_ui::Theme;
 use ratatui::Frame;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -15,66 +14,6 @@ const SELECTED_MARK: &str = "\u{25b8} ";
 const UNSELECTED_MARK: &str = "  ";
 const LABEL_WIDTH: usize = 10;
 const BYTES_PER_K: u32 = 1024;
-
-/// What a review key asks of the event loop; toggles mutate
-/// the state and stay put.
-#[derive(Debug, PartialEq, Eq)]
-pub(super) enum ReviewOutcome {
-    Stay,
-    Send,
-    EditBody,
-    EditHeaders,
-    PromptAttachment,
-    SaveDraft,
-    Schedule,
-}
-
-pub(super) fn feed(
-    state: &mut ComposeState,
-    key: KeyEvent,
-) -> ReviewOutcome {
-    if key.modifiers.contains(KeyModifiers::CONTROL) {
-        return match key.code {
-            KeyCode::Char('e') => ReviewOutcome::EditBody,
-            KeyCode::Char('h') => ReviewOutcome::EditHeaders,
-            _ => ReviewOutcome::Stay,
-        };
-    }
-    match key.code {
-        KeyCode::Char('y') => ReviewOutcome::Send,
-        KeyCode::Char('e') => ReviewOutcome::EditBody,
-        KeyCode::Char('h') => ReviewOutcome::EditHeaders,
-        KeyCode::Char('a') => ReviewOutcome::PromptAttachment,
-        KeyCode::Char('d') => remove_attachment(state),
-        KeyCode::Char('s') => toggle_sign(state),
-        KeyCode::Char('x') => toggle_encrypt(state),
-        KeyCode::Char('q') => ReviewOutcome::SaveDraft,
-        KeyCode::Char('@') => ReviewOutcome::Schedule,
-        KeyCode::Char('j') | KeyCode::Down => select(state, 1),
-        KeyCode::Char('k') | KeyCode::Up => select(state, -1),
-        _ => ReviewOutcome::Stay,
-    }
-}
-
-fn remove_attachment(state: &mut ComposeState) -> ReviewOutcome {
-    state.remove_selected_attachment();
-    ReviewOutcome::Stay
-}
-
-fn select(state: &mut ComposeState, step: i32) -> ReviewOutcome {
-    state.select_attachment(step);
-    ReviewOutcome::Stay
-}
-
-fn toggle_sign(state: &mut ComposeState) -> ReviewOutcome {
-    state.sign_override = Some(!state.plan().sign);
-    ReviewOutcome::Stay
-}
-
-fn toggle_encrypt(state: &mut ComposeState) -> ReviewOutcome {
-    state.encrypt_override = Some(!state.plan().encrypt);
-    ReviewOutcome::Stay
-}
 
 /// The review screen wears the same clothes as the fields
 /// stage: accent labels in the shared column, muted section
@@ -213,74 +152,8 @@ mod tests {
     use ratatui::backend::TestBackend;
 
     use super::super::compose::test_state;
-    use super::super::crypto::PgpPlan;
     use super::super::testkit::app_with_messages;
     use super::*;
-
-    fn key(code: KeyCode) -> KeyEvent {
-        KeyEvent::new(code, KeyModifiers::NONE)
-    }
-
-    #[test]
-    fn review_keys_map_to_outcomes_per_table() {
-        use KeyCode::Char;
-        use ReviewOutcome::*;
-
-        let cases: &[(KeyCode, ReviewOutcome)] = &[
-            (Char('y'), Send),
-            (Char('e'), EditBody),
-            (Char('h'), EditHeaders),
-            (Char('a'), PromptAttachment),
-            (Char('d'), Stay),
-            (Char('j'), Stay),
-            (Char('k'), Stay),
-            (Char('q'), SaveDraft),
-            (Char('s'), Stay),
-            (Char('x'), Stay),
-            (Char('@'), Schedule),
-            (Char('z'), Stay),
-            (KeyCode::Esc, Stay),
-            (KeyCode::Enter, Stay),
-        ];
-        for (code, expected) in cases {
-            let mut state = test_state();
-            assert_eq!(
-                feed(&mut state, key(*code)),
-                *expected,
-                "{code:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn ctrl_c_discards_nothing_and_stays() {
-        let mut state = test_state();
-        state.body = "precious".to_string();
-        let outcome = feed(
-            &mut state,
-            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
-        );
-        assert_eq!(outcome, ReviewOutcome::Stay);
-        assert_eq!(state.body, "precious");
-    }
-
-    #[test]
-    fn toggles_flip_the_plan_and_survive_repeats() {
-        let mut state = test_state();
-        feed(&mut state, key(KeyCode::Char('s')));
-        assert_eq!(
-            state.plan(),
-            PgpPlan {
-                sign: true,
-                encrypt: false
-            }
-        );
-        feed(&mut state, key(KeyCode::Char('x')));
-        assert!(state.plan().encrypt);
-        feed(&mut state, key(KeyCode::Char('s')));
-        feed(&mut state, key(KeyCode::Char('x')));
-        assert_eq!(state.plan(), PgpPlan::default());
-    }
 
     #[test]
     fn the_review_screen_shows_fields_plan_and_preview() {

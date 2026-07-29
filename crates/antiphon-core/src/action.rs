@@ -47,6 +47,15 @@ pub enum Action {
     Archive,
     MoveTo,
     Settings,
+    Send,
+    EditBody,
+    EditHeaders,
+    AttachFile,
+    RemoveAttachment,
+    ToggleSign,
+    ToggleEncrypt,
+    SaveDraft,
+    Schedule,
 }
 
 const NAMES: &[(Action, &str)] = &[
@@ -103,6 +112,15 @@ const NAMES: &[(Action, &str)] = &[
     (Action::Archive, "archive"),
     (Action::MoveTo, "move-to"),
     (Action::Settings, "settings"),
+    (Action::Send, "send"),
+    (Action::EditBody, "edit-body"),
+    (Action::EditHeaders, "edit-headers"),
+    (Action::AttachFile, "attach-file"),
+    (Action::RemoveAttachment, "remove-attachment"),
+    (Action::ToggleSign, "toggle-sign"),
+    (Action::ToggleEncrypt, "toggle-encrypt"),
+    (Action::SaveDraft, "save-draft"),
+    (Action::Schedule, "schedule"),
 ];
 
 impl Action {

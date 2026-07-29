@@ -14,7 +14,7 @@ use super::identity::ComposeContext;
 use super::{
     account_form, attach, draw, drawer, export, folder_alias,
     folder_picker, headers, link_picker, mark_all_read, pager,
-    pager_body, patches, review, run_query, run_search, session,
+    pager_body, patches, run_query, run_search, session,
 };
 use crate::tui::settings::{self, SettingsOutcome};
 
@@ -87,33 +87,33 @@ fn cancel_headers(app: &mut App) {
 pub(super) fn review_key(
     terminal: &mut DefaultTerminal,
     app: &mut App,
+    keymap: &mut Keymap,
     layout: &StoreLayout,
     key: KeyEvent,
 ) -> std::io::Result<()> {
-    use review::ReviewOutcome;
-
     if app.schedule_edit.is_some() {
         super::schedule::feed_edit(app, key);
         return Ok(());
     }
-
-    let Some(state) = app.compose.as_mut() else {
+    if app.compose.is_none() {
+        return Ok(());
+    }
+    let Resolution::Match(action) = keymap.feed(Context::Review, key)
+    else {
         return Ok(());
     };
-    match review::feed(state, key) {
-        ReviewOutcome::Stay => {}
-        ReviewOutcome::EditBody => {
+    match action {
+        Action::Send => session::send_compose(app, layout),
+        Action::EditBody => {
             return session::open_body_editor(terminal, app, layout);
         }
-        ReviewOutcome::EditHeaders => app.view = View::Compose,
-        ReviewOutcome::PromptAttachment => {
+        Action::EditHeaders => app.view = View::Compose,
+        Action::AttachFile => {
             app.open_prompt(PromptKind::AttachmentPath)
         }
-        ReviewOutcome::Send => session::send_compose(app, layout),
-        ReviewOutcome::SaveDraft => {
-            app.open_prompt(PromptKind::ConfirmDraft)
-        }
-        ReviewOutcome::Schedule => super::schedule::begin(app),
+        Action::SaveDraft => app.open_prompt(PromptKind::ConfirmDraft),
+        Action::Schedule => super::schedule::begin(app),
+        _ => app.apply(action),
     }
     Ok(())
 }

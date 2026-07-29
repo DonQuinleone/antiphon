@@ -79,6 +79,15 @@ const DEFAULT_BINDINGS: &[(Context, Action, &str)] = &[
     (Context::Global, Action::Archive, "a"),
     (Context::Global, Action::MoveTo, "c"),
     (Context::Global, Action::Settings, "<"),
+    (Context::Review, Action::Send, "y"),
+    (Context::Review, Action::EditBody, "e"),
+    (Context::Review, Action::EditHeaders, "h"),
+    (Context::Review, Action::AttachFile, "a"),
+    (Context::Review, Action::RemoveAttachment, "d"),
+    (Context::Review, Action::ToggleSign, "s"),
+    (Context::Review, Action::ToggleEncrypt, "x"),
+    (Context::Review, Action::SaveDraft, "q"),
+    (Context::Review, Action::Schedule, "@"),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -560,5 +569,23 @@ mod tests {
                 "{key:?} is bound more than once in {context:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_context_binding_overrides_the_global_one() {
+        let mut keymap = Keymap::new(&overrides(&[])).unwrap();
+        assert_eq!(
+            keymap.feed(Context::Pager, press(KeyCode::Char('h'))),
+            Resolution::Match(Action::ToggleHtml)
+        );
+        assert_eq!(
+            keymap.feed(Context::Review, press(KeyCode::Char('h'))),
+            Resolution::Match(Action::EditHeaders)
+        );
+        assert_eq!(
+            keymap.feed(Context::Review, press(KeyCode::Char('j'))),
+            Resolution::Match(Action::MoveDown),
+            "a global key still resolves via the fallback"
+        );
     }
 }
