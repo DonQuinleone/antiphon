@@ -1,5 +1,5 @@
 use antiphon_store::MessageSummary;
-use antiphon_ui::Theme;
+use antiphon_ui::{Theme, truncate};
 use chrono::{DateTime, Local};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -12,7 +12,6 @@ pub(super) const UNREAD_MARK: &str = "\u{25c6} ";
 const READ_MARK: &str = "  ";
 const FLAG_MARK: &str = "\u{2691} ";
 const NO_FLAG_MARK: &str = "  ";
-pub(super) const ELLIPSIS: char = '\u{2026}';
 const REPLIED_TAG: &str = "replied";
 const FORWARDED_TAG: &str = "passed";
 const ATTACHMENT_TAG: &str = "attachment";
@@ -86,7 +85,7 @@ fn from_cell(
     } else {
         sender_name(&message.from)
     };
-    let name = truncate(&text, columns.from);
+    let name = truncate(&text, columns.from as usize);
     let style = Style::new().fg(theme.list_from);
     Line::from(Span::styled(name, unread_weight(style, message)))
 }
@@ -107,7 +106,7 @@ fn subject_cell(
         Span::raw(NO_FLAG_MARK)
     };
     let width = columns.subject.saturating_sub(MARK_COLS);
-    let subject = truncate(&message.subject, width);
+    let subject = truncate(&message.subject, width as usize);
     let style = Style::new().fg(theme.list_subject);
     Line::from(vec![
         unread,
@@ -125,21 +124,6 @@ fn unread_weight(style: Style, message: &MessageSummary) -> Style {
 
 fn is_flagged(message: &MessageSummary) -> bool {
     message.tags.iter().any(|tag| tag == FLAGGED_TAG)
-}
-
-/// Cell text never crosses its column: anything longer ends in
-/// a visible ellipsis instead of being chopped into the gutter.
-pub(super) fn truncate(text: &str, width: u16) -> String {
-    let width = width as usize;
-    if text.chars().count() <= width {
-        return text.to_string();
-    }
-    if width == 0 {
-        return String::new();
-    }
-    let mut kept: String = text.chars().take(width - 1).collect();
-    kept.push(ELLIPSIS);
-    kept
 }
 
 pub(super) fn sender_name(from: &str) -> String {

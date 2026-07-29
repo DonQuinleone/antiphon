@@ -25,7 +25,6 @@ const KEYBAR_ACTIONS: [(&str, &str); 8] = [
 const KEYBAR_ROWS: u16 = 1;
 const RULE_ROWS: u16 = 1;
 const MIN_TAG_GAP_COLS: usize = 2;
-const ELLIPSIS: char = '\u{2026}';
 
 pub(super) struct PagerChrome {
     pub keybar: Rect,
@@ -174,7 +173,7 @@ fn with_tags(
     if room == 0 {
         return line;
     }
-    let tags_text = fitted(&tags.join(", "), room);
+    let tags_text = antiphon_ui::truncate(&tags.join(", "), room);
     let pad = (width as usize)
         .saturating_sub(used + tags_text.chars().count());
     line.spans.push(Span::raw(" ".repeat(pad)));
@@ -183,16 +182,6 @@ fn with_tags(
         Style::new().fg(theme.text_muted),
     ));
     line
-}
-
-pub(super) fn fitted(text: &str, room: usize) -> String {
-    if text.chars().count() <= room {
-        return text.to_string();
-    }
-    let mut cut: String =
-        text.chars().take(room.saturating_sub(1)).collect();
-    cut.push(ELLIPSIS);
-    cut
 }
 
 fn signature_line(

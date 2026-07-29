@@ -12,7 +12,6 @@ use super::app::App;
 use super::attach::expand_tilde;
 use super::commands::PromptKind;
 use super::link_picker::spawn_opener;
-use super::pager::fitted;
 
 const COLLAPSED_ROWS: u16 = 1;
 const HEADER_ROWS: u16 = 1;
@@ -65,7 +64,7 @@ fn summary_line(app: &App, width: u16) -> Line<'static> {
     Line::from(Span::styled(
         format!(
             "{:<width$}",
-            fitted(&text, width as usize),
+            antiphon_ui::truncate(&text, width as usize),
             width = width as usize
         ),
         Style::new().fg(theme.text_muted).bg(theme.surface),

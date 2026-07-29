@@ -166,7 +166,7 @@ fn draw_empty(frame: &mut Frame, app: &App, area: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use super::super::cells::{ELLIPSIS, truncate};
+    use antiphon_ui::ELLIPSIS;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::buffer::Buffer;
@@ -362,24 +362,6 @@ mod tests {
             foreground(&buffer, subject_x, 2),
             Some(app.theme.list_subject)
         );
-    }
-
-    #[test]
-    fn truncation_is_exact_at_every_width() {
-        let cases = [
-            ("hello", 10, "hello".to_string()),
-            ("hello", 5, "hello".to_string()),
-            ("hello!", 5, format!("hell{ELLIPSIS}")),
-            ("hi", 1, ELLIPSIS.to_string()),
-            ("hi", 0, String::new()),
-        ];
-        for (text, width, expected) in cases {
-            assert_eq!(
-                truncate(text, width),
-                expected,
-                "{text}@{width}"
-            );
-        }
     }
 
     #[test]

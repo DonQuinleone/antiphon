@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Ratatui widgets, views and the theme engine"
+description = "Theme engine and shared terminal-UI helpers"
 
 [dependencies]
 ratatui = "=0.30.2"
