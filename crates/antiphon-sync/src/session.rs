@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 
 use imap_client::client::tokio::{Client, ClientError};
 use imap_client::imap_types::command::CommandBody;
-use imap_client::imap_types::core::Vec1;
+use imap_client::imap_types::core::{IString, NString, Vec1};
 use imap_client::imap_types::fetch::{
     MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName,
 };
@@ -45,6 +45,17 @@ pub(crate) struct FetchedMessage {
     pub body: Option<Vec<u8>>,
 }
 
+/// Names the client in the RFC 2971 ID exchange. Office365 asks
+/// connecting clients to identify themselves, and some servers
+/// log or gate on it, so it is sent as a matter of good citizenship.
+fn client_id_params()
+-> Option<Vec<(IString<'static>, NString<'static>)>> {
+    Some(vec![(
+        IString::try_from("name").ok()?,
+        NString::try_from("antiphon").ok()?,
+    )])
+}
+
 impl ImapSession {
     pub fn connect(account: &SyncAccount) -> Result<Self, SyncError> {
         let runtime = Builder::new_current_thread()
@@ -67,17 +78,20 @@ impl ImapSession {
             Auth::Password(password) => runtime.block_on(
                 client.login(account.user.as_str(), password.as_str()),
             ),
-            Auth::XOauth2 { user, access_token } => {
-                runtime.block_on(client.authenticate_xoauth2(
+            Auth::XOauth2 { user, access_token } => runtime.block_on(
+                client.authenticate_xoauth2(
                     user.as_str(),
                     access_token.as_str(),
-                ))
-            }
+                ),
+            ),
         };
         authenticated.map_err(|source| SyncError::Login {
             user: account.user.clone(),
             source: Box::new(source),
         })?;
+        // Identify the client to the server (RFC 2971); best
+        // effort, and a no-op where ID is not advertised.
+        let _ = runtime.block_on(client.id(client_id_params()));
         Ok(Self { runtime, client })
     }
 
