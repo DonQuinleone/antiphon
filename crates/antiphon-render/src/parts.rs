@@ -90,7 +90,12 @@ mod tests {
                 },
             ],
         };
-        build_message(&draft, "example.com", 1_753_400_000)
+        build_message(
+            &draft,
+            "example.com",
+            1_753_400_000,
+            "Antiphon 9.9.9",
+        )
     }
 
     #[test]

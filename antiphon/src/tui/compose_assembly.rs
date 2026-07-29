@@ -8,6 +8,10 @@ use antiphon_store::Envelope;
 
 use super::attach::Attachment;
 
+/// The X-Mailer every outgoing message carries; the version is the
+/// single build-time string, never a hardcoded copy.
+const MAILER: &str = concat!("Antiphon ", env!("ANTIPHON_VERSION"));
+
 /// A compose validated and ready to assemble: parsed address
 /// lists and the exact header values the message will carry.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -71,7 +75,7 @@ pub(super) fn assemble(
             .map(Attachment::as_part)
             .collect(),
     };
-    build_message(&draft, domain, date_unix)
+    build_message(&draft, domain, date_unix, MAILER)
 }
 
 pub(super) fn envelope(account: &str, outgoing: &Outgoing) -> Envelope {

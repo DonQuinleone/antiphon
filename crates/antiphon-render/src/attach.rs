@@ -92,6 +92,7 @@ mod tests {
             &draft_with_attachments(),
             "example.com",
             1_753_380_000,
+            "Antiphon 9.9.9",
         );
         let text = String::from_utf8(raw.clone()).unwrap();
         assert!(text.contains("multipart/mixed"), "{text}");

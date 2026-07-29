@@ -85,7 +85,7 @@ mod tests {
         "Received: from b.example.com\r\n",
         "Subject: =?utf-8?q?caf=C3=A9_notes?=\r\n",
         "Date: Fri, 24 Jul 2026 09:00:00 +0000\r\n",
-        "X-MAILER: antiphon 0.0.0\r\n",
+        "X-MAILER: Antiphon 1.2.3\r\n",
         "Message-Id: <1@example.com>\r\n",
         "\r\n",
         "body\r\n",
@@ -112,7 +112,7 @@ mod tests {
             (
                 &["x-mailer", "from"],
                 &[
-                    ("X-Mailer", "antiphon 0.0.0"),
+                    ("X-Mailer", "Antiphon 1.2.3"),
                     ("From", "Mara Voss <mara@example.com>"),
                 ],
             ),
@@ -144,7 +144,7 @@ mod tests {
             let selected =
                 selected_headers(RAW.as_bytes(), &names(&[asked]));
             assert_eq!(selected.len(), 1, "{asked}");
-            assert_eq!(selected[0].value, "antiphon 0.0.0");
+            assert_eq!(selected[0].value, "Antiphon 1.2.3");
         }
     }
 

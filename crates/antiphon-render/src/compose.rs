@@ -1,5 +1,6 @@
 use mail_builder::MessageBuilder;
 use mail_builder::headers::address::Address;
+use mail_builder::headers::text::Text;
 
 use crate::attach::AttachmentPart;
 use crate::flow;
@@ -21,11 +22,13 @@ pub fn build_message(
     draft: &Draft<'_>,
     message_id_domain: &str,
     date_unix: i64,
+    mailer: &str,
 ) -> Vec<u8> {
     let body = flow(&with_signature(draft.body, draft.signature));
     let mut builder = MessageBuilder::new()
         .message_id(message_id(message_id_domain, date_unix))
         .date(date_unix)
+        .header("X-Mailer", Text::new(mailer))
         .from(from_address(draft))
         .to(address_list(&draft.to))
         .subject(draft.subject)
@@ -133,6 +136,7 @@ mod tests {
             &draft(),
             "example.com",
             1_753_380_000,
+            "Antiphon 9.9.9",
         ))
         .unwrap()
     }
@@ -146,6 +150,11 @@ mod tests {
         assert!(text.contains("In-Reply-To: <parent@example.com>"));
         assert!(text.contains("References: <root@example.com>"));
         assert!(text.contains(".antiphon@example.com>"));
+    }
+
+    #[test]
+    fn the_mailer_header_names_antiphon_and_the_version() {
+        assert!(built().contains("X-Mailer: Antiphon 9.9.9"));
     }
 
     #[test]
@@ -163,7 +172,12 @@ mod tests {
 
     #[test]
     fn parses_back_through_our_own_extractor() {
-        let raw = build_message(&draft(), "example.com", 1_753_380_000);
+        let raw = build_message(
+            &draft(),
+            "example.com",
+            1_753_380_000,
+            "Antiphon 9.9.9",
+        );
         let body = crate::body_text(&raw);
         assert_eq!(body.kind, crate::BodyKind::Plain);
         assert!(body.text.contains("See you Thursday."));

@@ -148,6 +148,7 @@ mod tests {
             &draft_with_image_and_text(),
             "example.com",
             1_753_400_000,
+            "Antiphon 9.9.9",
         );
         let found = images(&raw);
         assert_eq!(found.len(), 1, "only the png, not the text part");
