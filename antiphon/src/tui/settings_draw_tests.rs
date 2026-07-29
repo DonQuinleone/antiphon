@@ -8,9 +8,10 @@ use super::super::testkit::app_with_messages;
 use super::*;
 
 fn rendered(app: &App) -> ratatui::buffer::Buffer {
-    // Wide enough for a full account row with its OAuth
-    // state column.
-    let backend = TestBackend::new(100, 12);
+    // Wide enough for a full account row with its OAuth state
+    // column, and tall enough for the settings modal to frame
+    // its whole body.
+    let backend = TestBackend::new(100, 30);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|frame| draw_settings(frame, app, frame.area()))
@@ -46,14 +47,15 @@ fn accounts_tab_lists_name_address_and_host() {
         folder_selected: 0,
     });
     let buffer = rendered(&app);
-    assert!(row(&buffer, 0).contains("Accounts"));
-    let account_row = row(&buffer, 1);
+    let text: String =
+        (0..buffer.area.height).map(|y| row(&buffer, y)).collect();
+    assert!(text.contains("Accounts"));
     assert!(
-        account_row.contains(" 1 work"),
-        "the order position leads the row: {account_row:?}"
+        text.contains(" 1 work"),
+        "the order position leads the row: {text:?}"
     );
-    assert!(account_row.contains("quin@example.com"));
-    assert!(account_row.contains("imap.example.com"));
+    assert!(text.contains("quin@example.com"));
+    assert!(text.contains("imap.example.com"));
 }
 
 #[test]
@@ -331,7 +333,7 @@ fn folders_tab_lists_rows_and_the_selected_ones_edit_shows() {
             text: "renamed".to_string(),
             cursor: 7,
         });
-    let backend = TestBackend::new(70, 12);
+    let backend = TestBackend::new(90, 30);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal
         .draw(|frame| {

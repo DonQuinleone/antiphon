@@ -15,27 +15,40 @@ use super::settingscmd::{self, EssentialRow};
 
 const SELECTED_MARK: &str = "\u{25b8} ";
 const UNSELECTED_MARK: &str = "  ";
-const NAME_WIDTH: usize = 16;
-const ADDRESS_WIDTH: usize = 28;
 const LABEL_WIDTH: usize = 26;
 const STATE_WIDTH: usize = 10;
+const COL_GAP: usize = 2;
+const MIN_NAME_WIDTH: usize = 6;
+const MIN_ADDRESS_WIDTH: usize = 14;
 const FOLDERS_HELP: &str = "Shift-J/K reorder \u{b7} h hide \u{b7} \
      u unsync \u{b7} enter alias";
+
+const SETTINGS_MODAL_WIDTH: u16 = 78;
+const SETTINGS_MODAL_HEIGHT: u16 = 26;
 
 pub(super) fn draw_settings(frame: &mut Frame, app: &App, area: Rect) {
     let Some(state) = &app.settings else {
         return;
     };
+    let theme = app.theme;
+    let modal = settings_modal(area);
+    frame.render_widget(ratatui::widgets::Clear, modal);
+    let block = ratatui::widgets::Block::bordered()
+        .title(" settings ")
+        .border_style(Style::new().fg(theme.accent))
+        .style(Style::new().bg(theme.surface));
+    let inner = block.inner(modal);
+    frame.render_widget(block, modal);
     let [tabs_area, body_area] =
         Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
-            .areas(area);
+            .areas(inner);
     frame.render_widget(
-        Paragraph::new(tabs_line(app.theme, state.tab)),
+        Paragraph::new(tabs_line(theme, state.tab)),
         tabs_area,
     );
     match state.tab {
         SettingsTab::Accounts => {
-            draw_accounts(frame, app.theme, state, body_area)
+            draw_accounts(frame, theme, state, body_area)
         }
         SettingsTab::Essentials => {
             draw_essentials(frame, app, state, body_area)
@@ -43,6 +56,20 @@ pub(super) fn draw_settings(frame: &mut Frame, app: &App, area: Rect) {
         SettingsTab::Folders => {
             draw_folders(frame, app, state, body_area)
         }
+    }
+}
+
+/// Settings float as a centred modal over the app rather than a
+/// full-bleed page, so a border frames the whole panel.
+fn settings_modal(area: Rect) -> Rect {
+    let width = SETTINGS_MODAL_WIDTH.min(area.width.saturating_sub(4));
+    let height =
+        SETTINGS_MODAL_HEIGHT.min(area.height.saturating_sub(2));
+    Rect {
+        x: area.x + (area.width.saturating_sub(width)) / 2,
+        y: area.y + (area.height.saturating_sub(height)) / 2,
+        width,
+        height,
     }
 }
 
@@ -88,12 +115,22 @@ fn draw_accounts(
             Style::new().fg(theme.text_muted),
         )));
     }
+    let name_w = col_width(
+        state.accounts.iter().map(|a| a.name.chars().count()),
+        MIN_NAME_WIDTH,
+    );
+    let address_w = col_width(
+        state.accounts.iter().map(|a| a.address.chars().count()),
+        MIN_ADDRESS_WIDTH,
+    );
     for (index, account) in state.accounts.iter().enumerate() {
         lines.push(account_line(
             theme,
             account,
             index,
             index == state.account_selected,
+            name_w,
+            address_w,
         ));
     }
     push_oauth_detail(&mut lines, theme, state);
@@ -142,6 +179,8 @@ fn account_line(
     account: &super::settings::AccountSummary,
     index: usize,
     selected: bool,
+    name_w: usize,
+    address_w: usize,
 ) -> Line<'static> {
     let marker = mark(selected);
     let mut style = Style::new().fg(theme.text_primary);
@@ -151,8 +190,7 @@ fn account_line(
     let position = index + 1;
     let mut spans = vec![Span::styled(
         format!(
-            "{marker}{position:>2} {:<NAME_WIDTH$}\
-             {:<ADDRESS_WIDTH$} {}",
+            "{marker}{position:>2} {:<name_w$}{:<address_w$} {}",
             account.name,
             account.address,
             account.server_label(),
@@ -254,11 +292,21 @@ fn draw_folders(
             Style::new().fg(theme.text_muted),
         )));
     }
+    let account_w = col_width(
+        state.folders.iter().map(|f| f.account.chars().count()),
+        MIN_NAME_WIDTH,
+    );
+    let folder_w = col_width(
+        state.folders.iter().map(|f| f.folder.chars().count()),
+        MIN_ADDRESS_WIDTH,
+    );
     for (index, row) in state.folders.iter().enumerate() {
         lines.push(folder_line(
             app,
             row,
             index == state.folder_selected,
+            account_w,
+            folder_w,
         ));
     }
     lines.push(Line::default());
@@ -273,6 +321,8 @@ fn folder_line(
     app: &App,
     row: &FolderRow,
     selected: bool,
+    account_w: usize,
+    folder_w: usize,
 ) -> Line<'static> {
     let theme = app.theme;
     let marker = mark(selected);
@@ -282,8 +332,7 @@ fn folder_line(
     }
     Line::from(Span::styled(
         format!(
-            "{marker}{:<NAME_WIDTH$}{:<ADDRESS_WIDTH$}\
-             {:<STATE_WIDTH$}{}",
+            "{marker}{:<account_w$}{:<folder_w$}{:<STATE_WIDTH$}{}",
             row.account,
             row.folder,
             state_label(row),
@@ -360,6 +409,16 @@ fn mark(selected: bool) -> &'static str {
     } else {
         UNSELECTED_MARK
     }
+}
+
+/// A column sized to the widest value it holds plus a gap,
+/// never below a floor so short content still reads as a
+/// column.
+fn col_width(
+    values: impl Iterator<Item = usize>,
+    minimum: usize,
+) -> usize {
+    values.max().unwrap_or(0).max(minimum) + COL_GAP
 }
 
 #[cfg(test)]
