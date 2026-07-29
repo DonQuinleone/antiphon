@@ -5,6 +5,7 @@ mod draw;
 
 pub(super) use draw::{draw_alias_modal, draw_settings};
 
+use antiphon_core::Action;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use crate::tui::app::{App, View};
@@ -79,15 +80,6 @@ pub(super) struct SettingsState {
     pub(super) folder_selected: usize,
 }
 
-/// What a settings key asks of the event loop; add and edit
-/// open the account form in place, so only closing the whole
-/// settings view bubbles up.
-#[derive(Debug, PartialEq, Eq)]
-pub(super) enum SettingsOutcome {
-    Stay,
-    Close,
-}
-
 impl App {
     pub(super) fn open_settings(&mut self) {
         // One status poll per settings open keeps the daemon's
@@ -128,40 +120,57 @@ impl App {
     }
 }
 
-pub(super) fn feed(app: &mut App, key: KeyEvent) -> SettingsOutcome {
-    let Some(state) = app.settings.as_ref() else {
-        return SettingsOutcome::Close;
-    };
-    let pending_delete = state.pending_delete.clone();
-    let pending_revoke = state.pending_revoke.clone();
-    let tab = state.tab;
+/// Raw-key handling that precedes the keymap: cancel a running
+/// sign-in on esc, and the delete/revoke y/n confirmations.
+/// Returns true when it consumed the key.
+pub(super) fn feed_modal(app: &mut App, key: KeyEvent) -> bool {
     if app.oauth_flow.is_some() && key.code == KeyCode::Esc {
         crate::tui::oauthflow::cancel(app);
-        return SettingsOutcome::Stay;
+        return true;
     }
+    let pending_delete = app
+        .settings
+        .as_ref()
+        .and_then(|state| state.pending_delete.clone());
     if let Some(name) = pending_delete {
-        return accounts::feed_confirm_delete(app, key, &name);
+        accounts::feed_confirm_delete(app, key, &name);
+        return true;
     }
+    let pending_revoke = app
+        .settings
+        .as_ref()
+        .and_then(|state| state.pending_revoke.clone());
     if let Some(name) = pending_revoke {
-        return crate::tui::oauth_status::feed_confirm_revoke(
-            app, key, &name,
-        );
+        crate::tui::oauth_status::feed_confirm_revoke(app, key, &name);
+        return true;
     }
-    match key.code {
-        KeyCode::Esc => SettingsOutcome::Close,
-        KeyCode::Tab => {
-            switch_tab(app, SettingsTab::next);
-            SettingsOutcome::Stay
+    false
+}
+
+/// A resolved settings action: switch tabs, close the view, or
+/// hand off to whichever tab is active.
+pub(super) fn dispatch(app: &mut App, action: Action) {
+    match action {
+        Action::NextTab => switch_tab(app, SettingsTab::next),
+        Action::PrevTab => switch_tab(app, SettingsTab::previous),
+        Action::SettingsClose => {
+            app.settings = None;
+            app.view = View::List;
         }
-        KeyCode::BackTab => {
-            switch_tab(app, SettingsTab::previous);
-            SettingsOutcome::Stay
+        _ => {
+            let Some(tab) =
+                app.settings.as_ref().map(|state| state.tab)
+            else {
+                return;
+            };
+            match tab {
+                SettingsTab::Accounts => accounts::apply(app, action),
+                SettingsTab::Essentials => cmd::apply(app, action),
+                SettingsTab::Folders => {
+                    crate::tui::folders::apply(app, action)
+                }
+            }
         }
-        _ => match tab {
-            SettingsTab::Accounts => accounts::feed_accounts(app, key),
-            SettingsTab::Essentials => cmd::feed(app, key),
-            SettingsTab::Folders => crate::tui::folders::feed(app, key),
-        },
     }
 }
 
@@ -184,6 +193,8 @@ pub(super) fn wrapped(current: usize, len: usize, step: i32) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use antiphon_core::Action;
+
     use crate::tui::settings::*;
     use crate::tui::testkit::app_with_settings;
 
@@ -203,36 +214,23 @@ mod tests {
     }
 
     #[test]
-    fn tab_switches_and_esc_closes() {
+    fn tab_switches_and_closes() {
         let mut app = app_with_settings(&["work"]);
-        assert_eq!(
-            feed(&mut app, key(KeyCode::Tab)),
-            SettingsOutcome::Stay
-        );
+        dispatch(&mut app, Action::NextTab);
         assert_eq!(
             app.settings.as_ref().unwrap().tab,
             SettingsTab::Essentials
         );
-        assert_eq!(
-            feed(&mut app, key(KeyCode::Esc)),
-            SettingsOutcome::Close
-        );
+        dispatch(&mut app, Action::SettingsClose);
+        assert!(app.settings.is_none());
     }
 
     #[test]
-    fn esc_cancels_a_running_sign_in_instead_of_closing() {
+    fn esc_cancels_a_running_sign_in() {
         let mut app = app_with_settings(&["work"]);
         app.oauth_flow = Some(crate::tui::oauthflow::test_flow("work"));
-        assert_eq!(
-            feed(&mut app, key(KeyCode::Esc)),
-            SettingsOutcome::Stay
-        );
+        assert!(feed_modal(&mut app, key(KeyCode::Esc)));
         assert!(app.oauth_flow.is_none());
         assert!(app.settings.is_some(), "settings stay open");
-        assert_eq!(
-            feed(&mut app, key(KeyCode::Esc)),
-            SettingsOutcome::Close,
-            "the next esc closes as usual"
-        );
     }
 }

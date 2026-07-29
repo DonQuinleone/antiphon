@@ -1,12 +1,12 @@
 use std::io;
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use antiphon_core::Action;
 
 use super::app::App;
 use super::configedit::{persist_root_key, toml_string_array};
 use super::folder_alias::begin_edit;
 use super::sidebar::{self, AccountEntry};
-use crate::tui::settings::{self, SettingsOutcome};
+use crate::tui::settings;
 
 const FOLDER_ORDER_KEY: &str = "folder_order";
 const FOLDERS_HIDDEN_KEY: &str = "folders_hidden";
@@ -88,18 +88,17 @@ impl App {
 /// j/k select a row, J/K move it through its account's order,
 /// h hides or unhides it, u unsyncs or resyncs it, enter begins
 /// editing its alias.
-pub(super) fn feed(app: &mut App, key: KeyEvent) -> SettingsOutcome {
-    match key.code {
-        KeyCode::Char('j') | KeyCode::Down => move_selection(app, 1),
-        KeyCode::Char('k') | KeyCode::Up => move_selection(app, -1),
-        KeyCode::Char('J') => shift_folder_order(app, 1),
-        KeyCode::Char('K') => shift_folder_order(app, -1),
-        KeyCode::Char('h') => toggle_hidden(app),
-        KeyCode::Char('u') => toggle_unsynced(app),
-        KeyCode::Enter => begin_edit(app),
+pub(super) fn apply(app: &mut App, action: Action) {
+    match action {
+        Action::MoveDown => move_selection(app, 1),
+        Action::MoveUp => move_selection(app, -1),
+        Action::ReorderDown => shift_folder_order(app, 1),
+        Action::ReorderUp => shift_folder_order(app, -1),
+        Action::FolderHide => toggle_hidden(app),
+        Action::FolderUnsync => toggle_unsynced(app),
+        Action::EditAlias => begin_edit(app),
         _ => {}
     }
-    SettingsOutcome::Stay
 }
 
 /// Shift+J/K move the selected folder within its account and

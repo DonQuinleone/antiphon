@@ -16,7 +16,7 @@ use super::{
     folder_picker, headers, link_picker, mark_all_read, pager,
     pager_body, patches, run_query, run_search, session,
 };
-use crate::tui::settings::{self, SettingsOutcome};
+use crate::tui::settings::{self, SettingsTab};
 
 const MOUSE_WHEEL_ROWS: usize = 3;
 
@@ -121,7 +121,11 @@ pub(super) fn review_key(
 /// Keys in the settings view: the account form, once open,
 /// takes every key itself; everything else is a plain toggle
 /// or selection settled in place.
-pub(super) fn settings_key(app: &mut App, key: KeyEvent) {
+pub(super) fn settings_key(
+    app: &mut App,
+    keymap: &mut Keymap,
+    key: KeyEvent,
+) {
     if app.account_form.is_some() {
         account_form::feed(app, key);
         return;
@@ -130,12 +134,12 @@ pub(super) fn settings_key(app: &mut App, key: KeyEvent) {
         folder_alias::feed_edit(app, key);
         return;
     }
-    match settings::feed(app, key) {
-        SettingsOutcome::Stay => {}
-        SettingsOutcome::Close => {
-            app.settings = None;
-            app.view = View::List;
-        }
+    if settings::feed_modal(app, key) {
+        return;
+    }
+    let context = context_for(app);
+    if let Resolution::Match(action) = keymap.feed(context, key) {
+        settings::dispatch(app, action);
     }
 }
 
@@ -170,13 +174,22 @@ pub(super) fn compose_key(
 
 /// The keymap context for a view, so a key resolves against
 /// that surface's bindings before the Global fallback.
-fn context_for(view: View) -> Context {
-    match view {
+fn context_for(app: &App) -> Context {
+    match app.view {
         View::List => Context::List,
         View::Pager | View::Image => Context::Pager,
         View::Review => Context::Review,
-        View::Settings => Context::Settings,
         View::Compose | View::Editor => Context::Compose,
+        View::Settings => settings_context(app),
+    }
+}
+
+fn settings_context(app: &App) -> Context {
+    match app.settings.as_ref().map(|state| state.tab) {
+        Some(SettingsTab::Accounts) => Context::SettingsAccounts,
+        Some(SettingsTab::Essentials) => Context::SettingsEssentials,
+        Some(SettingsTab::Folders) => Context::SettingsFolders,
+        None => Context::Settings,
     }
 }
 
@@ -228,7 +241,7 @@ pub(super) fn keymap_key(
         app.apply(antiphon_core::Action::MoveUp);
         return;
     }
-    let key_context = context_for(app.view);
+    let key_context = context_for(app);
     let Resolution::Match(action) = keymap.feed(key_context, key)
     else {
         return;

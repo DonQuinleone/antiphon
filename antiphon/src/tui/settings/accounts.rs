@@ -2,60 +2,33 @@
 //! delete and the OAuth sign-in entry point.
 
 use antiphon_config::{Dirs, NamedAccount, OauthProvider};
+use antiphon_core::Action;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use crate::tui::app::App;
 use crate::tui::settings::cmd;
-use crate::tui::settings::{
-    AccountSummary, ServerKind, SettingsOutcome, wrapped,
-};
+use crate::tui::settings::{AccountSummary, ServerKind, wrapped};
 
-pub(super) fn feed_accounts(
-    app: &mut App,
-    key: KeyEvent,
-) -> SettingsOutcome {
-    match key.code {
-        KeyCode::Char('j') | KeyCode::Down => {
-            move_account_selection(app, 1);
-            SettingsOutcome::Stay
-        }
-        KeyCode::Char('k') | KeyCode::Up => {
-            move_account_selection(app, -1);
-            SettingsOutcome::Stay
-        }
-        KeyCode::Char('J') => {
-            shift_account_order(app, 1);
-            SettingsOutcome::Stay
-        }
-        KeyCode::Char('K') => {
-            shift_account_order(app, -1);
-            SettingsOutcome::Stay
-        }
-        KeyCode::Char('a') => {
-            app.open_account_form_add();
-            SettingsOutcome::Stay
-        }
-        KeyCode::Char('e') => {
+pub(super) fn apply(app: &mut App, action: Action) {
+    match action {
+        Action::MoveDown => move_account_selection(app, 1),
+        Action::MoveUp => move_account_selection(app, -1),
+        Action::ReorderDown => shift_account_order(app, 1),
+        Action::ReorderUp => shift_account_order(app, -1),
+        Action::AccountAdd => app.open_account_form_add(),
+        Action::AccountEdit => {
             if let Some(name) = selected_account_name(app) {
                 app.open_account_form_edit(&name);
             }
-            SettingsOutcome::Stay
         }
-        KeyCode::Char('d') => {
-            arm_delete(app);
-            SettingsOutcome::Stay
-        }
-        KeyCode::Char('o') => {
+        Action::DeleteAccount => arm_delete(app),
+        Action::SignIn => {
             if let Some(name) = selected_account_name(app) {
                 crate::tui::oauthflow::authorise(app, &name);
             }
-            SettingsOutcome::Stay
         }
-        KeyCode::Char('x') => {
-            crate::tui::oauth_status::arm_revoke(app);
-            SettingsOutcome::Stay
-        }
-        _ => SettingsOutcome::Stay,
+        Action::Revoke => crate::tui::oauth_status::arm_revoke(app),
+        _ => {}
     }
 }
 
@@ -63,13 +36,12 @@ pub(super) fn feed_confirm_delete(
     app: &mut App,
     key: KeyEvent,
     name: &str,
-) -> SettingsOutcome {
+) {
     if matches!(key.code, KeyCode::Char('y' | 'Y')) {
         remove_account(app, name);
     } else if let Some(state) = app.settings.as_mut() {
         state.pending_delete = None;
     }
-    SettingsOutcome::Stay
 }
 
 fn move_account_selection(app: &mut App, step: i32) {
@@ -233,8 +205,8 @@ fn now_unix() -> u64 {
 #[cfg(test)]
 mod tests {
     use crate::tui::settings::accounts::*;
-    use crate::tui::settings::{SettingsOutcome, feed};
     use crate::tui::testkit::{TempDir, app_with_settings};
+    use antiphon_core::Action;
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(
@@ -287,11 +259,11 @@ mod tests {
     #[test]
     fn accounts_selection_moves_and_wraps() {
         let mut app = app_with_settings(&["a", "b", "c"]);
-        feed(&mut app, key(KeyCode::Char('j')));
+        apply(&mut app, Action::MoveDown);
         assert_eq!(app.settings.as_ref().unwrap().account_selected, 1);
-        feed(&mut app, key(KeyCode::Char('k')));
+        apply(&mut app, Action::MoveUp);
         assert_eq!(app.settings.as_ref().unwrap().account_selected, 0);
-        feed(&mut app, key(KeyCode::Char('k')));
+        apply(&mut app, Action::MoveUp);
         assert_eq!(app.settings.as_ref().unwrap().account_selected, 2);
     }
 
@@ -302,7 +274,7 @@ mod tests {
         app.accounts = vec!["a".into(), "b".into(), "c".into()];
         app.config_path = dir.path.join("config.toml");
 
-        feed(&mut app, key(KeyCode::Char('J')));
+        apply(&mut app, Action::ReorderDown);
         let state = app.settings.as_ref().unwrap();
         let names: Vec<&str> = state
             .accounts
@@ -320,7 +292,7 @@ mod tests {
         );
 
         app.settings.as_mut().unwrap().account_selected = 0;
-        feed(&mut app, key(KeyCode::Char('K')));
+        apply(&mut app, Action::ReorderUp);
         assert_eq!(
             app.settings.as_ref().unwrap().account_selected,
             0,
@@ -345,14 +317,11 @@ mod tests {
         let mut app = app_with_settings(&["work"]);
         app.dirs.config = dir.path.clone();
 
-        assert_eq!(
-            feed(&mut app, key(KeyCode::Char('a'))),
-            SettingsOutcome::Stay
-        );
+        apply(&mut app, Action::AccountAdd);
         assert!(app.account_form.is_some());
         app.account_form = None;
 
-        feed(&mut app, key(KeyCode::Char('e')));
+        apply(&mut app, Action::AccountEdit);
         let form =
             app.account_form.as_ref().expect("edit opens a form");
         assert_eq!(form.editing.as_deref(), Some("work"));
@@ -361,12 +330,12 @@ mod tests {
     #[test]
     fn d_asks_for_confirmation_before_removing() {
         let mut app = app_with_settings(&["work"]);
-        feed(&mut app, key(KeyCode::Char('d')));
+        apply(&mut app, Action::DeleteAccount);
         assert_eq!(
             app.settings.as_ref().unwrap().pending_delete.as_deref(),
             Some("work")
         );
-        feed(&mut app, key(KeyCode::Char('n')));
+        feed_confirm_delete(&mut app, key(KeyCode::Char('n')), "work");
         assert!(
             app.settings.as_ref().unwrap().pending_delete.is_none()
         );
@@ -394,8 +363,8 @@ mod tests {
 
         let mut app = app_with_settings(&["work"]);
         app.dirs.config = dir.path.clone();
-        feed(&mut app, key(KeyCode::Char('d')));
-        feed(&mut app, key(KeyCode::Char('y')));
+        apply(&mut app, Action::DeleteAccount);
+        feed_confirm_delete(&mut app, key(KeyCode::Char('y')), "work");
 
         assert!(!accounts_dir.join("work.toml").exists());
         assert!(maildir.exists(), "the mail store is never touched");

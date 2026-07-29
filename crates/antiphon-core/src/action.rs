@@ -56,6 +56,21 @@ pub enum Action {
     ToggleEncrypt,
     SaveDraft,
     Schedule,
+    NextTab,
+    PrevTab,
+    SettingsClose,
+    ReorderDown,
+    ReorderUp,
+    AccountAdd,
+    AccountEdit,
+    DeleteAccount,
+    SignIn,
+    Revoke,
+    SettingCycleNext,
+    SettingCyclePrev,
+    FolderHide,
+    FolderUnsync,
+    EditAlias,
 }
 
 const NAMES: &[(Action, &str)] = &[
@@ -121,6 +136,21 @@ const NAMES: &[(Action, &str)] = &[
     (Action::ToggleEncrypt, "toggle-encrypt"),
     (Action::SaveDraft, "save-draft"),
     (Action::Schedule, "schedule"),
+    (Action::NextTab, "next-tab"),
+    (Action::PrevTab, "prev-tab"),
+    (Action::SettingsClose, "settings-close"),
+    (Action::ReorderDown, "reorder-down"),
+    (Action::ReorderUp, "reorder-up"),
+    (Action::AccountAdd, "account-add"),
+    (Action::AccountEdit, "account-edit"),
+    (Action::DeleteAccount, "delete-account"),
+    (Action::SignIn, "sign-in"),
+    (Action::Revoke, "revoke"),
+    (Action::SettingCycleNext, "setting-next"),
+    (Action::SettingCyclePrev, "setting-prev"),
+    (Action::FolderHide, "folder-hide"),
+    (Action::FolderUnsync, "folder-unsync"),
+    (Action::EditAlias, "edit-alias"),
 ];
 
 impl Action {

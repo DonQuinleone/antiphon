@@ -9,7 +9,6 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use super::app::App;
 use crate::oauthgrants::expiry;
-use crate::tui::settings::SettingsOutcome;
 
 /// A token this close to expiry reads as due for a refresh;
 /// the daemon renews it on its next pass.
@@ -159,14 +158,13 @@ pub(super) fn feed_confirm_revoke(
     app: &mut App,
     key: KeyEvent,
     name: &str,
-) -> SettingsOutcome {
+) {
     if matches!(key.code, KeyCode::Char('y' | 'Y')) {
         perform_revoke(app, name);
     }
     if let Some(state) = app.settings.as_mut() {
         state.pending_revoke = None;
     }
-    SettingsOutcome::Stay
 }
 
 fn perform_revoke(app: &mut App, name: &str) {

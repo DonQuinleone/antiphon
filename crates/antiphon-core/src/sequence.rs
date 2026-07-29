@@ -63,6 +63,7 @@ const NAMED_KEYS: &[(&str, KeyCode)] = &[
     ("backspace", KeyCode::Backspace),
     ("esc", KeyCode::Esc),
     ("tab", KeyCode::Tab),
+    ("backtab", KeyCode::BackTab),
     ("space", KeyCode::Char(' ')),
     ("up", KeyCode::Up),
     ("down", KeyCode::Down),

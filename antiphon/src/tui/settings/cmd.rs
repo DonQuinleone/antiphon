@@ -1,9 +1,9 @@
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use antiphon_core::Action;
 
 use crate::tui::app::App;
 use crate::tui::configedit::persist_key;
 use crate::tui::settings::cmd_rows::*;
-use crate::tui::settings::{SettingsOutcome, wrapped};
+use crate::tui::settings::wrapped;
 
 const ON_OFF: [&str; 2] = ["off", "on"];
 const ACCOUNTS_BAR_OPTIONS: [&str; 2] = ["sidebar", "tabs"];
@@ -134,21 +134,14 @@ pub(super) const ESSENTIAL_ROWS: [EssentialRow; 10] = [
 
 /// Keys on the Essentials tab: j/k select a row, h/l (or
 /// enter) cycle its value and persist it.
-pub(super) fn feed(app: &mut App, key: KeyEvent) -> SettingsOutcome {
-    match key.code {
-        KeyCode::Char('j') | KeyCode::Down => {
-            move_essentials_selection(app, 1)
-        }
-        KeyCode::Char('k') | KeyCode::Up => {
-            move_essentials_selection(app, -1)
-        }
-        KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
-            cycle_essential(app, 1)
-        }
-        KeyCode::Char('h') | KeyCode::Left => cycle_essential(app, -1),
+pub(super) fn apply(app: &mut App, action: Action) {
+    match action {
+        Action::MoveDown => move_essentials_selection(app, 1),
+        Action::MoveUp => move_essentials_selection(app, -1),
+        Action::SettingCycleNext => cycle_essential(app, 1),
+        Action::SettingCyclePrev => cycle_essential(app, -1),
         _ => {}
     }
-    SettingsOutcome::Stay
 }
 
 fn move_essentials_selection(app: &mut App, step: i32) {
@@ -201,13 +194,6 @@ mod tests {
     use crate::tui::settings::cmd::*;
     use crate::tui::testkit::{app_with_messages, app_with_settings};
 
-    fn key(code: KeyCode) -> KeyEvent {
-        KeyEvent::new(
-            code,
-            ratatui::crossterm::event::KeyModifiers::NONE,
-        )
-    }
-
     #[test]
     fn essentials_selection_cycles_a_row_and_persists() {
         use crate::tui::testkit::TempDir;
@@ -223,9 +209,9 @@ mod tests {
             .expect("a list rows row");
         let before = app.list_rows;
         for _ in 0..target {
-            feed(&mut app, key(KeyCode::Char('j')));
+            apply(&mut app, Action::MoveDown);
         }
-        feed(&mut app, key(KeyCode::Char('l')));
+        apply(&mut app, Action::SettingCycleNext);
         assert_ne!(app.list_rows, before);
         let text = std::fs::read_to_string(&app.config_path).unwrap();
         assert!(
@@ -242,13 +228,13 @@ mod tests {
         app.config_path = dir.path.join("config.toml");
         app.settings.as_mut().unwrap().tab = SettingsTab::Essentials;
 
-        feed(&mut app, key(KeyCode::Char('l')));
+        apply(&mut app, Action::SettingCycleNext);
         assert!(app.settings.as_ref().unwrap().daemon_hint.is_none());
 
         for _ in 0..2 {
-            feed(&mut app, key(KeyCode::Char('j')));
+            apply(&mut app, Action::MoveDown);
         }
-        feed(&mut app, key(KeyCode::Char('l')));
+        apply(&mut app, Action::SettingCycleNext);
         assert!(app.settings.as_ref().unwrap().daemon_hint.is_some());
     }
 

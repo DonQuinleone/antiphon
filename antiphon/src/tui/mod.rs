@@ -280,7 +280,9 @@ fn event_loop(
                 layout,
                 key,
             )?,
-            KeyRoute::Settings => input::settings_key(app, key),
+            KeyRoute::Settings => {
+                input::settings_key(app, &mut keymap, key)
+            }
             KeyRoute::Prompt => {
                 input::prompt_key(app, layout, key);
                 let mut request =

@@ -103,10 +103,6 @@ fn app_on_folders_tab(dir: &TempDir) -> App {
     app
 }
 
-fn key(code: KeyCode) -> KeyEvent {
-    KeyEvent::new(code, ratatui::crossterm::event::KeyModifiers::NONE)
-}
-
 fn folder_names(app: &App) -> Vec<String> {
     app.settings
         .as_ref()
@@ -126,7 +122,7 @@ fn shift_j_reorders_and_persists_the_whole_account_order() {
         ["inbox", "archive", "lists/aerc", "spam"]
     );
 
-    feed(&mut app, key(KeyCode::Char('J')));
+    apply(&mut app, Action::ReorderDown);
     assert_eq!(
         folder_names(&app),
         ["archive", "inbox", "lists/aerc", "spam"]
@@ -148,12 +144,12 @@ fn shift_j_reorders_and_persists_the_whole_account_order() {
     );
     assert!(text.contains("[account]"), "the rest survives");
 
-    feed(&mut app, key(KeyCode::Char('K')));
+    apply(&mut app, Action::ReorderUp);
     assert_eq!(
         folder_names(&app),
         ["inbox", "archive", "lists/aerc", "spam"]
     );
-    feed(&mut app, key(KeyCode::Char('K')));
+    apply(&mut app, Action::ReorderUp);
     assert_eq!(
         folder_names(&app),
         ["inbox", "archive", "lists/aerc", "spam"],
@@ -167,7 +163,7 @@ fn h_hides_a_folder_from_the_sidebar_and_back() {
     let mut app = app_on_folders_tab(&dir);
     app.settings.as_mut().unwrap().folder_selected = 3;
 
-    feed(&mut app, key(KeyCode::Char('h')));
+    apply(&mut app, Action::FolderHide);
     let state = app.settings.as_ref().unwrap();
     assert!(state.folders[3].hidden, "the row stays, marked");
     assert!(
@@ -181,7 +177,7 @@ fn h_hides_a_folder_from_the_sidebar_and_back() {
             .unwrap();
     assert!(text.contains("folders_hidden = [\"spam\"]"), "{text}");
 
-    feed(&mut app, key(KeyCode::Char('h')));
+    apply(&mut app, Action::FolderHide);
     assert!(!app.settings.as_ref().unwrap().folders[3].hidden);
     assert!(
         app.sidebar_entries
@@ -200,7 +196,7 @@ fn u_unsyncs_a_folder_and_drops_it_from_the_sidebar() {
     let mut app = app_on_folders_tab(&dir);
     app.settings.as_mut().unwrap().folder_selected = 3;
 
-    feed(&mut app, key(KeyCode::Char('u')));
+    apply(&mut app, Action::FolderUnsync);
     let state = app.settings.as_ref().unwrap();
     assert!(state.folders[3].unsynced, "the row stays, marked");
     assert!(
@@ -214,7 +210,7 @@ fn u_unsyncs_a_folder_and_drops_it_from_the_sidebar() {
             .unwrap();
     assert!(text.contains("folders_unsynced = [\"spam\"]"), "{text}");
 
-    feed(&mut app, key(KeyCode::Char('u')));
+    apply(&mut app, Action::FolderUnsync);
     assert!(!app.settings.as_ref().unwrap().folders[3].unsynced);
     let text =
         std::fs::read_to_string(dir.path.join("accounts/work.toml"))
@@ -229,7 +225,7 @@ fn the_inbox_can_never_be_unsynced() {
     app.settings.as_mut().unwrap().folder_selected = 0;
     assert_eq!(folder_names(&app)[0], "inbox");
 
-    feed(&mut app, key(KeyCode::Char('u')));
+    apply(&mut app, Action::FolderUnsync);
     assert!(!app.settings.as_ref().unwrap().folders[0].unsynced);
     assert_eq!(
         app.notice.as_deref(),
@@ -252,8 +248,8 @@ fn unsync_and_hide_are_independent_per_row() {
     let mut app = app_on_folders_tab(&dir);
     app.settings.as_mut().unwrap().folder_selected = 3;
 
-    feed(&mut app, key(KeyCode::Char('h')));
-    feed(&mut app, key(KeyCode::Char('u')));
+    apply(&mut app, Action::FolderHide);
+    apply(&mut app, Action::FolderUnsync);
     let state = app.settings.as_ref().unwrap();
     assert!(state.folders[3].hidden, "hide stays set");
     assert!(state.folders[3].unsynced, "unsync stacks on top");
