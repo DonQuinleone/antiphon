@@ -166,7 +166,7 @@ impl App {
         self.switch_scope(step(&self.scope, &self.accounts));
     }
 
-    fn sidebar_open(&mut self) {
+    pub(super) fn sidebar_open(&mut self) {
         self.thread_return = None;
         let Some(entry) =
             self.sidebar_entries.get(self.sidebar_selected)

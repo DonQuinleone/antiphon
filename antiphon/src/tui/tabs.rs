@@ -7,6 +7,7 @@ use antiphon_config::AccountsBar;
 
 use super::app::App;
 use super::scope::ViewScope;
+use super::sidebar::{self, SidebarEntry};
 
 impl App {
     /// g1..g9 jump straight to that account's scope; a number
@@ -24,14 +25,46 @@ impl App {
         self.switch_scope(ViewScope::Unified);
     }
 
-    /// The one path every scope change takes: the current
-    /// query re-runs under the new scope, and in tabs mode
-    /// the sidebar follows the active tab.
+    /// The one path every scope change takes. Switching to an
+    /// account opens that account's inbox, so a jump lands in the
+    /// mail rather than re-running the previous query under the
+    /// new scope; the unified tab keeps the current query.
     pub(super) fn switch_scope(&mut self, scope: ViewScope) {
-        self.scope = scope;
         self.thread_return = None;
-        self.requery = true;
+        self.scope = scope;
         self.sync_tab_sidebar();
+        let account = match &self.scope {
+            ViewScope::Account(account) => Some(account.clone()),
+            ViewScope::Unified => None,
+        };
+        match account {
+            Some(account) if self.select_account_inbox(&account) => {
+                self.sidebar_open();
+            }
+            _ => self.requery = true,
+        }
+    }
+
+    /// Points the sidebar highlight at the account's inbox entry,
+    /// so `sidebar_open` opens it. False when the account has no
+    /// inbox row yet (never synced), leaving the caller to fall
+    /// back to a plain requery.
+    fn select_account_inbox(&mut self, account: &str) -> bool {
+        let found = self.sidebar_entries.iter().position(|entry| {
+            matches!(
+                entry,
+                SidebarEntry::Folder { account: acc, name, .. }
+                    if acc.as_str() == account
+                        && name.as_str() == sidebar::INBOX_LABEL
+            )
+        });
+        match found {
+            Some(index) => {
+                self.sidebar_selected = index;
+                true
+            }
+            None => false,
+        }
     }
 
     /// In tabs mode the sidebar lists only the active
@@ -66,6 +99,29 @@ mod tests {
             .iter()
             .map(|entry| entry.label().to_string())
             .collect()
+    }
+
+    #[test]
+    fn switching_to_an_account_opens_its_inbox() {
+        let mut app = tabbed_app();
+        app.active_search = Some("unread".to_string());
+        app.apply(Action::AccountTab(2));
+        assert_eq!(app.scope, ViewScope::Account("b".into()));
+        let selected = &app.sidebar_entries[app.sidebar_selected];
+        assert!(
+            matches!(
+                selected,
+                SidebarEntry::Folder { account, name, .. }
+                    if account == "b" && name == super::sidebar::INBOX_LABEL
+            ),
+            "the switch lands the highlight on account b's inbox",
+        );
+        assert_eq!(
+            app.active_search.as_deref(),
+            Some("inbox"),
+            "and opens it rather than keeping the prior search",
+        );
+        assert!(app.take_requery());
     }
 
     #[test]
