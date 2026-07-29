@@ -6,6 +6,11 @@
 //! material is ever written to disk in the clear and the vault
 //! cannot open without the key in hand.
 //!
+//! More than one key can enrol: each seals the same passphrase
+//! under its own secret, so a primary and a backup both unlock
+//! independently. Unlock tries each enrolment until the key in
+//! the slot opens one.
+//!
 //! The recovered passphrase then mounts the vault through the
 //! ordinary passphrase path, exactly as Touch ID does, so no
 //! FIDO2 logic reaches the backends. Every failure (no device,
@@ -25,14 +30,18 @@ use crate::vault::VaultError;
 /// since the credential never leaves this host.
 const RPID: &str = "antiphon.vault";
 const KEYFILE_NAME: &str = "yubikey.enrol";
-const MAGIC: &[u8; 4] = b"AVY1";
+/// The original single-key file; still read so a keyfile written
+/// before backup keys keeps unlocking.
+const MAGIC_V1: &[u8; 4] = b"AVY1";
+/// The multi-key file: a count then that many enrolments.
+const MAGIC_V2: &[u8; 4] = b"AVY2";
 const SALT_LEN: usize = 32;
 const NONCE_LEN: usize = 12;
 const CHALLENGE_LEN: usize = 32;
 
-/// The persisted enrolment: the credential to assert against,
-/// the salt fed to hmac-secret, and the passphrase sealed under
-/// the secret that pair yields.
+/// One key's enrolment: the credential to assert against, the
+/// salt fed to hmac-secret, and the passphrase sealed under the
+/// secret that pair yields.
 struct Enrolment {
     credential_id: Vec<u8>,
     salt: [u8; SALT_LEN],
@@ -40,15 +49,52 @@ struct Enrolment {
     ciphertext: Vec<u8>,
 }
 
-/// Enrol: create an hmac-secret credential, seal the vault
-/// passphrase under the secret it derives for a fresh salt, and
-/// write the enrolment. Both device steps need a touch; the PIN
+/// Enrol a key: seal the vault passphrase under a fresh
+/// hmac-secret credential and add it to any keys already
+/// enrolled, so a second call registers a backup rather than
+/// replacing the first. Both device steps need a touch; the PIN
 /// authorises them. Off the unlock hot path.
 pub fn enrol(
     dir: &Path,
     secret: &SecretString,
     pin: &SecretString,
 ) -> Result<(), VaultError> {
+    let entry = make_entry(secret, pin)?;
+    let mut entries = load_entries(dir);
+    entries.push(entry);
+    std::fs::create_dir_all(dir).map_err(VaultError::Io)?;
+    std::fs::write(keyfile(dir), encode_all(&entries))
+        .map_err(VaultError::Io)
+}
+
+/// Unlock: try each enrolment in turn, re-deriving its secret
+/// with a touch and opening its sealed passphrase. A key that is
+/// not the enrolled one asserts nothing, so that entry errors and
+/// the next is tried; the key in the slot opens its own.
+pub fn read_passphrase(
+    dir: &Path,
+    pin: &SecretString,
+) -> Result<SecretString, VaultError> {
+    let bytes = std::fs::read(keyfile(dir)).map_err(VaultError::Io)?;
+    let entries = decode_all(&bytes)?;
+    let mut last: Option<VaultError> = None;
+    for entry in &entries {
+        match open_entry(entry, pin.expose_secret()) {
+            Ok(secret) => return Ok(secret),
+            Err(error) => last = Some(error),
+        }
+    }
+    Err(last.unwrap_or_else(|| {
+        VaultError::Fido2("the enrolment holds no keys".to_owned())
+    }))
+}
+
+/// Register a fresh credential and seal the passphrase under the
+/// secret it derives, for one key.
+fn make_entry(
+    secret: &SecretString,
+    pin: &SecretString,
+) -> Result<Enrolment, VaultError> {
     let credential_id = make_credential(pin.expose_secret())?;
     let mut salt = [0u8; SALT_LEN];
     OsRng.fill_bytes(&mut salt);
@@ -56,40 +102,37 @@ pub fn enrol(
     let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng);
     let ciphertext =
         seal(&key, &nonce, secret.expose_secret().as_bytes())?;
-    let enrolment = Enrolment {
+    Ok(Enrolment {
         credential_id,
         salt,
         nonce: nonce.into(),
         ciphertext,
-    };
-    std::fs::create_dir_all(dir).map_err(VaultError::Io)?;
-    std::fs::write(keyfile(dir), encode(&enrolment))
-        .map_err(VaultError::Io)
+    })
 }
 
-/// Unlock: read the enrolment, re-derive the secret with a touch,
-/// and open the sealed passphrase. A wrong key derives a
-/// different secret, so the open fails rather than yielding a
-/// bad passphrase.
-pub fn read_passphrase(
-    dir: &Path,
-    pin: &SecretString,
+/// Re-derive one enrolment's secret with a touch and open its
+/// sealed passphrase.
+fn open_entry(
+    entry: &Enrolment,
+    pin: &str,
 ) -> Result<SecretString, VaultError> {
-    let bytes = std::fs::read(keyfile(dir)).map_err(VaultError::Io)?;
-    let enrolment = decode(&bytes)?;
-    let key = hmac_secret(
-        &enrolment.credential_id,
-        &enrolment.salt,
-        pin.expose_secret(),
-    )?;
-    let plaintext =
-        open(&key, &enrolment.nonce, &enrolment.ciphertext)?;
+    let key = hmac_secret(&entry.credential_id, &entry.salt, pin)?;
+    let plaintext = open(&key, &entry.nonce, &entry.ciphertext)?;
     let text = String::from_utf8(plaintext).map_err(|_| {
         VaultError::Fido2(
             "the recovered passphrase is not valid UTF-8".to_owned(),
         )
     })?;
     Ok(SecretString::from(text))
+}
+
+/// The enrolments already on disk, empty when the file is absent
+/// or unreadable, so enrol adds to what is there.
+fn load_entries(dir: &Path) -> Vec<Enrolment> {
+    std::fs::read(keyfile(dir))
+        .ok()
+        .and_then(|bytes| decode_all(&bytes).ok())
+        .unwrap_or_default()
 }
 
 fn keyfile(dir: &Path) -> PathBuf {
@@ -125,31 +168,67 @@ fn open(
         })
 }
 
-fn encode(enrolment: &Enrolment) -> Vec<u8> {
+fn encode_all(entries: &[Enrolment]) -> Vec<u8> {
     let mut out = Vec::new();
-    out.extend_from_slice(MAGIC);
-    out.extend_from_slice(&enrolment.salt);
-    out.extend_from_slice(&enrolment.nonce);
-    let len = enrolment.credential_id.len() as u16;
-    out.extend_from_slice(&len.to_be_bytes());
-    out.extend_from_slice(&enrolment.credential_id);
-    out.extend_from_slice(&enrolment.ciphertext);
+    out.extend_from_slice(MAGIC_V2);
+    out.extend_from_slice(&(entries.len() as u16).to_be_bytes());
+    for entry in entries {
+        out.extend_from_slice(&entry.salt);
+        out.extend_from_slice(&entry.nonce);
+        push_field(&mut out, &entry.credential_id);
+        push_field(&mut out, &entry.ciphertext);
+    }
     out
 }
 
-fn decode(bytes: &[u8]) -> Result<Enrolment, VaultError> {
+/// A length-prefixed byte field: a 4-byte big-endian length then
+/// the bytes, so variable-length fields pack unambiguously.
+fn push_field(out: &mut Vec<u8>, field: &[u8]) {
+    out.extend_from_slice(&(field.len() as u32).to_be_bytes());
+    out.extend_from_slice(field);
+}
+
+fn decode_all(bytes: &[u8]) -> Result<Vec<Enrolment>, VaultError> {
     let mut cursor = bytes;
-    if take(&mut cursor, MAGIC.len())? != MAGIC {
+    let magic = take(&mut cursor, MAGIC_V2.len())?;
+    if magic == MAGIC_V1 {
+        return Ok(vec![decode_v1(cursor)?]);
+    }
+    if magic != MAGIC_V2 {
         return Err(corrupt("not a YubiKey enrolment"));
     }
+    let count = u16::from_be_bytes(
+        take(&mut cursor, 2)?.try_into().expect("checked length"),
+    );
+    let mut entries = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        entries.push(Enrolment {
+            salt: take(&mut cursor, SALT_LEN)?
+                .try_into()
+                .expect("checked length"),
+            nonce: take(&mut cursor, NONCE_LEN)?
+                .try_into()
+                .expect("checked length"),
+            credential_id: take_field(&mut cursor)?,
+            ciphertext: take_field(&mut cursor)?,
+        });
+    }
+    Ok(entries)
+}
+
+/// The pre-backup single-key body (magic already consumed): salt,
+/// nonce, a 2-byte-prefixed credential, then the ciphertext to
+/// the end.
+fn decode_v1(mut cursor: &[u8]) -> Result<Enrolment, VaultError> {
     let salt = take(&mut cursor, SALT_LEN)?
         .try_into()
         .expect("checked length");
     let nonce = take(&mut cursor, NONCE_LEN)?
         .try_into()
         .expect("checked length");
-    let len_bytes = take(&mut cursor, 2)?;
-    let len = u16::from_be_bytes([len_bytes[0], len_bytes[1]]) as usize;
+    let len = u16::from_be_bytes(
+        take(&mut cursor, 2)?.try_into().expect("checked length"),
+    ) as usize;
     let credential_id = take(&mut cursor, len)?.to_vec();
     if cursor.is_empty() {
         return Err(corrupt("missing ciphertext"));
@@ -172,6 +251,13 @@ fn take<'a>(
     let (head, tail) = cursor.split_at(n);
     *cursor = tail;
     Ok(head)
+}
+
+fn take_field(cursor: &mut &[u8]) -> Result<Vec<u8>, VaultError> {
+    let len = u32::from_be_bytes(
+        take(cursor, 4)?.try_into().expect("checked length"),
+    ) as usize;
+    Ok(take(cursor, len)?.to_vec())
 }
 
 fn corrupt(what: &str) -> VaultError {
@@ -260,6 +346,15 @@ mod tests {
         }
     }
 
+    fn other() -> Enrolment {
+        Enrolment {
+            credential_id: vec![9, 9],
+            salt: [1u8; SALT_LEN],
+            nonce: [2u8; NONCE_LEN],
+            ciphertext: vec![3, 4, 5, 6, 7, 8],
+        }
+    }
+
     #[test]
     fn seal_then_open_round_trips_under_the_same_key() {
         let key = [42u8; 32];
@@ -281,37 +376,63 @@ mod tests {
     }
 
     #[test]
-    fn encode_then_decode_preserves_every_field() {
-        let original = sample();
-        let decoded = decode(&encode(&original)).unwrap();
-        assert_eq!(decoded.credential_id, original.credential_id);
-        assert_eq!(decoded.salt, original.salt);
-        assert_eq!(decoded.nonce, original.nonce);
-        assert_eq!(decoded.ciphertext, original.ciphertext);
+    fn encode_then_decode_round_trips_every_entry() {
+        let entries = vec![sample(), other()];
+        let decoded = decode_all(&encode_all(&entries)).unwrap();
+        assert_eq!(decoded.len(), 2);
+        assert_eq!(decoded[0].credential_id, sample().credential_id);
+        assert_eq!(decoded[0].nonce, sample().nonce);
+        assert_eq!(decoded[1].salt, other().salt);
+        assert_eq!(decoded[1].ciphertext, other().ciphertext);
+    }
+
+    #[test]
+    fn decode_reads_an_old_single_key_file() {
+        // The pre-backup format: magic, salt, nonce, a 2-byte
+        // credential length, the credential, then the ciphertext
+        // to the end.
+        let mut v1 = Vec::new();
+        v1.extend_from_slice(MAGIC_V1);
+        v1.extend_from_slice(&[7u8; SALT_LEN]);
+        v1.extend_from_slice(&[9u8; NONCE_LEN]);
+        v1.extend_from_slice(&5u16.to_be_bytes());
+        v1.extend_from_slice(&[1, 2, 3, 4, 5]);
+        v1.extend_from_slice(&[10, 11, 12]);
+        let decoded = decode_all(&v1).unwrap();
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(decoded[0].credential_id, vec![1, 2, 3, 4, 5]);
+        assert_eq!(decoded[0].ciphertext, vec![10, 11, 12]);
     }
 
     #[test]
     fn decode_rejects_a_bad_magic() {
-        let mut bytes = encode(&sample());
+        let mut bytes = encode_all(&[sample()]);
         bytes[0] = b'X';
-        assert!(matches!(decode(&bytes), Err(VaultError::Fido2(_))));
-    }
-
-    #[test]
-    fn decode_rejects_a_truncated_file() {
-        let bytes = encode(&sample());
         assert!(matches!(
-            decode(&bytes[..10]),
+            decode_all(&bytes),
             Err(VaultError::Fido2(_))
         ));
     }
 
     #[test]
-    fn decode_rejects_a_missing_ciphertext() {
-        let mut enrolment = sample();
-        enrolment.ciphertext.clear();
+    fn decode_rejects_a_truncated_file() {
+        let bytes = encode_all(&[sample()]);
         assert!(matches!(
-            decode(&encode(&enrolment)),
+            decode_all(&bytes[..10]),
+            Err(VaultError::Fido2(_))
+        ));
+    }
+
+    #[test]
+    fn decode_rejects_a_field_running_past_the_end() {
+        let mut bytes = encode_all(&[sample()]);
+        // Overstate the final ciphertext field's length so it
+        // claims more bytes than remain.
+        let ct_len_at = bytes.len() - sample().ciphertext.len() - 4;
+        bytes[ct_len_at..ct_len_at + 4]
+            .copy_from_slice(&9999u32.to_be_bytes());
+        assert!(matches!(
+            decode_all(&bytes),
             Err(VaultError::Fido2(_))
         ));
     }
