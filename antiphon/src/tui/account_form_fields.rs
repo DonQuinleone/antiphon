@@ -32,6 +32,7 @@ pub(super) const TYPE_OPTIONS: [&str; 3] =
     ["IMAP", "Microsoft 365", "Google"];
 const GRAPH_SEND_OPTIONS: [&str; 2] = ["off", "on"];
 const GRAPH_AUTH_OPTIONS: [&str; 2] = ["delegated", "app-only"];
+const PASSWORD_MODE_OPTIONS: [&str; 2] = ["command", "keychain"];
 
 pub(super) const ON_OFF_OPTIONS: [&str; 2] = ["off", "on"];
 
@@ -81,6 +82,7 @@ pub(super) enum Field {
     GraphAuth,
     Tenant,
     GraphSecretCmd,
+    PasswordMode,
     PasswordCmd,
     KeychainSecret,
 }
@@ -194,10 +196,27 @@ pub(super) const FIELDS: &[FieldSpec] = &[
         "graph secret command",
         graph_secret_cmd
     ),
+    FieldSpec {
+        field: Field::PasswordMode,
+        label: "password",
+        masked: false,
+        get: |state| {
+            if state.keychain {
+                "keychain"
+            } else {
+                "command"
+            }
+        },
+        access: Access::Cycle(|state, _| {
+            state.keychain = !state.keychain
+        }),
+        segments: Some(&PASSWORD_MODE_OPTIONS),
+        selected: |state| usize::from(state.keychain),
+    },
     field!(Field::PasswordCmd, "password command", password_cmd),
     FieldSpec {
         field: Field::KeychainSecret,
-        label: "password (stored in Keychain)",
+        label: "keychain password",
         masked: true,
         get: |state| &state.keychain_secret,
         access: Access::Edit(|state| &mut state.keychain_secret),
@@ -291,9 +310,6 @@ fn cycle_graph_auth(state: &mut AccountFormState, _step: i32) {
         GraphAuth::AppOnly => GraphAuth::Delegated,
     };
 }
-
-pub(super) const PASSWORD_HINT: &str =
-    "empty = use the Keychain field below";
 
 pub(super) const CLIENT_ID_MS_HINT: &str = "blank for Thunderbird's";
 

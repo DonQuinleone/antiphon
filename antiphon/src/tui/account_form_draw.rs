@@ -8,7 +8,7 @@ use super::account_form::AccountFormState;
 use antiphon_config::OauthProvider;
 
 use super::account_form_fields::{
-    CLIENT_ID_MS_HINT, FROM_ADDRESS_HINT, Field, PASSWORD_HINT,
+    CLIENT_ID_MS_HINT, FROM_ADDRESS_HINT, Field,
 };
 use super::account_form_identity;
 use super::app::App;
@@ -150,12 +150,6 @@ fn segment_spans(
 
 fn field_hint(form: &AccountFormState, index: usize) -> Option<String> {
     match form.field_id(index) {
-        Field::PasswordCmd
-            if cfg!(target_os = "macos")
-                && form.field_value(index).is_empty() =>
-        {
-            Some(PASSWORD_HINT.to_string())
-        }
         Field::ClientId
             if form.provider() == Some(OauthProvider::Microsoft)
                 && form.field_value(index).is_empty() =>

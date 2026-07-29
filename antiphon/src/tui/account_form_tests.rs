@@ -53,6 +53,7 @@ fn the_field_table_round_trips_every_answer() {
             answers.smtp_host.as_str(),
             answers.password_cmd.as_str(),
             "IMAP",
+            "command", // the password-mode toggle (macOS)
             "",
         ]
         .contains(&value);

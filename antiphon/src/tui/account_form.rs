@@ -27,6 +27,9 @@ pub(super) struct AccountFormState {
     pub(super) smtp_host: String,
     pub(super) password_cmd: String,
     pub(super) keychain_secret: String,
+    /// macOS only: false picks the password command, true the
+    /// Keychain-stored secret, so only the chosen field shows.
+    pub(super) keychain: bool,
     pub(super) client_id: String,
     pub(super) graph_send: bool,
     pub(super) graph_auth: GraphAuth,
@@ -126,15 +129,24 @@ impl AccountFormState {
                     && self.graph_send
                     && self.graph_auth == GraphAuth::AppOnly
             }
-            Field::ImapHost
-            | Field::ImapUser
-            | Field::SmtpHost
-            | Field::PasswordCmd => {
+            Field::ImapHost | Field::ImapUser | Field::SmtpHost => {
                 self.account_type == AccountType::Imap
+            }
+            // The Keychain is macOS only, so the mode toggle shows
+            // there and picks between the two password fields;
+            // elsewhere the command is the only way in.
+            Field::PasswordMode => {
+                self.account_type == AccountType::Imap
+                    && cfg!(target_os = "macos")
+            }
+            Field::PasswordCmd => {
+                self.account_type == AccountType::Imap
+                    && !(cfg!(target_os = "macos") && self.keychain)
             }
             Field::KeychainSecret => {
                 self.account_type == AccountType::Imap
                     && cfg!(target_os = "macos")
+                    && self.keychain
             }
             _ => true,
         }

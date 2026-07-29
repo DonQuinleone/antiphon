@@ -164,31 +164,31 @@ fn servers(
 }
 
 /// An OAuth account signs in with a grant, so no password is
-/// asked for or written. Otherwise a typed password command
-/// wins outright; failing that, on macOS, the masked field's
-/// secret is stored in the Keychain and its lookup command
-/// takes the empty field's place.
+/// asked for or written. Otherwise the password-mode toggle
+/// decides: command mode wants a lookup command, Keychain mode
+/// (macOS) stores the typed secret and writes its lookup command
+/// in its place.
 fn resolve_password_cmd(
     form: &AccountFormState,
 ) -> Result<String, String> {
     if form.provider().is_some() {
         return Ok(String::new());
     }
-    let typed = form.password_cmd.trim();
-    if !typed.is_empty() {
+    if !(cfg!(target_os = "macos") && form.keychain) {
+        let typed = form.password_cmd.trim();
+        if typed.is_empty() {
+            return Err(
+                "give a password command, e.g. pass show mail/name"
+                    .to_string(),
+            );
+        }
         return Ok(typed.to_string());
-    }
-    if !cfg!(target_os = "macos") {
-        return Err(
-            "give a password command, e.g. pass show mail/name"
-                .to_string(),
-        );
     }
     let secret = form.keychain_secret.trim();
     if secret.is_empty() {
-        return Err("type the password into the Keychain field, \
-                    or give a password command above"
-            .to_string());
+        return Err(
+            "type the password to store in the Keychain".to_string()
+        );
     }
     account_wizard::store_supplied_secret(
         form.name.trim(),
