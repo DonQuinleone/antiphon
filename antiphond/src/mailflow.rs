@@ -16,6 +16,25 @@ use crate::tokens;
 pub(crate) type SharedAccounts =
     std::sync::Arc<std::sync::Mutex<AccountSet>>;
 
+/// How many accounts one pass syncs at once. A slow or large
+/// account then holds only its own worker; the rest keep
+/// syncing. Each account opens its own IMAP connections, so this
+/// bounds the daemon's concurrent connection fan-out across
+/// accounts (multiplied, per account, by the engine's own
+/// per-folder connection bound).
+const MAX_CONCURRENT_SYNC_JOBS: usize = 4;
+
+enum AccountJob<'a> {
+    Plain(&'a SyncAccount),
+    Oauth(&'a OauthAccount),
+}
+
+fn account_jobs(set: &AccountSet) -> Vec<AccountJob<'_>> {
+    let plain = set.accounts.iter().map(AccountJob::Plain);
+    let oauth = set.oauth.iter().map(AccountJob::Oauth);
+    plain.chain(oauth).collect()
+}
+
 pub(crate) struct Mailflow {
     pub(crate) layout: StoreLayout,
     pub(crate) set: SharedAccounts,
@@ -39,14 +58,30 @@ impl Mailflow {
     }
 
     fn sync_all(&self, set: &AccountSet, announce: bool) {
-        for account in &set.accounts {
-            self.sync_one(set, account, announce);
-        }
-        for spec in &set.oauth {
-            self.sync_oauth(set, spec, announce);
-        }
+        let jobs = account_jobs(set);
+        crate::pool::run_bounded(
+            &jobs,
+            MAX_CONCURRENT_SYNC_JOBS,
+            |job| self.sync_job(set, job, announce),
+        );
         write_progress(&self.layout, &SyncProgress::idle());
         lock_state(&self.state).last_sync_unix = Some(now_unix());
+    }
+
+    fn sync_job(
+        &self,
+        set: &AccountSet,
+        job: &AccountJob<'_>,
+        announce: bool,
+    ) {
+        match job {
+            AccountJob::Plain(account) => {
+                self.sync_one(set, account, announce)
+            }
+            AccountJob::Oauth(spec) => {
+                self.sync_oauth(set, spec, announce)
+            }
+        }
     }
 
     fn sync_one(
@@ -293,9 +328,68 @@ pub(crate) fn now_unix() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use antiphon_sync::DeliveryRule;
+    use antiphon_sync::{Auth, DeliveryRule};
 
     use super::*;
+
+    fn plain(name: &str) -> SyncAccount {
+        SyncAccount {
+            name: name.to_owned(),
+            host: "imap.example.com".to_owned(),
+            port: 993,
+            user: "quin@example.com".to_owned(),
+            auth: Auth::Password("never-used".to_owned()),
+            excluded_folders: Vec::new(),
+        }
+    }
+
+    fn oauth(name: &str) -> OauthAccount {
+        OauthAccount {
+            name: name.to_owned(),
+            user: "quin@example.com".to_owned(),
+            imap_host: "imap.example.com".to_owned(),
+            imap_port: 993,
+            smtp: None,
+            graph: None,
+            excluded_folders: Vec::new(),
+        }
+    }
+
+    fn set_with(
+        accounts: Vec<SyncAccount>,
+        oauth: Vec<OauthAccount>,
+    ) -> AccountSet {
+        AccountSet {
+            accounts,
+            oauth,
+            smtp: Vec::new(),
+            rules: Vec::new(),
+            notify: crate::notify::NotifyPrefs::default(),
+        }
+    }
+
+    #[test]
+    fn account_jobs_cover_every_plain_and_oauth_account() {
+        let set = set_with(
+            vec![plain("home"), plain("work")],
+            vec![oauth("cloud")],
+        );
+        let jobs = account_jobs(&set);
+        assert_eq!(jobs.len(), 3);
+        let names: Vec<&str> = jobs
+            .iter()
+            .map(|job| match job {
+                AccountJob::Plain(account) => account.name.as_str(),
+                AccountJob::Oauth(spec) => spec.name.as_str(),
+            })
+            .collect();
+        assert_eq!(names, ["home", "work", "cloud"]);
+    }
+
+    #[test]
+    fn no_accounts_means_no_jobs() {
+        assert!(account_jobs(&set_with(Vec::new(), Vec::new())).is_empty());
+    }
 
     #[test]
     fn rules_lookup_picks_only_the_named_account() {

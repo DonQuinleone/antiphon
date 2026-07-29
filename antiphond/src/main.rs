@@ -6,6 +6,7 @@ mod idle;
 mod ipc;
 mod mailflow;
 mod notify;
+mod pool;
 mod sending;
 mod tokens;
 mod unsubscribe;

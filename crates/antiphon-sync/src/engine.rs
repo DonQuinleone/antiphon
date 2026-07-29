@@ -1,15 +1,17 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::mpsc;
+use std::sync::Mutex;
 
 use antiphon_store::StoreLayout;
 
 use crate::auth::Auth;
 use crate::error::SyncError;
 use crate::folders::{excluded, folder_subdir};
+use crate::indexer::{IndexNudge, Indexer};
 use crate::maildir::MaildirFolder;
+use crate::notmuch::run_notmuch_new;
+use crate::pool;
 use crate::progress::{SyncProgress, write_progress};
 use crate::reconcile::{now_unix, remove_vanished, sweep_due};
 use crate::report::{FolderReport, SyncReport};
@@ -23,6 +25,12 @@ const STATE_FILE_EXTENSION: &str = "state";
 /// let the indexer make mail visible while later batches are
 /// still downloading.
 const FETCH_BATCH: usize = 200;
+/// How many IMAP connections one account opens to fetch its
+/// folders at once. A large folder then occupies one connection
+/// while the others drain the queue, so it no longer blocks the
+/// account's remaining folders. Kept well below the per-account
+/// connection limits mail servers enforce.
+const MAX_CONCURRENT_FOLDER_FETCHES: usize = 3;
 
 #[derive(Clone, Debug)]
 pub struct SyncAccount {
@@ -51,94 +59,100 @@ pub fn sync(
     account: &SyncAccount,
     layout: &StoreLayout,
 ) -> Result<SyncReport, SyncError> {
-    let mut session = ImapSession::connect(account)?;
-    let folders = session
-        .list_selectable()
-        .map_err(SyncError::imap("listing folders"))?;
     let state_path = state_path(layout, account);
     ensure_dir(state_path.parent().unwrap_or(layout.root()))?;
-    let mut state = AccountState::load(&state_path)?;
-    let mut report = SyncReport::default();
+    let state = Mutex::new(AccountState::load(&state_path)?);
     let indexer = Indexer::start(layout, &account.name);
-    // One failing folder must not abort the rest: record it
-    // and carry on, so a folder the server mishandles costs
-    // only itself. Saving state still aborts, because a store
-    // that cannot persist cursors corrupts every later pass.
-    let outcome = (|| {
-        for folder in folders {
-            if excluded(&folder, &account.excluded_folders) {
-                continue;
-            }
-            let folder_report = sync_folder(
-                &mut session,
-                account,
-                layout,
-                &folder,
-                &mut state,
-                &indexer,
-            );
-            let folder_report = match folder_report {
-                Ok(folder_report) => folder_report,
-                Err(error) => {
-                    report
-                        .errors
-                        .push(format!("{}: {error}", folder.name));
-                    continue;
-                }
-            };
-            state.save(&state_path)?;
-            report.folders.push(folder_report);
+    let mut control = ImapSession::connect(account)?;
+    let jobs = match list_jobs(&mut control, account) {
+        Ok(jobs) => jobs,
+        Err(error) => {
+            control.logout();
+            indexer.finish()?;
+            return Err(error);
         }
-        Ok(())
-    })();
-    session.logout();
+    };
+    // One failing folder must not abort the rest: the pool
+    // records it and carries on, so a folder the server
+    // mishandles costs only itself. A failed state save still
+    // aborts, because a store that cannot persist cursors
+    // corrupts every later pass.
+    let syncer = ImapFolderSync { account, layout };
+    let outcome = pool::run(
+        control,
+        MAX_CONCURRENT_FOLDER_FETCHES,
+        jobs,
+        &state,
+        &state_path,
+        &indexer,
+        &syncer,
+    );
     indexer.finish()?;
-    outcome?;
+    let report = outcome?;
     run_notmuch_new(&layout.notmuch_config_path())?;
     retag_folders(&layout.notmuch_config_path(), &account.name)?;
     Ok(report)
 }
 
-/// Indexing overlaps the network: delivered batches become
-/// searchable while the next batch downloads. One thread, so
-/// notmuch keeps its single writer.
-struct Indexer {
-    sender: Option<mpsc::Sender<()>>,
-    handle: std::thread::JoinHandle<Result<(), SyncError>>,
+fn list_jobs(
+    session: &mut ImapSession,
+    account: &SyncAccount,
+) -> Result<Vec<RemoteFolder>, SyncError> {
+    let folders = session
+        .list_selectable()
+        .map_err(SyncError::imap("listing folders"))?;
+    Ok(folders
+        .into_iter()
+        .filter(|folder| !excluded(folder, &account.excluded_folders))
+        .collect())
 }
 
-impl Indexer {
-    fn start(layout: &StoreLayout, account: &str) -> Indexer {
-        let config = layout.notmuch_config_path();
-        let account = account.to_owned();
-        let (sender, receiver) = mpsc::channel::<()>();
-        let handle = std::thread::spawn(move || {
-            while receiver.recv().is_ok() {
-                while receiver.try_recv().is_ok() {}
-                run_notmuch_new(&config)?;
-                retag_folders(&config, &account)?;
+/// Binds an account's folder syncing to real IMAP connections
+/// for the pool. Each worker connection is opened, driven and
+/// logged out entirely within its own thread.
+struct ImapFolderSync<'a> {
+    account: &'a SyncAccount,
+    layout: &'a StoreLayout,
+}
+
+impl pool::FolderSync for ImapFolderSync<'_> {
+    type Conn = ImapSession;
+
+    /// An extra worker that cannot connect just steps aside:
+    /// worker zero and any peers that did connect still drain
+    /// every folder from the shared queue.
+    fn connect(&self) -> Option<ImapSession> {
+        match ImapSession::connect(self.account) {
+            Ok(session) => Some(session),
+            Err(error) => {
+                eprintln!(
+                    "sync {}: extra connection: {error}",
+                    self.account.name
+                );
+                None
             }
-            Ok(())
-        });
-        Indexer {
-            sender: Some(sender),
-            handle,
         }
     }
 
-    fn nudge(&self) {
-        if let Some(sender) = &self.sender {
-            let _ = sender.send(());
-        }
+    fn sync_folder(
+        &self,
+        session: &mut ImapSession,
+        folder: &RemoteFolder,
+        stored: Option<FolderState>,
+        nudge: &IndexNudge,
+    ) -> Result<(FolderReport, FolderState), SyncError> {
+        sync_folder(
+            session,
+            self.account,
+            self.layout,
+            folder,
+            stored,
+            nudge,
+        )
     }
 
-    fn finish(mut self) -> Result<(), SyncError> {
-        self.sender.take();
-        self.handle.join().unwrap_or_else(|_| {
-            Err(SyncError::Notmuch {
-                detail: "the indexer thread panicked".into(),
-            })
-        })
+    fn finish(&self, session: ImapSession) {
+        session.logout();
     }
 }
 
@@ -147,9 +161,9 @@ fn sync_folder(
     account: &SyncAccount,
     layout: &StoreLayout,
     folder: &RemoteFolder,
-    state: &mut AccountState,
-    indexer: &Indexer,
-) -> Result<FolderReport, SyncError> {
+    stored: Option<FolderState>,
+    nudge: &IndexNudge,
+) -> Result<(FolderReport, FolderState), SyncError> {
     let maildir = open_maildir(account, layout, folder)?;
     let mailbox = session.examine(&folder.name).map_err(
         SyncError::imap(format!("examining {}", folder.name)),
@@ -160,11 +174,10 @@ fn sync_folder(
             detail: String::from("server reported no UIDVALIDITY"),
         })?;
     let now = now_unix();
-    let baseline =
-        folder_baseline(&maildir, state, folder, uid_validity, now)?;
+    let baseline = folder_baseline(&maildir, stored, uid_validity, now)?;
     let sweeping = sweep_due(baseline.last_sweep_unix, now);
     let removed_messages = if sweeping {
-        sweep_folder(session, folder, &maildir, &mailbox, indexer)?
+        sweep_folder(session, folder, &maildir, &mailbox, nudge)?
     } else {
         0
     };
@@ -178,7 +191,7 @@ fn sync_folder(
     let deliveries = if has_mail && expects_new {
         fetch_new(
             session, account, layout, folder, &maildir, known_uid,
-            indexer,
+            nudge,
         )?
     } else {
         Vec::new()
@@ -198,15 +211,12 @@ fn sync_folder(
     } else {
         baseline.last_sweep_unix
     };
-    state.set_folder(
-        &folder.name,
-        FolderState {
-            uid_validity,
-            last_uid,
-            last_sweep_unix,
-        },
-    );
-    Ok(FolderReport {
+    let folder_state = FolderState {
+        uid_validity,
+        last_uid,
+        last_sweep_unix,
+    };
+    let report = FolderReport {
         folder: folder.name.clone(),
         new_messages: deliveries.len(),
         updated_messages,
@@ -215,7 +225,8 @@ fn sync_folder(
             .into_iter()
             .map(|delivery| delivery.path)
             .collect(),
-    })
+    };
+    Ok((report, folder_state))
 }
 
 fn open_maildir(
@@ -243,8 +254,7 @@ fn open_maildir(
 /// about to be refetched, so nothing can have vanished.
 fn folder_baseline(
     maildir: &MaildirFolder,
-    state: &AccountState,
-    folder: &RemoteFolder,
+    stored: Option<FolderState>,
     uid_validity: u32,
     now: u64,
 ) -> Result<FolderState, SyncError> {
@@ -253,7 +263,7 @@ fn folder_baseline(
         last_uid: 0,
         last_sweep_unix: now,
     };
-    match state.folder(&folder.name) {
+    match stored {
         Some(stored) if stored.uid_validity == uid_validity => {
             Ok(stored)
         }
@@ -276,7 +286,7 @@ fn sweep_folder(
     folder: &RemoteFolder,
     maildir: &MaildirFolder,
     mailbox: &SelectedFolder,
-    indexer: &Indexer,
+    nudge: &IndexNudge,
 ) -> Result<usize, SyncError> {
     let server: HashSet<u32> = if mailbox.exists == 0 {
         HashSet::new()
@@ -292,7 +302,7 @@ fn sweep_folder(
     };
     let removed = remove_vanished(maildir, &server)?;
     if removed > 0 {
-        indexer.nudge();
+        nudge.nudge();
     }
     Ok(removed)
 }
@@ -304,7 +314,7 @@ fn fetch_new(
     folder: &RemoteFolder,
     maildir: &MaildirFolder,
     known_uid: u32,
-    indexer: &Indexer,
+    nudge: &IndexNudge,
 ) -> Result<Vec<Delivery>, SyncError> {
     let uids: Vec<u32> = session
         .list_new_uids(known_uid + 1)
@@ -335,7 +345,7 @@ fn fetch_new(
             batch,
             &mut delivered,
         )?;
-        indexer.nudge();
+        nudge.nudge();
     }
     write_progress(
         layout,
@@ -430,20 +440,6 @@ pub(crate) fn state_path(
 
 fn ensure_dir(dir: &Path) -> Result<(), SyncError> {
     fs::create_dir_all(dir).map_err(SyncError::io(dir))
-}
-
-pub(crate) fn run_notmuch_new(config: &Path) -> Result<(), SyncError> {
-    let output = Command::new("notmuch")
-        .arg("new")
-        .env("NOTMUCH_CONFIG", config)
-        .output()
-        .map_err(|source| SyncError::NotmuchSpawn { source })?;
-    if output.status.success() {
-        return Ok(());
-    }
-    Err(SyncError::Notmuch {
-        detail: String::from_utf8_lossy(&output.stderr).into_owned(),
-    })
 }
 
 #[cfg(test)]

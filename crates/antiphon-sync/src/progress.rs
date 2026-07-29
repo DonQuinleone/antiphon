@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use antiphon_store::StoreLayout;
@@ -60,11 +61,21 @@ pub fn write_progress(layout: &StoreLayout, progress: &SyncProgress) {
     let Ok(json) = serde_json::to_vec(progress) else {
         return;
     };
-    let tmp = path.with_extension("tmp");
+    // Concurrent folder jobs write progress at will. A shared
+    // temp name would let one writer's bytes land under
+    // another's rename; a per-write name keeps each snapshot
+    // whole, and the rename onto the single slot stays atomic.
+    let tmp = path.with_extension(unique_tmp_suffix());
     if std::fs::write(&tmp, json).is_err() {
         return;
     }
     let _ = std::fs::rename(&tmp, &path);
+}
+
+fn unique_tmp_suffix() -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let ticket = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{}.{ticket}.tmp", std::process::id())
 }
 
 pub fn read_progress(layout: &StoreLayout) -> Option<SyncProgress> {

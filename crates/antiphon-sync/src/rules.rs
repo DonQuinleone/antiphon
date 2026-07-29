@@ -125,6 +125,7 @@ impl RulePass<'_> {
         message_id: &str,
         tag: &str,
     ) -> Result<(), String> {
+        let _guard = crate::notmuch::write_guard();
         let output = Command::new("notmuch")
             .args(["tag", &format!("+{tag}"), "--"])
             .arg(id_query(message_id))
@@ -158,10 +159,13 @@ impl RulePass<'_> {
                 },
             )
             .map_err(|error| error.to_string())?;
-        let index = SearchIndex::open(self.layout)
-            .map_err(|error| error.to_string())?;
-        apply_op(self.layout, &index, &op)
-            .map_err(|error| error.to_string())?;
+        {
+            let _guard = crate::notmuch::write_guard();
+            let index = SearchIndex::open(self.layout)
+                .map_err(|error| error.to_string())?;
+            apply_op(self.layout, &index, &op)
+                .map_err(|error| error.to_string())?;
+        }
         self.log
             .mark_applied(op.id)
             .map_err(|error| error.to_string())

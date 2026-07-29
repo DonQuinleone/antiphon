@@ -17,6 +17,7 @@ pub(crate) fn retag_folders(
          and not path:\"{account}/new\" \
          and not path:\"{account}/inbox/**\""
     );
+    let _guard = crate::notmuch::write_guard();
     let output = Command::new("notmuch")
         .args(["tag", "-inbox", "--", &query])
         .env("NOTMUCH_CONFIG", config)

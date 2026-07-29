@@ -6,12 +6,11 @@ use antiphon_store::{
 };
 use imap_client::imap_types::flag::Flag;
 
-use crate::engine::{
-    RemoteFolder, SyncAccount, run_notmuch_new, state_path,
-};
+use crate::engine::{RemoteFolder, SyncAccount, state_path};
 use crate::error::SyncError;
 use crate::folders::folder_subdir;
 use crate::maildir::MaildirFolder;
+use crate::notmuch::run_notmuch_new;
 use crate::session::ImapSession;
 use crate::state::{AccountState, FolderState};
 use crate::tagging::retag_folders;
