@@ -24,6 +24,8 @@ secrets:
   # COPR custom-webhook URL, installed as a file at ~/.copr_secret;
   # a POST to it rebuilds the package from the bumped copr-spec.
   - e3f5e876-ad3d-4569-814e-fe03e2911373
+# hut needs OBJECTS:RW to upload the tag artefacts.
+oauth: git.sr.ht/PROFILE:RO git.sr.ht/REPOSITORIES:RO git.sr.ht/OBJECTS:RW
 sources:
   - https://git.sr.ht/~donquinleone/antiphon
 environment:
