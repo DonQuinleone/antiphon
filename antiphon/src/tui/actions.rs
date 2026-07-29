@@ -9,6 +9,7 @@ use super::scope::{self, ViewScope};
 use super::sidebar::{self, SidebarEntry};
 
 const HALF_PAGE_ROWS: usize = 10;
+const OPEN_MESSAGE_FIRST: &str = "open a message first";
 
 pub fn account_names(loaded: &Loaded) -> Vec<String> {
     loaded
@@ -61,9 +62,8 @@ impl App {
             Action::ToggleHeaders => {
                 self.headers_all = !self.headers_all
             }
-            Action::OpenLink | Action::Attachments => {
-                self.notice = Some("open a message first".to_string())
-            }
+            Action::OpenLink => self.open_preview_link_picker(),
+            Action::Attachments => self.toggle_preview_drawer(),
             Action::NextAccount => self.shift_scope(scope::next_scope),
             Action::PreviousAccount => {
                 self.shift_scope(scope::previous_scope)
@@ -229,6 +229,36 @@ impl App {
             ReadingPane::Right => ReadingPane::Off,
             ReadingPane::Off => ReadingPane::Below,
         };
+    }
+
+    /// The reading pane shows a preview; without one there is
+    /// nothing to open links or attachments over, so the list
+    /// asks the reader to open the message in the pager first.
+    fn reading_pane_active(&self) -> bool {
+        self.reading_pane != ReadingPane::Off && self.preview.is_some()
+    }
+
+    fn open_preview_link_picker(&mut self) {
+        if !self.reading_pane_active() {
+            self.notice = Some(OPEN_MESSAGE_FIRST.to_string());
+            return;
+        }
+        self.load_preview_extras();
+        self.open_link_picker();
+    }
+
+    fn toggle_preview_drawer(&mut self) {
+        if !self.reading_pane_active() {
+            self.notice = Some(OPEN_MESSAGE_FIRST.to_string());
+            return;
+        }
+        if self.drawer_open {
+            self.drawer_open = false;
+            return;
+        }
+        self.drawer_selected = 0;
+        self.load_preview_extras();
+        self.open_drawer();
     }
 }
 

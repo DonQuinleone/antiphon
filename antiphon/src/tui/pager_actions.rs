@@ -43,15 +43,26 @@ impl App {
     }
 
     fn toggle_drawer(&mut self) {
+        if self.drawer_open {
+            self.drawer_open = false;
+            return;
+        }
+        self.open_drawer();
+    }
+
+    /// Opens the drawer over the loaded attachments, or says so
+    /// when there are none. The reading pane reuses this after
+    /// loading the selected message's attachments itself.
+    pub(super) fn open_drawer(&mut self) {
         if self.pager_attachments.is_empty() {
             self.notice =
                 Some("no attachments on this message".to_string());
             return;
         }
-        self.drawer_open = !self.drawer_open;
+        self.drawer_open = true;
     }
 
-    fn open_link_picker(&mut self) {
+    pub(super) fn open_link_picker(&mut self) {
         if self.pager_rendered.links.is_empty() {
             self.notice = Some("no links in this message".to_string());
             return;

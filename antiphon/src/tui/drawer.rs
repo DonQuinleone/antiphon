@@ -35,6 +35,18 @@ pub(super) fn rows_needed(app: &App) -> u16 {
     HEADER_ROWS + count.min(LIST_ROWS_MAX)
 }
 
+/// Rows the drawer takes inside the reading pane: nothing
+/// until it is opened, then a header and the capped list. The
+/// pane carries no collapsed summary, so a closed drawer
+/// leaves the preview its full height.
+pub(super) fn pane_rows_needed(app: &App) -> u16 {
+    if !app.drawer_open {
+        return 0;
+    }
+    let count = app.pager_attachments.len() as u16;
+    HEADER_ROWS + count.min(LIST_ROWS_MAX)
+}
+
 pub(super) fn draw_drawer(frame: &mut Frame, app: &App, area: Rect) {
     if area.height == 0 {
         return;

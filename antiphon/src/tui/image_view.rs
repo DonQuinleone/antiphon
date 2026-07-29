@@ -48,6 +48,7 @@ impl App {
     ) {
         match decode(bytes) {
             Ok(decoded) => {
+                self.image_return = self.view;
                 self.image_view = Some(ImageView::new(name, decoded));
                 self.view = View::Image;
             }
@@ -59,7 +60,7 @@ impl App {
 
     pub(super) fn close_image_view(&mut self) {
         self.image_view = None;
-        self.view = View::Pager;
+        self.view = self.image_return;
     }
 
     pub(super) fn apply_in_image(&mut self, action: Action) {
@@ -208,9 +209,21 @@ mod tests {
     #[test]
     fn esc_closes_back_to_the_pager() {
         let mut app = app_with_messages(1);
+        app.view = View::Pager;
         app.open_image_view("logo.png".to_string(), &tiny_png());
         app.apply_in_image(Action::Back);
         assert_eq!(app.view, View::Pager);
+        assert!(app.image_view.is_none());
+    }
+
+    #[test]
+    fn esc_returns_to_the_list_when_opened_from_the_pane() {
+        let mut app = app_with_messages(1);
+        app.view = View::List;
+        app.open_image_view("logo.png".to_string(), &tiny_png());
+        assert_eq!(app.view, View::Image);
+        app.apply_in_image(Action::Back);
+        assert_eq!(app.view, View::List);
         assert!(app.image_view.is_none());
     }
 }

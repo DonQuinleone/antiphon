@@ -278,3 +278,149 @@ fn empty_list_never_panics() {
     assert_eq!(app.selected, 0);
     assert!(app.selected_message().is_none());
 }
+
+mod reading_pane_extras {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+
+    use super::super::super::testkit::{TempDir, app_with_messages};
+    use super::*;
+
+    fn message_with_extras() -> (TempDir, std::path::PathBuf) {
+        let draft = antiphon_render::Draft {
+            from_name: Some("Alba"),
+            from: "alba@example.com",
+            to: vec!["quin@example.com"],
+            cc: Vec::new(),
+            subject: "Rehearsal",
+            in_reply_to: None,
+            references: Vec::new(),
+            body: "See https://example.com/a \
+                   and https://example.com/b",
+            signature: None,
+            attachments: vec![antiphon_render::AttachmentPart {
+                filename: "score.pdf",
+                content_type: "application/pdf",
+                bytes: b"%PDF-1.7",
+            }],
+        };
+        let raw = antiphon_render::build_message(
+            &draft,
+            "example.com",
+            1_753_400_000,
+            "Antiphon 9.9.9",
+        );
+        let dir = TempDir::new();
+        let path = dir.path.join("m.eml");
+        std::fs::write(&path, &raw).unwrap();
+        (dir, path)
+    }
+
+    fn reading_pane_app() -> (TempDir, App) {
+        let (dir, path) = message_with_extras();
+        let mut app = app_with_messages(1);
+        app.messages[0].subject = "Rehearsal".to_string();
+        app.messages[0].path = path;
+        super::super::super::preview::refresh(&mut app);
+        (dir, app)
+    }
+
+    fn row_text(buffer: &Buffer, y: u16) -> String {
+        (0..buffer.area.width)
+            .map(|x| buffer.cell((x, y)).unwrap().symbol().to_string())
+            .collect()
+    }
+
+    fn rendered(app: &App, width: u16, height: u16) -> Buffer {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| super::super::super::draw::draw(frame, app))
+            .unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    #[test]
+    fn o_opens_the_link_popover_over_the_reading_pane() {
+        let (_dir, mut app) = reading_pane_app();
+        app.apply_in_list(Action::OpenLink);
+        assert!(app.link_picker.is_some());
+        let urls: Vec<&str> = app
+            .pager_rendered
+            .links
+            .iter()
+            .map(|link| link.url.as_str())
+            .collect();
+        assert_eq!(
+            urls,
+            ["https://example.com/a", "https://example.com/b"]
+        );
+    }
+
+    #[test]
+    fn a_opens_and_closes_the_attachment_drawer() {
+        let (_dir, mut app) = reading_pane_app();
+        app.apply_in_list(Action::Attachments);
+        assert!(app.drawer_open);
+        assert_eq!(app.pager_attachments.len(), 1);
+        assert_eq!(app.pager_attachments[0].filename, "score.pdf");
+        app.apply_in_list(Action::Attachments);
+        assert!(!app.drawer_open, "a second press closes it");
+    }
+
+    #[test]
+    fn links_and_attachments_need_an_active_pane() {
+        let (_dir, mut app) = reading_pane_app();
+        app.reading_pane = ReadingPane::Off;
+        app.apply_in_list(Action::OpenLink);
+        assert!(app.link_picker.is_none());
+        assert_eq!(app.notice.as_deref(), Some("open a message first"));
+        app.apply_in_list(Action::Attachments);
+        assert!(!app.drawer_open);
+    }
+
+    #[test]
+    fn the_drawer_sits_below_the_preview_and_spares_the_list() {
+        let (_dir, mut app) = reading_pane_app();
+        app.sidebar = false;
+        app.list_rows = 3;
+        app.apply_in_list(Action::Attachments);
+        assert!(app.drawer_open);
+        let buffer = rendered(&app, 70, 20);
+        let rows: Vec<String> =
+            (0..20).map(|y| row_text(&buffer, y)).collect();
+        assert!(
+            rows[0].contains("SUBJECT"),
+            "the list header stays on top: {:?}",
+            rows[0]
+        );
+        assert!(
+            rows.iter().any(|row| {
+                row.contains("Rehearsal")
+                    && !row.trim_start().starts_with("Subject:")
+            }),
+            "the list keeps its message row: {rows:?}"
+        );
+        assert!(
+            rows.iter().any(|row| row.starts_with("attachments")),
+            "the drawer hint shows in the pane: {rows:?}"
+        );
+        assert!(
+            rows.iter().any(|row| row.contains("score.pdf")),
+            "the attachment is listed: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn a_closed_drawer_leaves_the_pane_its_full_height() {
+        let (_dir, app) = reading_pane_app();
+        assert!(!app.drawer_open);
+        let buffer = rendered(&app, 70, 20);
+        assert!(
+            !(0..20).any(|y| row_text(&buffer, y)
+                .starts_with("attachments")),
+            "no collapsed summary before the drawer is opened"
+        );
+    }
+}

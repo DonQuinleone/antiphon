@@ -66,6 +66,32 @@ impl App {
             &self.pager_headers
         }
     }
+
+    /// Loads the selected message's attachments and links so
+    /// the reading-pane drawer and link popover read the same
+    /// state the pager does. The stored file is read directly
+    /// and never decrypted: encrypted mail shows no inner
+    /// attachments or links until it is opened, matching the
+    /// preview note.
+    pub(super) fn load_preview_extras(&mut self) {
+        let raw = self
+            .selected_message()
+            .map(|message| message.path.clone())
+            .and_then(|path| std::fs::read(path).ok());
+        let Some(raw) = raw else {
+            self.pager_attachments = Vec::new();
+            self.pager_rendered = RenderedBody::default();
+            return;
+        };
+        let preference = if self.preview_html {
+            antiphon_render::BodyPreference::Html
+        } else {
+            antiphon_render::BodyPreference::Plain
+        };
+        self.pager_attachments = antiphon_render::attachments(&raw);
+        self.pager_rendered =
+            antiphon_render::rendered_body_preferring(&raw, preference);
+    }
 }
 
 fn patch_lines(

@@ -85,6 +85,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     draw_mail_view(frame, app, content);
     draw_status(frame, app, status);
     super::folder_picker::draw_picker(frame, app, area);
+    super::link_picker::draw_picker(frame, app, area);
     if app.help {
         draw_help(frame, app, area);
     }
@@ -168,6 +169,16 @@ fn split_reading_pane(
 }
 
 fn draw_reading_pane(frame: &mut Frame, app: &App, area: Rect) {
+    let [body, drawer] = Layout::vertical([
+        Constraint::Min(0),
+        Constraint::Length(super::drawer::pane_rows_needed(app)),
+    ])
+    .areas(area);
+    draw_pane_body(frame, app, body);
+    super::drawer::draw_drawer(frame, app, drawer);
+}
+
+fn draw_pane_body(frame: &mut Frame, app: &App, area: Rect) {
     let theme = app.theme;
     let block = Block::new()
         .borders(Borders::TOP)
