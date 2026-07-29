@@ -24,6 +24,15 @@ const SGR_MOUSE_PRESS: char = 'M';
 const SGR_WHEEL_UP: u16 = 64;
 const SGR_WHEEL_DOWN: u16 = 65;
 
+/// Some editors (Neovim among them) withhold their opening
+/// paint until they observe a resize, so the pane stays blank
+/// until it is focused or touched. Holding the pty a row short
+/// for the first few frames, then settling to the true size,
+/// hands the editor that resize and forces the first repaint.
+const REDRAW_NUDGE_ROWS: u16 = 1;
+const REDRAW_NUDGE_FRAMES: u8 = 3;
+const MIN_PTY_ROWS: u16 = 1;
+
 /// The body file handed to the embedded editor and the live
 /// pty session, settled once the child exits; everything else
 /// about the compose lives in the compose state.
@@ -43,6 +52,7 @@ pub struct EditorSession {
     output: Receiver<Vec<u8>>,
     rows: u16,
     cols: u16,
+    nudge_frames: u8,
 }
 
 impl EditorSession {
@@ -82,6 +92,7 @@ impl EditorSession {
             output: read_on_thread(reader),
             rows,
             cols,
+            nudge_frames: REDRAW_NUDGE_FRAMES,
         })
     }
 
@@ -101,6 +112,16 @@ impl EditorSession {
         self.parser.screen_mut().set_size(rows, cols);
         self.rows = rows;
         self.cols = cols;
+    }
+
+    /// Keeps the pty sized to the pane. For the first few frames
+    /// after spawn it holds the pty a row short, then settles to
+    /// the true size, so the editor sees a genuine resize and
+    /// paints without waiting to be focused.
+    pub fn settle_size(&mut self, rows: u16, cols: u16) {
+        let target = nudged_rows(rows, self.nudge_frames);
+        self.nudge_frames = self.nudge_frames.saturating_sub(1);
+        self.resize(target, cols);
     }
 
     pub fn send_key(&mut self, key: KeyEvent) {
@@ -259,6 +280,16 @@ fn wheel_button(kind: MouseEventKind) -> Option<u16> {
     }
 }
 
+/// The pty height to request this frame: the true pane height
+/// once the opening nudge has elapsed, else a row short so the
+/// editor is handed a resize that forces its first paint.
+fn nudged_rows(rows: u16, nudge_frames: u8) -> u16 {
+    if nudge_frames == 0 {
+        return rows;
+    }
+    rows.saturating_sub(REDRAW_NUDGE_ROWS).max(MIN_PTY_ROWS)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,5 +357,14 @@ mod tests {
             encode_mouse(MouseEventKind::Moved, 3, 3).is_empty(),
             "movement is not forwarded"
         );
+    }
+
+    #[test]
+    fn nudged_rows_holds_a_shorter_size_until_settled() {
+        assert_eq!(nudged_rows(20, REDRAW_NUDGE_FRAMES), 19);
+        assert_eq!(nudged_rows(20, 1), 19);
+        assert_eq!(nudged_rows(20, 0), 20);
+        // A one-row pane cannot go shorter than the floor.
+        assert_eq!(nudged_rows(1, REDRAW_NUDGE_FRAMES), 1);
     }
 }

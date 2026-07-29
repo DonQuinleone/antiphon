@@ -392,7 +392,7 @@ fn tick_editor(
     pane.session.pump();
     let size = terminal.size()?;
     pane.session
-        .resize(draw::editor_rows(size.height), size.width);
+        .settle_size(draw::editor_rows(size.height), size.width);
     let Some(success) = pane.session.exit_success() else {
         return Ok(());
     };
