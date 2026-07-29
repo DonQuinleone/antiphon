@@ -166,8 +166,15 @@ pub(crate) fn parse<T: DeserializeOwned>(
     toml::from_str(text).map_err(|err| enrich(err, text, path))
 }
 
-pub fn signature_text(dirs: &Dirs, name: &str) -> Option<String> {
-    named_file(dirs, "signatures", name)
+/// A single-line `signature` names a file under `signatures/`; a
+/// value carrying a newline can never be a file name, so it is a
+/// block typed into the account form's identity editor and is
+/// used verbatim rather than dropped as a missing file.
+pub fn signature_text(dirs: &Dirs, value: &str) -> Option<String> {
+    if value.contains('\n') {
+        return Some(value.to_string());
+    }
+    named_file(dirs, "signatures", value)
 }
 
 pub fn template_text(dirs: &Dirs, name: &str) -> Option<String> {
@@ -433,6 +440,22 @@ move_to = "lists/aerc"
         assert!(signature_text(&dirs, "../secrets").is_none());
         assert!(template_text(&dirs, "any").is_none());
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_multi_line_signature_value_is_used_verbatim() {
+        let dirs = Dirs {
+            config: std::env::temp_dir(),
+            data: std::env::temp_dir(),
+            state: std::env::temp_dir(),
+            cache: std::env::temp_dir(),
+        };
+        let block = "Kind regards\nQuin";
+        assert_eq!(
+            signature_text(&dirs, block).as_deref(),
+            Some(block),
+            "a block typed in the form is sent, not read as a file"
+        );
     }
 
     #[test]
