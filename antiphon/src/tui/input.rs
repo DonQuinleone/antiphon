@@ -13,8 +13,8 @@ use super::dispatch::dispatch;
 use super::identity::ComposeContext;
 use super::{
     account_form, attach, draw, drawer, export, folder_alias,
-    folder_picker, headers, link_picker, mark_all_read, pager,
-    pager_body, patches, run_query, run_search, session,
+    folder_picker, link_picker, mark_all_read, pager, pager_body,
+    patches, run_query, run_search, session,
 };
 use crate::tui::settings::{self, SettingsTab};
 
@@ -149,27 +149,82 @@ pub(super) fn settings_key(
 pub(super) fn compose_key(
     terminal: &mut DefaultTerminal,
     app: &mut App,
+    keymap: &mut Keymap,
     layout: &StoreLayout,
     key: KeyEvent,
 ) -> std::io::Result<()> {
-    use headers::HeadersOutcome;
-
-    let Some(state) = app.compose.as_mut() else {
-        return Ok(());
-    };
-    if state.completion_key(key) {
+    if app.compose.is_none() {
         return Ok(());
     }
-    match state.feed(key) {
-        HeadersOutcome::Edited | HeadersOutcome::CycleFrom(_) => Ok(()),
-        HeadersOutcome::OpenEditor => {
-            session::open_body_editor(terminal, app, layout)
+    if let Some(state) = app.compose.as_mut()
+        && state.completion_key(key)
+    {
+        return Ok(());
+    }
+    match keymap.feed(Context::Compose, key) {
+        Resolution::Match(Action::FocusNext) => {
+            step_compose(app, 1);
+            Ok(())
         }
-        HeadersOutcome::Cancel => {
+        Resolution::Match(Action::FocusPrev) => {
+            step_compose(app, -1);
+            Ok(())
+        }
+        Resolution::Match(Action::ComposeSubmit) => {
+            submit_compose(terminal, app, layout)
+        }
+        Resolution::Match(Action::OpenEditor) => {
+            open_compose_editor(terminal, app, layout)
+        }
+        Resolution::Match(Action::ComposeCancel) => {
+            if let Some(state) = app.compose.as_mut() {
+                state.close_completion();
+            }
             cancel_headers(app);
             Ok(())
         }
+        _ => {
+            if let Some(state) = app.compose.as_mut() {
+                state.edit(key);
+            }
+            Ok(())
+        }
     }
+}
+
+fn step_compose(app: &mut App, step: i32) {
+    if let Some(state) = app.compose.as_mut() {
+        state.step_focus(step);
+    }
+}
+
+/// Enter in the fields: the last field opens the body editor,
+/// any earlier one steps to the next.
+fn submit_compose(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    layout: &StoreLayout,
+) -> std::io::Result<()> {
+    let last = app
+        .compose
+        .as_ref()
+        .is_some_and(|state| state.at_last_field());
+    if last {
+        return open_compose_editor(terminal, app, layout);
+    }
+    step_compose(app, 1);
+    Ok(())
+}
+
+fn open_compose_editor(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    layout: &StoreLayout,
+) -> std::io::Result<()> {
+    if let Some(state) = app.compose.as_mut() {
+        state.close_completion();
+    }
+    session::open_body_editor(terminal, app, layout)
 }
 
 /// The keymap context for a view, so a key resolves against

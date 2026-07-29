@@ -270,9 +270,13 @@ fn event_loop(
         }
         match app.key_route() {
             KeyRoute::Editor => input::editor_key(app, key),
-            KeyRoute::Compose => {
-                input::compose_key(terminal, app, layout, key)?
-            }
+            KeyRoute::Compose => input::compose_key(
+                terminal,
+                app,
+                &mut keymap,
+                layout,
+                key,
+            )?,
             KeyRoute::Review => input::review_key(
                 terminal,
                 app,

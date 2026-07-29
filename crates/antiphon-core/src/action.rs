@@ -71,6 +71,11 @@ pub enum Action {
     FolderHide,
     FolderUnsync,
     EditAlias,
+    FocusNext,
+    FocusPrev,
+    ComposeSubmit,
+    ComposeCancel,
+    OpenEditor,
 }
 
 const NAMES: &[(Action, &str)] = &[
@@ -151,6 +156,11 @@ const NAMES: &[(Action, &str)] = &[
     (Action::FolderHide, "folder-hide"),
     (Action::FolderUnsync, "folder-unsync"),
     (Action::EditAlias, "edit-alias"),
+    (Action::FocusNext, "focus-next"),
+    (Action::FocusPrev, "focus-prev"),
+    (Action::ComposeSubmit, "compose-submit"),
+    (Action::ComposeCancel, "compose-cancel"),
+    (Action::OpenEditor, "open-editor"),
 ];
 
 impl Action {

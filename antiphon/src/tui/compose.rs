@@ -8,7 +8,7 @@ pub(super) use super::compose_assembly::{
     Outgoing, assemble, bare_address, envelope,
 };
 use super::crypto::{ComposeCrypto, PgpPlan};
-use super::headers::{HeaderFields, HeadersOutcome};
+use super::headers::HeaderFields;
 use super::identity::ComposeIdentity;
 use super::prefill::DraftFields;
 
@@ -121,19 +121,27 @@ impl ComposeState {
         }
     }
 
-    pub fn feed(&mut self, key: KeyEvent) -> HeadersOutcome {
-        let outcome = match self.fields.feed(key) {
-            HeadersOutcome::CycleFrom(step) => {
-                self.cycle_from(step);
-                HeadersOutcome::Edited
-            }
-            other => other,
-        };
-        match outcome {
-            HeadersOutcome::Edited => self.refresh_completion(),
-            _ => self.completion = None,
+    /// A literal keystroke for the focused field: text editing,
+    /// or an identity cycle when From holds focus. Focus, submit
+    /// and cancel are compose actions settled before this.
+    pub fn edit(&mut self, key: KeyEvent) {
+        if let Some(step) = self.fields.edit(key) {
+            self.cycle_from(step);
         }
-        outcome
+        self.refresh_completion();
+    }
+
+    pub fn step_focus(&mut self, step: i32) {
+        self.fields.step_focus(step);
+        self.refresh_completion();
+    }
+
+    pub fn at_last_field(&self) -> bool {
+        self.fields.at_last_field()
+    }
+
+    pub fn close_completion(&mut self) {
+        self.completion = None;
     }
 
     fn cycle_from(&mut self, step: i32) {
@@ -362,7 +370,7 @@ mod tests {
         }];
         assert!(!state.completion_key(key(KeyCode::Tab)));
         for ch in "al".chars() {
-            state.feed(key(KeyCode::Char(ch)));
+            state.edit(key(KeyCode::Char(ch)));
         }
         assert!(state.completion.is_some());
         assert!(state.completion_key(key(KeyCode::Tab)));
@@ -370,14 +378,14 @@ mod tests {
         assert!(state.completion.is_none());
 
         for ch in ", al".chars() {
-            state.feed(key(KeyCode::Char(ch)));
+            state.edit(key(KeyCode::Char(ch)));
         }
         assert!(state.completion_key(key(KeyCode::Esc)));
         assert!(state.completion.is_none(), "esc dismisses only");
-        state.feed(key(KeyCode::Char('b')));
+        state.edit(key(KeyCode::Char('b')));
         assert!(state.completion.is_some(), "typing re-offers");
         assert!(state.completion_key(key(KeyCode::Esc)));
-        state.feed(key(KeyCode::Tab));
+        state.step_focus(1);
         assert_eq!(state.fields.focus, 1, "tab moves focus again");
         assert!(state.completion.is_none());
     }

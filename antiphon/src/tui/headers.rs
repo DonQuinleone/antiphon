@@ -24,16 +24,6 @@ pub(super) struct HeaderFields {
     pub cursor: usize,
 }
 
-/// What one key did to the fields, for the event loop to act
-/// on; identity cycling is handled by the compose state.
-#[derive(Debug, PartialEq, Eq)]
-pub(super) enum HeadersOutcome {
-    Edited,
-    CycleFrom(i32),
-    OpenEditor,
-    Cancel,
-}
-
 impl HeaderFields {
     pub fn from_draft(fields: &DraftFields) -> HeaderFields {
         HeaderFields {
@@ -46,45 +36,34 @@ impl HeaderFields {
         }
     }
 
-    pub fn feed(&mut self, key: KeyEvent) -> HeadersOutcome {
+    /// Literal line editing for the focused field; From is not
+    /// a text field, so there Left/Right/Space ask to cycle the
+    /// identity (the returned step) and every other key is
+    /// inert. Focus, submit and cancel are resolved as compose
+    /// actions before a key ever reaches here.
+    pub fn edit(&mut self, key: KeyEvent) -> Option<i32> {
         if key.modifiers.contains(KeyModifiers::CONTROL) {
-            return self.control_key(key.code);
+            return None;
         }
-        match key.code {
-            KeyCode::Esc => HeadersOutcome::Cancel,
-            KeyCode::Tab => self.step_focus(1),
-            KeyCode::BackTab => self.step_focus(-1),
-            KeyCode::Enter => self.enter(),
-            other => self.field_key(other),
+        if self.focus == FROM_FIELD {
+            return from_cycle(key.code);
         }
+        self.field_key(key.code);
+        None
     }
 
-    fn control_key(&mut self, code: KeyCode) -> HeadersOutcome {
-        match code {
-            KeyCode::Char('e' | 'h') => HeadersOutcome::OpenEditor,
-            _ => HeadersOutcome::Edited,
-        }
-    }
-
-    fn enter(&mut self) -> HeadersOutcome {
-        if self.focus == LAST_FIELD {
-            return HeadersOutcome::OpenEditor;
-        }
-        self.step_focus(1)
-    }
-
-    fn step_focus(&mut self, step: i32) -> HeadersOutcome {
+    pub fn step_focus(&mut self, step: i32) {
         let count = FIELD_COUNT as i32;
         let next = (self.focus as i32 + step).rem_euclid(count);
         self.focus = next as usize;
         self.cursor = self.field().chars().count();
-        HeadersOutcome::Edited
     }
 
-    fn field_key(&mut self, code: KeyCode) -> HeadersOutcome {
-        if self.focus == FROM_FIELD {
-            return from_outcome(code);
-        }
+    pub fn at_last_field(&self) -> bool {
+        self.focus == LAST_FIELD
+    }
+
+    fn field_key(&mut self, code: KeyCode) {
         match code {
             KeyCode::Char(ch) => self.insert(ch),
             KeyCode::Backspace => self.backspace(),
@@ -100,7 +79,6 @@ impl HeaderFields {
             KeyCode::End => self.cursor = self.field().chars().count(),
             _ => {}
         }
-        HeadersOutcome::Edited
     }
 
     fn insert(&mut self, ch: char) {
@@ -160,13 +138,11 @@ impl HeaderFields {
     }
 }
 
-fn from_outcome(code: KeyCode) -> HeadersOutcome {
+fn from_cycle(code: KeyCode) -> Option<i32> {
     match code {
-        KeyCode::Right | KeyCode::Char(' ') => {
-            HeadersOutcome::CycleFrom(1)
-        }
-        KeyCode::Left => HeadersOutcome::CycleFrom(-1),
-        _ => HeadersOutcome::Edited,
+        KeyCode::Right | KeyCode::Char(' ') => Some(1),
+        KeyCode::Left => Some(-1),
+        _ => None,
     }
 }
 
@@ -194,54 +170,38 @@ mod tests {
 
     fn typed(fields: &mut HeaderFields, text: &str) {
         for ch in text.chars() {
-            fields.feed(key(KeyCode::Char(ch)));
+            fields.edit(key(KeyCode::Char(ch)));
         }
     }
 
     #[test]
-    fn keys_drive_the_field_machine_per_table() {
-        use HeadersOutcome::*;
+    fn the_from_field_cycles_on_arrows_and_space() {
         use KeyCode::*;
 
-        let cases: &[(usize, KeyCode, HeadersOutcome, usize)] = &[
-            (0, Tab, Edited, 1),
-            (1, Tab, Edited, 2),
-            (4, Tab, Edited, 0),
-            (0, BackTab, Edited, 4),
-            (3, BackTab, Edited, 2),
-            (0, Enter, Edited, 1),
-            (3, Enter, Edited, 4),
-            (4, Enter, OpenEditor, 4),
-            (2, Esc, Cancel, 2),
-            (4, Right, CycleFrom(1), 4),
-            (4, Left, CycleFrom(-1), 4),
-            (4, Char(' '), CycleFrom(1), 4),
-            (4, Char('x'), Edited, 4),
+        let cases: &[(KeyCode, Option<i32>)] = &[
+            (Right, Some(1)),
+            (Char(' '), Some(1)),
+            (Left, Some(-1)),
+            (Char('x'), None),
         ];
-        for (focus, code, expected, after) in cases {
+        for (code, expected) in cases {
             let mut fields = HeaderFields {
-                focus: *focus,
+                focus: FROM_FIELD,
                 ..HeaderFields::default()
             };
-            let outcome = fields.feed(key(*code));
-            assert_eq!(outcome, *expected, "{focus} {code:?}");
-            assert_eq!(fields.focus, *after, "{focus} {code:?}");
+            assert_eq!(fields.edit(key(*code)), *expected, "{code:?}");
         }
     }
 
     #[test]
-    fn ctrl_e_opens_the_editor_from_any_field() {
-        for focus in 0..FIELD_COUNT {
-            let mut fields = HeaderFields {
-                focus,
-                ..HeaderFields::default()
-            };
-            let outcome = fields.feed(KeyEvent::new(
-                KeyCode::Char('e'),
-                KeyModifiers::CONTROL,
-            ));
-            assert_eq!(outcome, HeadersOutcome::OpenEditor, "{focus}");
-        }
+    fn step_focus_wraps_and_tracks_the_last_field() {
+        let mut fields = HeaderFields::default();
+        fields.step_focus(-1);
+        assert_eq!(fields.focus, LAST_FIELD);
+        assert!(fields.at_last_field());
+        fields.step_focus(1);
+        assert_eq!(fields.focus, 0);
+        assert!(!fields.at_last_field());
     }
 
     #[test]
@@ -250,16 +210,16 @@ mod tests {
         typed(&mut fields, "ab@example.com");
         assert_eq!(fields.to, "ab@example.com");
         for _ in 0.."example.com".len() {
-            fields.feed(key(KeyCode::Left));
+            fields.edit(key(KeyCode::Left));
         }
-        fields.feed(key(KeyCode::Backspace));
+        fields.edit(key(KeyCode::Backspace));
         typed(&mut fields, "+list@");
-        fields.feed(key(KeyCode::End));
+        fields.edit(key(KeyCode::End));
         assert_eq!(fields.to, "ab+list@example.com");
-        fields.feed(key(KeyCode::Home));
-        fields.feed(key(KeyCode::Delete));
+        fields.edit(key(KeyCode::Home));
+        fields.edit(key(KeyCode::Delete));
         assert_eq!(fields.to, "b+list@example.com");
-        fields.feed(key(KeyCode::Backspace));
+        fields.edit(key(KeyCode::Backspace));
         assert_eq!(fields.to, "b+list@example.com");
     }
 
@@ -267,10 +227,10 @@ mod tests {
     fn switching_fields_parks_the_cursor_at_the_end() {
         let mut fields = HeaderFields::default();
         typed(&mut fields, "to@example.com");
-        fields.feed(key(KeyCode::Tab));
+        fields.step_focus(1);
         assert_eq!(fields.cursor, 0);
         typed(&mut fields, "cc@example.com");
-        fields.feed(key(KeyCode::BackTab));
+        fields.step_focus(-1);
         assert_eq!(fields.cursor, "to@example.com".len());
         assert_eq!(fields.cc, "cc@example.com");
     }
@@ -282,8 +242,8 @@ mod tests {
             ..HeaderFields::default()
         };
         typed(&mut fields, "gr\u{fc}\u{df}e");
-        fields.feed(key(KeyCode::Left));
-        fields.feed(key(KeyCode::Backspace));
+        fields.edit(key(KeyCode::Left));
+        fields.edit(key(KeyCode::Backspace));
         assert_eq!(fields.subject, "gr\u{fc}e");
     }
 }

@@ -28,6 +28,16 @@ pub enum Context {
     Prompt,
 }
 
+impl Context {
+    /// Text-entry surfaces resolve only their own explicit
+    /// command keys: no Global fallback, no count prefix and no
+    /// multi-key sequences, so every other key stays literal
+    /// text for the field or prompt to insert.
+    fn is_text_entry(self) -> bool {
+        matches!(self, Context::Compose | Context::Prompt)
+    }
+}
+
 const DEFAULT_BINDINGS: &[(Context, Action, &str)] = &[
     (Context::Global, Action::MoveDown, "j"),
     (Context::Global, Action::MoveUp, "k"),
@@ -119,6 +129,12 @@ const DEFAULT_BINDINGS: &[(Context, Action, &str)] = &[
     (Context::SettingsFolders, Action::NextTab, "tab"),
     (Context::SettingsFolders, Action::PrevTab, "backtab"),
     (Context::SettingsFolders, Action::SettingsClose, "esc"),
+    (Context::Compose, Action::FocusNext, "tab"),
+    (Context::Compose, Action::FocusPrev, "backtab"),
+    (Context::Compose, Action::ComposeSubmit, "enter"),
+    (Context::Compose, Action::ComposeCancel, "esc"),
+    (Context::Compose, Action::OpenEditor, "ctrl-e"),
+    (Context::Compose, Action::OpenEditor, "ctrl-h"),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -287,6 +303,12 @@ impl Keymap {
         event: KeyEvent,
     ) -> Resolution {
         let chord = Chord::of(event);
+        if context.is_text_entry() {
+            return match self.singles.get(&(context, chord)) {
+                Some(action) => Resolution::Match(*action),
+                None => Resolution::NoMatch,
+            };
+        }
         if self.pending.is_none()
             && let KeyCode::Char(digit @ '0'..='9') = chord.code
             && chord.modifiers.is_empty()
@@ -618,5 +640,47 @@ mod tests {
             Resolution::Match(Action::MoveDown),
             "a global key still resolves via the fallback"
         );
+    }
+
+    #[test]
+    fn compose_command_keys_resolve_in_context() {
+        let cases = [
+            (press(KeyCode::Tab), Action::FocusNext),
+            (press(KeyCode::BackTab), Action::FocusPrev),
+            (press(KeyCode::Enter), Action::ComposeSubmit),
+            (press(KeyCode::Esc), Action::ComposeCancel),
+            (
+                KeyEvent::new(
+                    KeyCode::Char('e'),
+                    KeyModifiers::CONTROL,
+                ),
+                Action::OpenEditor,
+            ),
+        ];
+        for (event, action) in cases {
+            let mut keymap = Keymap::default();
+            assert_eq!(
+                keymap.feed(Context::Compose, event),
+                Resolution::Match(action),
+                "event {event:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn a_text_entry_context_keeps_other_keys_literal() {
+        let mut keymap = Keymap::default();
+        // A global letter never leaks in as a command...
+        assert_eq!(
+            keymap.feed(Context::Compose, press(KeyCode::Char('j'))),
+            Resolution::NoMatch,
+        );
+        // ...and a digit never starts a count prefix: both stay
+        // literal text for the field to insert.
+        assert_eq!(
+            keymap.feed(Context::Compose, press(KeyCode::Char('4'))),
+            Resolution::NoMatch,
+        );
+        assert_eq!(keymap.take_count(), 1, "no count accrued");
     }
 }
