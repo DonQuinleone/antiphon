@@ -160,8 +160,8 @@ Building the PKGBUILD by hand works the same way it does for
 any AUR package:
 
 ```bash
-git clone https://aur.archlinux.org/antiphon-git.git
-cd antiphon-git
+git clone https://aur.archlinux.org/antiphon.git
+cd antiphon
 makepkg -si
 ```
 
@@ -196,11 +196,14 @@ sign or decrypt with OpenPGP.
 
 ### Other Linux distributions
 
-Grab the release tarball for your architecture from the
-[refs page](https://git.sr.ht/~donquinleone/antiphon/refs)
-(x86_64-linux-gnu and aarch64-linux-musl, each with a sha256
-sidecar), verify, and drop both binaries on your PATH; or
-build from source below. You need `notmuch` at runtime:
+Grab the x86_64 release tarball
+(`antiphon-<tag>-x86_64-linux-gnu.tar.gz`, with a sha256
+sidecar) from the
+[refs page](https://git.sr.ht/~donquinleone/antiphon/refs),
+verify, and drop both binaries on your PATH; it also carries
+the systemd, dinit and runit service files. Other
+architectures build from source below. You need `notmuch` at
+runtime:
 
 ```bash
 sudo apt install notmuch gnupg        # Debian, Ubuntu
