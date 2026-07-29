@@ -22,7 +22,7 @@ const MODAL_WIDTH: u16 = 72;
 const LABEL_COLS: usize = 24;
 const BORDER_ROWS: u16 = 2;
 const HINT: &str = " tab move \u{b7} \u{2190}/\u{2192}/space toggle \
-     \u{b7} enter/^s save \u{b7} esc cancel ";
+     \u{b7} ^d discover \u{b7} enter/^s save \u{b7} esc cancel ";
 const BULLET: char = '\u{2022}';
 
 pub(super) fn draw_form(frame: &mut Frame, app: &App, area: Rect) {

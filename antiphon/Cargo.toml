@@ -9,6 +9,7 @@ authors.workspace = true
 description = "A modern mail client for the terminal"
 
 [dependencies]
+antiphon-autodiscover = { path = "../crates/antiphon-autodiscover" }
 antiphon-config = { path = "../crates/antiphon-config" }
 antiphon-core = { path = "../crates/antiphon-core" }
 antiphon-ipc = { path = "../crates/antiphon-ipc" }
@@ -43,6 +44,9 @@ tui-term = "=0.3.4"
 vt100 = "=0.16.2"
 
 [dev-dependencies]
+antiphon-autodiscover = { path = "../crates/antiphon-autodiscover", features = [
+    "stub",
+] }
 mail-parser = "=0.11.5"
 secrecy = "=0.10.3"
 tempfile = "=3.27.0"

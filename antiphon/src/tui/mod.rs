@@ -1,4 +1,5 @@
 mod account_form;
+mod account_form_discover;
 mod account_form_draw;
 mod account_form_fields;
 mod account_form_identity;

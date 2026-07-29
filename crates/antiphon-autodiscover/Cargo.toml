@@ -1,0 +1,19 @@
+[package]
+name = "antiphon-autodiscover"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Thunderbird-style mail autoconfig discovery"
+
+[dependencies]
+reqwest = { version = "=0.12.28", default-features = false, features = [
+    "blocking",
+    "rustls-tls",
+] }
+roxmltree = "=0.20.0"
+
+[features]
+stub = []

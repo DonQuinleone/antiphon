@@ -238,9 +238,9 @@ impl App {
 }
 
 /// Keys while the modal is open. When the identity sub-editor is
-/// up, every key goes to it; otherwise esc, tab stepping and
-/// ctrl-s are handled here and everything else edits the focused
-/// field in place.
+/// up, every key goes to it; otherwise esc, tab stepping, ctrl-s
+/// (save) and ctrl-d (autodiscover) are handled here and
+/// everything else edits the focused field in place.
 pub(super) fn feed(app: &mut App, key: KeyEvent) {
     let Some(form) = app.account_form.as_ref() else {
         return;
@@ -250,8 +250,12 @@ pub(super) fn feed(app: &mut App, key: KeyEvent) {
         return;
     }
     if key.modifiers.contains(KeyModifiers::CONTROL) {
-        if key.code == KeyCode::Char('s') {
-            super::account_form_save::save(app);
+        match key.code {
+            KeyCode::Char('s') => super::account_form_save::save(app),
+            KeyCode::Char('d') => {
+                super::account_form_discover::run(app)
+            }
+            _ => {}
         }
         return;
     }
