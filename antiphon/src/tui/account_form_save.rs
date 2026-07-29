@@ -65,7 +65,43 @@ fn build_and_write(
     )?;
     write_identities(&path, form, &address)?;
     patch_oauth(&path, form)?;
+    if adding {
+        seed_microsoft_defaults(&path, form)?;
+    }
     Ok(answers.name)
+}
+
+/// The Microsoft mailbox exposes calendars, contacts and other
+/// non-mail folders over IMAP; syncing them wastes time and
+/// clutters the sidebar, so a fresh Microsoft account starts with
+/// them unsynced. They stay listed in the Folders tab for
+/// re-including one. `calendar*` also covers calendar subfolders.
+const MS365_DEFAULT_UNSYNCED: &[&str] = &[
+    "calendar*",
+    "contacts",
+    "conversation history",
+    "journal",
+    "rss feeds",
+    "outbox",
+];
+
+fn seed_microsoft_defaults(
+    path: &Path,
+    form: &AccountFormState,
+) -> Result<(), String> {
+    if form.provider() != Some(OauthProvider::Microsoft) {
+        return Ok(());
+    }
+    let values: Vec<String> = MS365_DEFAULT_UNSYNCED
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect();
+    configedit::persist_root_key(
+        path,
+        "folders_unsynced",
+        &configedit::toml_string_array(&values),
+    )
+    .map_err(|error| format!("{}: {error}", path.display()))
 }
 
 fn first_identity_name(form: &AccountFormState) -> String {

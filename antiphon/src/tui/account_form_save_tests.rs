@@ -365,3 +365,36 @@ fn changing_type_preserves_hand_written_content() {
     assert_eq!(account.rules.len(), 1);
     assert_eq!(account.folders_unsynced, vec!["Archive".to_string()]);
 }
+
+#[test]
+fn a_new_microsoft_account_seeds_the_default_unsynced_folders() {
+    let root = TempDir::new();
+    let dirs = dirs_at(&root.path);
+    let mut form = filled_form();
+    form.account_type = AccountType::Microsoft;
+    build_and_write(&dirs, &form).expect("save");
+
+    let loaded = antiphon_config::load(&dirs).expect("parse");
+    let unsynced = &loaded.accounts[0].account.folders_unsynced;
+    for expected in ["calendar*", "contacts", "outbox"] {
+        assert!(
+            unsynced.iter().any(|folder| folder == expected),
+            "{expected} missing from {unsynced:?}"
+        );
+    }
+}
+
+#[test]
+fn a_new_imap_account_seeds_no_unsynced_folders() {
+    let root = TempDir::new();
+    let dirs = dirs_at(&root.path);
+    let form = filled_form();
+    assert_eq!(form.account_type, AccountType::Imap);
+    build_and_write(&dirs, &form).expect("save");
+
+    let loaded = antiphon_config::load(&dirs).expect("parse");
+    assert!(
+        loaded.accounts[0].account.folders_unsynced.is_empty(),
+        "a non-Microsoft account gets no default exclusions"
+    );
+}

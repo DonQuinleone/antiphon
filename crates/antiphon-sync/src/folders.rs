@@ -67,7 +67,20 @@ pub(crate) fn excluded(
     }
     exclusions
         .iter()
-        .any(|excluded| excluded.to_lowercase() == subdir)
+        .any(|pattern| matches_exclusion(pattern, &subdir))
+}
+
+/// A `folders_unsynced` entry matches a mailbox by its
+/// case-insensitive maildir path. A trailing `*` matches the
+/// named folder and every mailbox beneath it, so `calendar*`
+/// covers `calendar` and `calendar/birthdays` alike.
+fn matches_exclusion(pattern: &str, subdir: &str) -> bool {
+    let pattern = pattern.to_lowercase();
+    let Some(prefix) = pattern.strip_suffix('*') else {
+        return pattern == subdir;
+    };
+    let prefix = prefix.trim_end_matches('/');
+    subdir == prefix || subdir.starts_with(&format!("{prefix}/"))
 }
 
 #[cfg(test)]
@@ -94,6 +107,25 @@ mod tests {
             ("SPAM", Some("/"), true),
             ("archive/2020", Some("/"), false),
             ("archive", Some("/"), false),
+        ];
+        for (name, delimiter, want) in cases {
+            assert_eq!(
+                excluded(&folder(name, delimiter), &listed),
+                want,
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_trailing_star_excludes_the_folder_and_its_children() {
+        let listed = exclusions(&["calendar*"]);
+        let cases = [
+            ("Calendar", Some("/"), true),
+            ("Calendar/Birthdays", Some("/"), true),
+            ("Calendar.Work", Some("."), true),
+            ("Calendars", Some("/"), false),
+            ("inbox/calendar", Some("/"), false),
         ];
         for (name, delimiter, want) in cases {
             assert_eq!(
