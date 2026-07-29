@@ -498,4 +498,15 @@ mod tests {
         assert!(message.contains("quit"));
         assert!(message.contains("ctlr"));
     }
+
+    #[test]
+    fn default_bindings_bind_each_key_once() {
+        let mut seen = std::collections::HashSet::new();
+        for (_, key) in DEFAULT_BINDINGS {
+            assert!(
+                seen.insert(*key),
+                "{key:?} is bound more than once in the defaults"
+            );
+        }
+    }
 }
