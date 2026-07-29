@@ -167,6 +167,7 @@ mod tests {
     fn google_specs() -> Vec<GrantSpec> {
         account_grants(
             "work",
+            "work@example.com",
             &Oauth {
                 provider: OauthProvider::Google,
                 client_id: Some("app".to_string()),
@@ -180,6 +181,7 @@ mod tests {
     fn microsoft_specs() -> Vec<GrantSpec> {
         account_grants(
             "work",
+            "work@example.com",
             &Oauth {
                 provider: OauthProvider::Microsoft,
                 client_id: Some("app".to_string()),

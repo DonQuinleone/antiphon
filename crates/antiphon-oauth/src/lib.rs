@@ -2,6 +2,7 @@ mod app_only;
 mod client;
 mod device;
 mod error;
+mod identity;
 mod loopback;
 mod pkce;
 mod query;
@@ -90,6 +91,11 @@ pub struct Grant {
     /// Microsoft only; `None` uses the multi-tenant /common/
     /// endpoints. Google ignores it.
     pub tenant: Option<String>,
+    /// The account's own address, sent as `login_hint` to steer
+    /// the picker and checked against the token's identity after
+    /// sign-in, so a multi-tenant consent cannot silently store a
+    /// different account's token. `None` skips both.
+    pub login_hint: Option<String>,
 }
 
 impl Grant {

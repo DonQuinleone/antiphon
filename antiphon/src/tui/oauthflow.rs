@@ -57,6 +57,7 @@ fn flow_for(app: &App, file_stem: &str) -> Result<OauthFlow, String> {
     })?;
     let specs = account_grants(
         &account,
+        entry.account.imap.user.as_str(),
         oauth,
         &client_id,
         entry.account.graph.as_ref(),

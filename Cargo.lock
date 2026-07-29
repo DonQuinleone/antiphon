@@ -257,6 +257,7 @@ dependencies = [
 name = "antiphon-oauth"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "oauth2",
  "reqwest",
  "secrecy",

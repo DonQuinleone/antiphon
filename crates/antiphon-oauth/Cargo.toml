@@ -9,6 +9,7 @@ authors.workspace = true
 description = "OAuth2 flows and vault-backed token persistence"
 
 [dependencies]
+base64 = "=0.22.1"
 oauth2 = { version = "=5.0.0", default-features = false, features = [
     "reqwest",
     "reqwest-blocking",

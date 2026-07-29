@@ -32,7 +32,12 @@ fn consent_for(grant: &Grant) -> Consent {
         },
         Provider::Microsoft => Consent {
             auth_url: microsoft_auth_url(grant.tenant.as_deref()),
-            extra_params: &[],
+            // Always show the picker: /common otherwise reuses
+            // whichever account already has a browser session,
+            // which is how a sign-in for one mailbox silently
+            // authorises another. login_hint (added in flow_at)
+            // pre-selects the right one within that picker.
+            extra_params: &[("prompt", "select_account")],
         },
     }
 }
@@ -92,6 +97,11 @@ pub(crate) fn flow_at(
         .set_pkce_challenge(challenge);
     for (name, value) in extra_params {
         request = request.add_extra_param(*name, *value);
+    }
+    if let Some(hint) =
+        grant.login_hint.as_deref().filter(|hint| !hint.is_empty())
+    {
+        request = request.add_extra_param("login_hint", hint);
     }
     let (consent_url, state) = request.url();
     on_prompt(&BrowserPrompt {

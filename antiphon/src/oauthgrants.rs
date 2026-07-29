@@ -61,6 +61,7 @@ pub(crate) fn resolve_client_id(
 /// are skipped (app-only Graph, say).
 pub(crate) fn account_grants(
     account: &str,
+    address: &str,
     oauth: &Oauth,
     client_id: &str,
     graph: Option<&Graph>,
@@ -74,16 +75,25 @@ pub(crate) fn account_grants(
                 scopes: GOOGLE_MAIL_SCOPES.to_string(),
                 client_id: client_id.to_string(),
                 tenant: None,
+                login_hint: login_hint(address),
             },
             wanted: true,
         }],
         OauthProvider::Microsoft => microsoft_grants(
             account,
+            address,
             client_id,
             oauth.tenant.as_deref(),
             graph,
         ),
     }
+}
+
+/// The account address, sent as `login_hint` to steer the
+/// provider's account picker; an empty address is `None`.
+fn login_hint(address: &str) -> Option<String> {
+    let trimmed = address.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
 /// The IMAP grant uses the [oauth] registration; it takes the
@@ -95,6 +105,7 @@ pub(crate) fn account_grants(
 /// tenant when only that is set, so one Entra tenant serves both.
 fn microsoft_grants(
     account: &str,
+    address: &str,
     client_id: &str,
     oauth_tenant: Option<&str>,
     graph: Option<&Graph>,
@@ -114,6 +125,7 @@ fn microsoft_grants(
                 scopes: MICROSOFT_IMAP_SCOPES.to_string(),
                 client_id: client_id.to_string(),
                 tenant: account_tenant.clone(),
+                login_hint: login_hint(address),
             },
             wanted: true,
         },
@@ -130,6 +142,7 @@ fn microsoft_grants(
                 tenant: delegated
                     .and_then(|graph| graph.tenant.clone())
                     .or(account_tenant),
+                login_hint: login_hint(address),
             },
             wanted: delegated.is_some(),
         },
@@ -232,8 +245,13 @@ mod tests {
             Some("graph-tenant"),
             None,
         );
-        let grants =
-            account_grants("work", &oauth, "app", Some(&graph));
+        let grants = account_grants(
+            "work",
+            "work@example.com",
+            &oauth,
+            "app",
+            Some(&graph),
+        );
         assert_eq!(
             grants[0].grant.tenant.as_deref(),
             Some("primary"),
@@ -285,7 +303,13 @@ mod tests {
     fn a_google_account_wants_one_mail_grant() {
         let oauth =
             oauth_config(OauthProvider::Google, Some("google-app"));
-        let grants = account_grants("work", &oauth, "google-app", None);
+        let grants = account_grants(
+            "work",
+            "work@example.com",
+            &oauth,
+            "google-app",
+            None,
+        );
         assert_eq!(grants.len(), 1);
         assert!(grants[0].wanted);
         assert_eq!(grants[0].grant_name, "work-imap");
@@ -298,7 +322,13 @@ mod tests {
     ) -> Vec<GrantSpec> {
         let oauth =
             oauth_config(OauthProvider::Microsoft, Some("imap-app"));
-        account_grants("work", &oauth, "imap-app", graph)
+        account_grants(
+            "work",
+            "work@example.com",
+            &oauth,
+            "imap-app",
+            graph,
+        )
     }
 
     #[test]
@@ -345,5 +375,16 @@ mod tests {
         let grants = microsoft_account_grants(None);
         assert!(grants[0].wanted);
         assert!(!grants[1].wanted);
+    }
+
+    #[test]
+    fn the_imap_grant_carries_the_address_as_login_hint() {
+        let grants = microsoft_account_grants(None);
+        assert_eq!(
+            grants[0].grant.login_hint.as_deref(),
+            Some("work@example.com"),
+            "the address steers the picker and is checked \
+             against the signed-in identity"
+        );
     }
 }

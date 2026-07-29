@@ -51,6 +51,11 @@ pub(crate) fn from_response(
         .expires_in()
         .map(|left| left.as_secs())
         .unwrap_or(0);
+    crate::identity::verify(
+        grant.provider,
+        grant.login_hint.as_deref(),
+        response.access_token().secret(),
+    )?;
     Ok(TokenSet {
         access_token: SecretString::from(
             response.access_token().secret().clone(),

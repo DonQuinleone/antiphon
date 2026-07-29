@@ -25,6 +25,7 @@ pub enum OauthError {
     BadGrantName(String),
     NoStoredToken(String),
     Store(String),
+    IdentityMismatch { expected: String, signed_in: String },
 }
 
 impl fmt::Display for OauthError {
@@ -104,6 +105,17 @@ impl fmt::Display for OauthError {
             }
             OauthError::Store(detail) => {
                 write!(out, "the token store failed: {detail}")
+            }
+            OauthError::IdentityMismatch {
+                expected,
+                signed_in,
+            } => {
+                write!(
+                    out,
+                    "signed in as {signed_in}, but this account \
+                     is configured for {expected}; re-authorise \
+                     and choose the {expected} account"
+                )
             }
         }
     }

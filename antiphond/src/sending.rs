@@ -235,6 +235,7 @@ impl Mailflow {
             &store,
             &antiphon_oauth::graph_grant(&spec.name),
             &spec.name,
+            Some(spec.user.as_str()),
             now_unix(),
             &refresh,
         )

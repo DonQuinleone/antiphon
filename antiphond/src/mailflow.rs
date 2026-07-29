@@ -146,6 +146,7 @@ impl Mailflow {
                 &store,
                 &spec.grant_name(),
                 &spec.name,
+                Some(spec.user.as_str()),
                 &refresh,
             );
         }
@@ -153,6 +154,7 @@ impl Mailflow {
             &store,
             &spec.grant_name(),
             &spec.name,
+            Some(spec.user.as_str()),
             now_unix(),
             &refresh,
         )

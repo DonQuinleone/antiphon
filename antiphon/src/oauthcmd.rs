@@ -41,22 +41,25 @@ fn run_login(name: &str) -> Result<(), String> {
     let client_id =
         resolve_client_id(oauth, name, |var| std::env::var(var).ok())?;
     let store = open_store(&dirs)?;
+    let address = entry.account.imap.user.as_str();
     match oauth.provider {
         OauthProvider::Microsoft => login_microsoft(
             name,
+            address,
             oauth,
             &client_id,
             entry.account.graph.as_ref(),
             &store,
         ),
         OauthProvider::Google => {
-            login_google(name, oauth, &client_id, &store)
+            login_google(name, address, oauth, &client_id, &store)
         }
     }
 }
 
 fn login_microsoft(
     account: &str,
+    address: &str,
     oauth: &antiphon_config::Oauth,
     client_id: &str,
     graph: Option<&antiphon_config::Graph>,
@@ -70,7 +73,8 @@ fn login_microsoft(
              client_credentials at send time, no sign-in needed"
         );
     }
-    for spec in account_grants(account, oauth, client_id, graph) {
+    for spec in account_grants(account, address, oauth, client_id, graph)
+    {
         if !spec.wanted {
             continue;
         }
@@ -93,11 +97,12 @@ fn login_microsoft(
 
 fn login_google(
     account: &str,
+    address: &str,
     oauth: &antiphon_config::Oauth,
     client_id: &str,
     store: &TokenStore,
 ) -> Result<(), String> {
-    let spec = account_grants(account, oauth, client_id, None)
+    let spec = account_grants(account, address, oauth, client_id, None)
         .into_iter()
         .next()
         .expect("google always wants its mail grant");

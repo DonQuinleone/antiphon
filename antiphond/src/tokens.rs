@@ -30,6 +30,7 @@ pub(crate) fn imap_access_token(
             &store,
             &spec.grant_name(),
             &spec.name,
+            Some(spec.user.as_str()),
             &refresh,
         );
     }
@@ -37,6 +38,7 @@ pub(crate) fn imap_access_token(
         &store,
         &spec.grant_name(),
         &spec.name,
+        Some(spec.user.as_str()),
         now_unix(),
         &refresh,
     )
@@ -46,6 +48,7 @@ pub(crate) fn access_token(
     store: &TokenStore,
     grant_name: &str,
     account: &str,
+    login_hint: Option<&str>,
     now_unix: u64,
     refresh: Refresh,
 ) -> Result<String, String> {
@@ -53,17 +56,18 @@ pub(crate) fn access_token(
     if !stored.is_stale(now_unix, REFRESH_MARGIN_SECS) {
         return Ok(stored.access_token.expose_secret().to_string());
     }
-    renew(store, grant_name, account, &stored, refresh)
+    renew(store, grant_name, account, login_hint, &stored, refresh)
 }
 
 pub(crate) fn refreshed_token(
     store: &TokenStore,
     grant_name: &str,
     account: &str,
+    login_hint: Option<&str>,
     refresh: Refresh,
 ) -> Result<String, String> {
     let stored = load(store, grant_name, account)?;
-    renew(store, grant_name, account, &stored, refresh)
+    renew(store, grant_name, account, login_hint, &stored, refresh)
 }
 
 fn load(
@@ -88,6 +92,7 @@ fn renew(
     store: &TokenStore,
     grant_name: &str,
     account: &str,
+    login_hint: Option<&str>,
     stored: &TokenSet,
     refresh: Refresh,
 ) -> Result<String, String> {
@@ -96,6 +101,7 @@ fn renew(
         scopes: stored.scope.clone(),
         client_id: stored.client_id.clone(),
         tenant: stored.tenant.clone(),
+        login_hint: login_hint.map(str::to_string),
     };
     let renewed = refresh(stored, &grant).map_err(|error| {
         format!("{account}: refreshing the OAuth token: {error}")
@@ -157,7 +163,14 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = store_with(&dir, &stored_set(FAR_FUTURE));
         let token =
-            access_token(&store, "work-imap", "work", NOW, &no_refresh)
+            access_token(
+                &store,
+                "work-imap",
+                "work",
+                None,
+                NOW,
+                &no_refresh,
+            )
                 .expect("fresh token");
         assert_eq!(token, "at-old");
     }
@@ -176,7 +189,14 @@ mod tests {
             )
         };
         let token =
-            access_token(&store, "work-imap", "work", NOW, &refresh)
+            access_token(
+                &store,
+                "work-imap",
+                "work",
+                None,
+                NOW,
+                &refresh,
+            )
                 .expect("refreshed token");
         assert_eq!(token, "at-new");
         stub.finish();
@@ -195,7 +215,14 @@ mod tests {
             )
         };
         let token =
-            access_token(&store, "work-imap", "work", NOW, &refresh)
+            access_token(
+                &store,
+                "work-imap",
+                "work",
+                None,
+                NOW,
+                &refresh,
+            )
                 .expect("refreshed token");
         assert_eq!(token, "at-new");
 
@@ -223,7 +250,14 @@ mod tests {
             )
         };
         let error =
-            access_token(&store, "work-imap", "work", NOW, &refresh)
+            access_token(
+                &store,
+                "work-imap",
+                "work",
+                None,
+                NOW,
+                &refresh,
+            )
                 .expect_err("refresh fails");
         assert!(error.contains("work"));
         assert!(error.contains("invalid_grant"));
@@ -246,7 +280,7 @@ mod tests {
             )
         };
         let token =
-            refreshed_token(&store, "work-imap", "work", &refresh)
+            refreshed_token(&store, "work-imap", "work", None, &refresh)
                 .expect("forced refresh");
         assert_eq!(token, "at-new");
         stub.finish();
@@ -257,7 +291,14 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = TokenStore::open(dir.path()).expect("open");
         let error =
-            access_token(&store, "work-imap", "work", NOW, &no_refresh)
+            access_token(
+                &store,
+                "work-imap",
+                "work",
+                None,
+                NOW,
+                &no_refresh,
+            )
                 .expect_err("missing token");
         assert!(error.contains("antiphon oauth login work"));
     }

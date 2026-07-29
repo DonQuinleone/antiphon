@@ -21,6 +21,7 @@ fn microsoft_grant() -> Grant {
         scopes: MICROSOFT_IMAP_SCOPES.to_string(),
         client_id: "client-app".to_string(),
         tenant: None,
+        login_hint: None,
     }
 }
 
@@ -30,6 +31,7 @@ fn google_grant() -> Grant {
         scopes: GOOGLE_MAIL_SCOPES.to_string(),
         client_id: "client-app".to_string(),
         tenant: None,
+        login_hint: None,
     }
 }
 
