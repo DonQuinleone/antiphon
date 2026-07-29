@@ -392,3 +392,16 @@ fn folders_tab_footer_lists_its_keys() {
         "the footer lists the folder keys: {text}"
     );
 }
+
+#[test]
+fn the_folder_window_keeps_the_selection_visible() {
+    use super::window_start;
+    assert_eq!(window_start(0, 5, 10), 0, "top of a long list");
+    let start = window_start(9, 5, 10);
+    assert!(
+        start <= 9 && 9 < start + 5,
+        "a near-end selection stays in the window [{start}, {})",
+        start + 5,
+    );
+    assert_eq!(window_start(2, 20, 3), 0, "no scroll when it all fits");
+}

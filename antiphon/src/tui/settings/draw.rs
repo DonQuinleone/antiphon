@@ -286,7 +286,18 @@ fn draw_folders(
         state.folders.iter().map(|f| f.folder.chars().count()),
         MIN_ADDRESS_WIDTH,
     );
-    for (index, row) in state.folders.iter().enumerate() {
+    // Reserve the last two rows for the blank line and the key
+    // hints, and window the list around the selection so it stays
+    // visible and the hints never scroll off.
+    let visible = (area.height as usize).saturating_sub(2);
+    let start = window_start(
+        state.folder_selected,
+        visible,
+        state.folders.len(),
+    );
+    for (index, row) in
+        state.folders.iter().enumerate().skip(start).take(visible)
+    {
         lines.push(folder_line(
             app,
             row,
@@ -301,6 +312,20 @@ fn draw_folders(
         Style::new().fg(theme.text_muted),
     )));
     frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// The first row to show so the selection stays on screen: the
+/// list scrolls only once it would run past the visible window,
+/// keeping the selection roughly centred thereafter.
+fn window_start(
+    selected: usize,
+    visible: usize,
+    count: usize,
+) -> usize {
+    if visible == 0 || count <= visible {
+        return 0;
+    }
+    selected.saturating_sub(visible / 2).min(count - visible)
 }
 
 fn folder_line(
