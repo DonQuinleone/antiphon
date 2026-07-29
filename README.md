@@ -182,6 +182,18 @@ nix run git+https://git.sr.ht/~donquinleone/antiphon
 The flake ships the package (binaries, man pages, the systemd
 user unit) and a dev shell (`nix develop`).
 
+### Fedora (Copr)
+
+```bash
+sudo dnf copr enable donquinleone/antiphon
+sudo dnf install antiphon
+```
+
+Antiphon is built for current Fedora releases through
+[Fedora Copr](https://copr.fedorainfracloud.org/coprs/donquinleone/antiphon).
+It pulls in `notmuch`; `gnupg2` is recommended only if you
+sign or decrypt with OpenPGP.
+
 ### Other Linux distributions
 
 Grab the release tarball for your architecture from the

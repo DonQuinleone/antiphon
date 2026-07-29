@@ -37,6 +37,20 @@ arch_install() {
     return 1
 }
 
+fedora_install() {
+    have dnf || return 1
+    [ -r /etc/os-release ] || return 1
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    case "${ID:-}:${ID_LIKE:-}" in
+        *fedora*) ;;
+        *) return 1 ;;
+    esac
+    say "enabling the Antiphon Copr and installing (needs sudo)"
+    sudo dnf copr enable -y "$TAP" \
+        && sudo dnf install -y antiphon
+}
+
 nix_install() {
     have nix || return 1
     say "installing with nix from the flake"
@@ -102,6 +116,7 @@ linux_install() {
         arch_install && return 0
         say "falling back past the AUR"
     fi
+    fedora_install && return 0
     nix_install && return 0
     tarball_install && return 0
     compile_install
