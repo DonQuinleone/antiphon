@@ -15,7 +15,10 @@ use super::app::App;
 use super::draw::segmented::{self, SegmentStyle};
 use super::headers::with_cursor;
 
-const MODAL_WIDTH: u16 = 86;
+/// Narrower than the settings modal (78) so the form nests
+/// inside it rather than overhanging, keeping it visibly part of
+/// the settings screen behind.
+const MODAL_WIDTH: u16 = 72;
 const LABEL_COLS: usize = 24;
 const BORDER_ROWS: u16 = 2;
 const HINT: &str = " tab move \u{b7} \u{2190}/\u{2192}/space toggle \
@@ -32,7 +35,7 @@ pub(super) fn draw_form(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         " add account "
     };
-    let width = MODAL_WIDTH.min(area.width.saturating_sub(2));
+    let width = MODAL_WIDTH.min(area.width.saturating_sub(6));
     let inner_width = width.saturating_sub(2) as usize;
     let error_lines = form
         .error
