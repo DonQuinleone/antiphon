@@ -41,7 +41,16 @@ impl App {
             Some(account) if self.select_account_inbox(&account) => {
                 self.sidebar_open();
             }
-            _ => self.requery = true,
+            Some(account) => {
+                // The account exists but has no synced folders yet,
+                // so there is no inbox to open; say so plainly
+                // instead of leaving a blank, misread view.
+                self.notice = Some(format!(
+                    "{account} has not synced yet; press s to sync"
+                ));
+                self.requery = true;
+            }
+            None => self.requery = true,
         }
     }
 
@@ -122,6 +131,19 @@ mod tests {
             "and opens it rather than keeping the prior search",
         );
         assert!(app.take_requery());
+    }
+
+    #[test]
+    fn switching_to_an_unsynced_account_says_so() {
+        let mut app = tabbed_app();
+        app.accounts.push("c".to_string());
+        app.apply(Action::AccountTab(3));
+        assert_eq!(app.scope, ViewScope::Account("c".into()));
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("c has not synced yet; press s to sync"),
+            "an unsynced account lands with an accurate notice",
+        );
     }
 
     #[test]

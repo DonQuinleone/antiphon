@@ -107,6 +107,12 @@ impl App {
     /// listing kept in memory, so add, edit and remove all
     /// settle here rather than each patching their own copy.
     pub(super) fn refresh_settings_accounts(&mut self) {
+        // The scope/tab list is the ordered account names; keep it
+        // in step so a just-added account is switchable at once
+        // rather than reported missing until the next launch.
+        if let Ok(loaded) = antiphon_config::load(&self.dirs) {
+            self.accounts = super::actions::account_names(&loaded);
+        }
         let accounts = accounts::account_summaries(
             &self.dirs,
             &self.auth_failures,
