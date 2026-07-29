@@ -171,7 +171,9 @@ pub fn run(
     app.key_bindings = keymap
         .bindings()
         .iter()
-        .map(|(action, text)| (text.clone(), action.to_string()))
+        .map(|(context, action, text)| {
+            (text.clone(), action.to_string(), context.label())
+        })
         .collect();
     app.contacts = antiphon_store::contacts::load(layout);
     refresh_contacts(layout);

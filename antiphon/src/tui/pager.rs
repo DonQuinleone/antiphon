@@ -84,8 +84,8 @@ fn keybar(app: &App, width: u16) -> Paragraph<'static> {
             let key = app
                 .key_bindings
                 .iter()
-                .find(|(_, name)| name == action)
-                .map(|(key, _)| key.as_str())?;
+                .find(|(_, name, _)| name == action)
+                .map(|(key, _, _)| key.as_str())?;
             Some(format!("{key}:{label}"))
         })
         .collect();

@@ -91,7 +91,7 @@ pub struct App {
     pub preview_html: bool,
     pub help: bool,
     pub help_scroll: u16,
-    pub key_bindings: Vec<(String, String)>,
+    pub key_bindings: Vec<(String, String, &'static str)>,
     pub keyring: Keyring,
     pub own_addresses: Vec<String>,
     pub archive_folders: Vec<(String, String)>,

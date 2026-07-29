@@ -36,6 +36,23 @@ impl Context {
     fn is_text_entry(self) -> bool {
         matches!(self, Context::Compose | Context::Prompt)
     }
+
+    /// The context's heading in the cheatsheet, grouping the
+    /// bindings that only apply on that surface.
+    pub fn label(self) -> &'static str {
+        match self {
+            Context::Global => "global",
+            Context::List => "list",
+            Context::Pager => "message",
+            Context::Review => "review",
+            Context::Settings => "settings",
+            Context::SettingsAccounts => "settings: accounts",
+            Context::SettingsEssentials => "settings: options",
+            Context::SettingsFolders => "settings: folders",
+            Context::Compose => "compose",
+            Context::Prompt => "prompt",
+        }
+    }
 }
 
 const DEFAULT_BINDINGS: &[(Context, Action, &str)] = &[
@@ -188,7 +205,7 @@ pub struct Keymap {
     prefixes: HashSet<(Context, Chord)>,
     pending: Option<Chord>,
     count: u32,
-    listing: Vec<(Action, String)>,
+    listing: Vec<(Context, Action, String)>,
 }
 
 impl Keymap {
@@ -217,9 +234,11 @@ impl Keymap {
             entry.text = text.clone();
             entry.user = true;
         }
-        let listing: Vec<(Action, String)> = entries
+        let listing: Vec<(Context, Action, String)> = entries
             .iter()
-            .map(|entry| (entry.action, entry.text.clone()))
+            .map(|entry| {
+                (entry.context, entry.action, entry.text.clone())
+            })
             .collect();
         entries.sort_by_key(|entry| entry.user);
 
@@ -247,7 +266,7 @@ impl Keymap {
 
     /// The effective bindings, defaults merged with the
     /// user's overrides, in the defaults' display order.
-    pub fn bindings(&self) -> &[(Action, String)] {
+    pub fn bindings(&self) -> &[(Context, Action, String)] {
         &self.listing
     }
 

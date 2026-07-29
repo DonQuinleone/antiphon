@@ -76,7 +76,9 @@ pub(super) fn app_with_messages(count: usize) -> App {
         key_bindings: antiphon_core::Keymap::default()
             .bindings()
             .iter()
-            .map(|(action, text)| (text.clone(), action.to_string()))
+            .map(|(context, action, text)| {
+                (text.clone(), action.to_string(), context.label())
+            })
             .collect(),
         preview: None,
         own_addresses: Vec::new(),
