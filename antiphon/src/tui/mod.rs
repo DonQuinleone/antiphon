@@ -27,6 +27,7 @@ mod folder_alias;
 mod folder_picker;
 mod folders;
 mod headers;
+mod headers_draw;
 mod help;
 mod identity;
 mod image_view;
