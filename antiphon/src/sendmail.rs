@@ -72,6 +72,7 @@ pub fn run(args: &[String]) -> ExitCode {
         account,
         from,
         recipients: invocation.recipients,
+        send_after: None,
     };
     if let Err(error) = Outbox::open(&layout).enqueue(&envelope, &raw) {
         return fail(EX_TEMPFAIL, &error.to_string());

@@ -85,6 +85,7 @@ pub(super) fn envelope(account: &str, outgoing: &Outgoing) -> Envelope {
             .chain(&outgoing.bcc)
             .map(|entry| bare_address(entry))
             .collect(),
+        send_after: None,
     }
 }
 

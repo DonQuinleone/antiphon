@@ -10,6 +10,11 @@ pub struct Envelope {
     pub account: String,
     pub from: String,
     pub recipients: Vec<String>,
+    /// Unix seconds before which the daemon holds the message
+    /// in the outbox; `None` sends at the next drain. Absent
+    /// from envelopes written before scheduling existed.
+    #[serde(default)]
+    pub send_after: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -91,6 +96,7 @@ mod tests {
             account: "personal".to_string(),
             from: "quin@example.com".to_string(),
             recipients: vec!["mara@example.com".to_string()],
+            send_after: None,
         }
     }
 
@@ -156,5 +162,16 @@ mod tests {
         )
         .unwrap();
         assert!(outbox.pending().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_schedule_survives_the_spool_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let outbox = outbox_in(&dir);
+        let mut scheduled = envelope();
+        scheduled.send_after = Some(2_000_000_000);
+        outbox.enqueue(&scheduled, b"Subject: later").unwrap();
+        let pending = outbox.pending().unwrap();
+        assert_eq!(pending[0].envelope.send_after, Some(2_000_000_000));
     }
 }

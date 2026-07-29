@@ -57,7 +57,11 @@ impl Mailflow {
                 return;
             }
         };
+        let now = now_unix();
         for queued in pending {
+            if !due(&queued.envelope, now) {
+                continue;
+            }
             self.send_queued(set, &outbox, queued);
         }
     }
@@ -335,4 +339,37 @@ fn app_only_graph_token(
         format!("{account}: app-only graph token: {error}")
     })?;
     Ok(tokens.access_token.expose_secret().to_string())
+}
+
+/// A message with no schedule, or one whose time has passed,
+/// is due now; a future-dated one waits in the outbox.
+fn due(envelope: &antiphon_store::Envelope, now: u64) -> bool {
+    match envelope.send_after {
+        Some(at) => at <= now,
+        None => true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use antiphon_store::Envelope;
+
+    use super::due;
+
+    fn envelope(send_after: Option<u64>) -> Envelope {
+        Envelope {
+            account: "personal".to_string(),
+            from: "quin@example.com".to_string(),
+            recipients: vec!["mara@example.com".to_string()],
+            send_after,
+        }
+    }
+
+    #[test]
+    fn scheduling_holds_a_message_until_its_time() {
+        assert!(due(&envelope(None), 100), "unscheduled sends now");
+        assert!(due(&envelope(Some(100)), 100), "due at its time");
+        assert!(due(&envelope(Some(50)), 100), "overdue sends");
+        assert!(!due(&envelope(Some(200)), 100), "a future time waits");
+    }
 }
