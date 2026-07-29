@@ -43,6 +43,7 @@ mod oauthflow_worker;
 mod pager;
 mod pager_actions;
 mod pager_body;
+mod pager_style;
 mod patches;
 mod prefill;
 mod prefs;
