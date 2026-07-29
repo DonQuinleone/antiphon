@@ -1,4 +1,11 @@
 image: archlinux
+# Only the tag push builds a release, so a branch push landing on
+# the tagged commit no longer races it to upload the artifact.
+submitter:
+  git.sr.ht:
+    enabled: true
+    allow-refs:
+      - "refs/tags/v*"
 packages:
   - rust
   - notmuch
