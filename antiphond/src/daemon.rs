@@ -140,13 +140,14 @@ pub fn run() -> ExitCode {
     };
     // Unlock before touching the store: behind a sealed vault
     // the store only exists once the vault is mounted.
-    let vault = match vaultctl::ensure_open(&loaded, &layout) {
-        Ok(state) => state,
-        Err(error) => {
-            eprintln!("{error}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let vault =
+        match vaultctl::ensure_open(&loaded, &layout, &dirs.state) {
+            Ok(state) => state,
+            Err(error) => {
+                eprintln!("{error}");
+                return ExitCode::FAILURE;
+            }
+        };
     if !layout.exists() {
         eprintln!(
             "no message store at {}; run \
@@ -343,7 +344,11 @@ fn wake(daemon: &mut Daemon) {
     if daemon.vault != VaultState::Sealed {
         return;
     }
-    match vaultctl::ensure_open(&daemon.loaded, &daemon.layout) {
+    match vaultctl::ensure_open(
+        &daemon.loaded,
+        &daemon.layout,
+        &daemon.dirs.state,
+    ) {
         Ok(state) => {
             daemon.vault = state;
             daemon.start_watchers();

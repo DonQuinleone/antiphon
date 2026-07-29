@@ -45,7 +45,7 @@ struct Enrolment {
 /// write the enrolment. Both device steps need a touch; the PIN
 /// authorises them. Off the unlock hot path.
 pub fn enrol(
-    store_root: &Path,
+    dir: &Path,
     secret: &SecretString,
     pin: &SecretString,
 ) -> Result<(), VaultError> {
@@ -62,7 +62,8 @@ pub fn enrol(
         nonce: nonce.into(),
         ciphertext,
     };
-    std::fs::write(keyfile(store_root), encode(&enrolment))
+    std::fs::create_dir_all(dir).map_err(VaultError::Io)?;
+    std::fs::write(keyfile(dir), encode(&enrolment))
         .map_err(VaultError::Io)
 }
 
@@ -71,11 +72,10 @@ pub fn enrol(
 /// different secret, so the open fails rather than yielding a
 /// bad passphrase.
 pub fn read_passphrase(
-    store_root: &Path,
+    dir: &Path,
     pin: &SecretString,
 ) -> Result<SecretString, VaultError> {
-    let bytes =
-        std::fs::read(keyfile(store_root)).map_err(VaultError::Io)?;
+    let bytes = std::fs::read(keyfile(dir)).map_err(VaultError::Io)?;
     let enrolment = decode(&bytes)?;
     let key = hmac_secret(
         &enrolment.credential_id,
@@ -92,8 +92,8 @@ pub fn read_passphrase(
     Ok(SecretString::from(text))
 }
 
-fn keyfile(store_root: &Path) -> PathBuf {
-    store_root.join(KEYFILE_NAME)
+fn keyfile(dir: &Path) -> PathBuf {
+    dir.join(KEYFILE_NAME)
 }
 
 fn seal(
@@ -231,10 +231,12 @@ fn hmac_secret(
 }
 
 fn open_device() -> Result<ctap_hid_fido2::FidoKeyHid, VaultError> {
-    ctap_hid_fido2::FidoKeyHidFactory::create(
-        &ctap_hid_fido2::Cfg::init(),
-    )
-    .map_err(|error| {
+    let mut cfg = ctap_hid_fido2::Cfg::init();
+    // The library reprints "Touch the sensor..." on every
+    // keep-alive tick; our own prompt says it once, so quiet the
+    // repeats.
+    cfg.enable_keep_alive_msg = false;
+    ctap_hid_fido2::FidoKeyHidFactory::create(&cfg).map_err(|error| {
         VaultError::Fido2(format!("no FIDO2 device: {error}"))
     })
 }

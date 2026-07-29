@@ -20,15 +20,17 @@ pub trait SecretSource {
     fn passphrase(&self) -> Result<SecretString, VaultError>;
 }
 
-/// Try each source in order; the first to yield a secret wins.
-/// With no sources, or all failing, the vault stays sealed.
+/// Try each source in order; the first to yield a secret wins,
+/// and its method name comes back so the caller can report which
+/// one opened the vault. With no sources, or all failing, the
+/// vault stays sealed.
 pub fn resolve_passphrase(
     sources: &[Box<dyn SecretSource>],
-) -> Result<SecretString, VaultError> {
+) -> Result<(SecretString, &'static str), VaultError> {
     let mut last: Option<VaultError> = None;
     for source in sources {
         match source.passphrase() {
-            Ok(secret) => return Ok(secret),
+            Ok(secret) => return Ok((secret, source.method())),
             Err(err) => last = Some(err),
         }
     }
@@ -66,17 +68,17 @@ impl SecretSource for TouchidSource {
 /// serves both; on a host without the key the read reports the
 /// method unsupported and the resolver falls through.
 pub struct YubikeySource {
-    store_root: PathBuf,
+    enrol_dir: PathBuf,
     pin_command: String,
 }
 
 impl YubikeySource {
     pub fn new(
-        store_root: impl Into<PathBuf>,
+        enrol_dir: impl Into<PathBuf>,
         pin_command: impl Into<String>,
     ) -> YubikeySource {
         YubikeySource {
-            store_root: store_root.into(),
+            enrol_dir: enrol_dir.into(),
             pin_command: pin_command.into(),
         }
     }
@@ -89,7 +91,7 @@ impl SecretSource for YubikeySource {
 
     fn passphrase(&self) -> Result<SecretString, VaultError> {
         let pin = passphrase_command(&self.pin_command)?;
-        fido2::read_passphrase(&self.store_root, &pin)
+        fido2::read_passphrase(&self.enrol_dir, &pin)
     }
 }
 
@@ -131,11 +133,11 @@ pub fn enrol_touchid(
 /// one-time enrolment that gives the key something to unlock.
 /// Off the hot path; driven by `antiphon vault yubikey-enrol`.
 pub fn enrol_yubikey(
-    store_root: &Path,
+    enrol_dir: &Path,
     secret: &SecretString,
     pin: &SecretString,
 ) -> Result<(), VaultError> {
-    fido2::enrol(store_root, secret, pin)
+    fido2::enrol(enrol_dir, secret, pin)
 }
 
 #[cfg(test)]
@@ -205,8 +207,10 @@ mod tests {
     #[test]
     fn first_source_that_succeeds_wins() {
         let (touchid, _) = Scripted::ok("touchid", "from-touchid");
-        let secret = resolve_passphrase(&boxed(vec![touchid])).unwrap();
+        let (secret, method) =
+            resolve_passphrase(&boxed(vec![touchid])).unwrap();
         assert_eq!(secret.expose_secret(), "from-touchid");
+        assert_eq!(method, "touchid");
     }
 
     #[test]
@@ -214,10 +218,11 @@ mod tests {
         let (touchid, _) = Scripted::err("touchid");
         let (passphrase, _) =
             Scripted::ok("passphrase", "from-command");
-        let secret =
+        let (secret, method) =
             resolve_passphrase(&boxed(vec![touchid, passphrase]))
                 .unwrap();
         assert_eq!(secret.expose_secret(), "from-command");
+        assert_eq!(method, "passphrase", "the winner is reported");
     }
 
     #[test]

@@ -123,12 +123,14 @@ fn run_yubikey_enrol(
                 .to_string(),
         );
     };
-    let layout = StoreLayout::new(dirs.store_root());
     let secret = passphrase_command(passphrase_cmd)
         .map_err(|e| e.to_string())?;
     let pin = passphrase_command(pin_cmd).map_err(|e| e.to_string())?;
     println!("touch the YubiKey when it blinks (twice)");
-    enrol_yubikey(layout.root(), &secret, &pin)
+    // The enrolment lives outside the vault (the state dir, like
+    // the socket): it must be readable while the vault is sealed,
+    // since it is what unlocks it.
+    enrol_yubikey(&dirs.state, &secret, &pin)
         .map_err(|error| format!("enrolling the YubiKey: {error}"))
 }
 

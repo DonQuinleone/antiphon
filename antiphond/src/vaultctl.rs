@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use antiphon_config::{Loaded, Unlock};
 use antiphon_ipc::VaultState;
 use antiphon_store::StoreLayout;
@@ -13,6 +15,7 @@ use antiphon_vault::{
 pub fn ensure_open(
     loaded: &Loaded,
     layout: &StoreLayout,
+    enrol_dir: &Path,
 ) -> Result<VaultState, String> {
     let vault = backend(loaded, layout)?;
     match vault.status() {
@@ -22,7 +25,7 @@ pub fn ensure_open(
             Ok(VaultState::Absent)
         }
         VaultStatus::Sealed => {
-            open_sealed(loaded, layout, vault.as_ref())?;
+            open_sealed(loaded, layout, vault.as_ref(), enrol_dir)?;
             Ok(VaultState::Open)
         }
     }
@@ -53,20 +56,21 @@ fn open_sealed(
     loaded: &Loaded,
     layout: &StoreLayout,
     vault: &dyn Vault,
+    enrol_dir: &Path,
 ) -> Result<(), String> {
-    let sources = unlock_sources(loaded, layout);
+    let sources = unlock_sources(loaded, layout, enrol_dir);
     if sources.is_empty() {
         return Err("vault is sealed but no unlock method is \
              configured; set `[vault] passphrase_cmd` or enrol \
              Touch ID"
             .to_string());
     }
-    let secret = resolve_passphrase(&sources)
+    let (secret, method) = resolve_passphrase(&sources)
         .map_err(|error| format!("unlocking the vault: {error}"))?;
     vault
         .unlock(&Auth::Passphrase(secret))
         .map_err(|error| format!("unlocking the vault: {error}"))?;
-    println!("vault unlocked");
+    println!("vault unlocked via {method}");
     Ok(())
 }
 
@@ -79,6 +83,7 @@ fn open_sealed(
 fn unlock_sources(
     loaded: &Loaded,
     layout: &StoreLayout,
+    enrol_dir: &Path,
 ) -> Vec<Box<dyn SecretSource>> {
     let mut sources: Vec<Box<dyn SecretSource>> = Vec::new();
     for method in &loaded.config.vault.unlock {
@@ -101,7 +106,7 @@ fn unlock_sources(
                     continue;
                 };
                 sources.push(Box::new(YubikeySource::new(
-                    layout.root(),
+                    enrol_dir,
                     command.clone(),
                 )));
             }
